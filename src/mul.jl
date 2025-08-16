@@ -20,7 +20,7 @@ function canonicalize!(a::NCMul)
 end
 
 function Base.show(io::IO, x::NCMul)
-    isscalar(x) && print(io, x.coeff)
+    #isscalar(x) && print(io, x.coeff)
     print_coeff = !isone(x.coeff)
     if print_coeff
         v = x.coeff
@@ -52,12 +52,15 @@ NCMul(f) = NCMul(1, [f])
 
 NCterms(a::NCMul) = (a,)
 
+Base.:*(x::Number, a::NCMul) = NCMul(x * a.coeff, a.factors)
+Base.:*(a::NCMul, x::Number) = NCMul(x * a.coeff, a.factors)
 
 ordered_product(x::Number, a::NCMul, ordering) = NCMul(x * a.coeff, a.factors)
 ordered_product(a::NCMul, b::NCMul, ::NaiveOrdering) = NCMul(a.coeff * b.coeff, vcat(a.factors, b.factors))
 
-ordered_product(bs::NCMul, ordering) = ordered_product(NCMul(a), bs, ordering)
-ordered_product(as::NCMul, b, ordering) = ordered_product(as, NCMul(b), ordering)
+ordered_product(a::NCMul, bs::NCMul, ordering) = ordered_product(a, bs, ordering)
+# ordered_product(a, bs::NCMul, ordering) = ordered_product(NCMul(a), bs, ordering)
+# ordered_product(as::NCMul, b, ordering) = ordered_product(as, NCMul(b), ordering)
 
 Base.adjoint(x::NCMul) = length(x.factors) == 0 ? NCMul(adjoint(x.coeff), x.factors) : adjoint(x.coeff) * foldr(*, Iterators.reverse(Iterators.map(adjoint, x.factors)))
 

@@ -127,9 +127,9 @@ ordered_product(a::MulAdd, x::Number, ordering) = ordered_product(x, a, ordering
 additive_coeff(a::NCAdd) = a.coeff
 additive_coeff(a::MulAdd) = 0
 
-# Base.:*(a::MulAdd, b::MulAdd) = ordered_product(a, b, NormalOrdering())
-Base.:*(a::MulAdd, x::Number) = ordered_product(x, a, NaiveOrdering())
-Base.:*(x::Number, a::MulAdd) = ordered_product(x, a, NaiveOrdering())
+Base.:*(a::MulAdd, b::MulAdd) = ordered_product(a, b, NaiveOrdering())
+Base.:*(a::MulAdd, x) = ordered_product(a, NCMul(x), NaiveOrdering())
+Base.:*(x, a::MulAdd) = ordered_product(NCMul(x), a, NaiveOrdering())
 function ordered_product(a::NCAdd, b::MulAdd, ordering::AbstractOrdering)
     c = zero(a)
     return trymul!(c, a, b, ordering)
