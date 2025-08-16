@@ -1,3 +1,5 @@
+struct NormalOrdering <: AbstractOrdering end
+
 
 struct SymbolicFermionBasis
     name::Symbol
@@ -62,6 +64,7 @@ end
 Base.:(==)(a::Fermion, b::Fermion) = a.creation == b.creation && a.label == b.label && a.basis == b.basis
 Base.hash(a::Fermion, h::UInt) = hash(a.creation, hash(a.label, hash(a.basis, h)))
 
+# ordered_product(as::NCMul, bs::NCMul, ::NormalOrdering) = canonicalize!(normal_order(ordered_product(as, bs, NaiveOrdering())))
 
 TermInterface.head(::T) where {T<:Fermion} = T
 TermInterface.iscall(::Fermion) = true

@@ -34,7 +34,7 @@ function bubble_sort(a::NCMul; start=1)
     if length(a.factors) == 1
         return a
     end
-    muloraddvec::Union{Number,SMA} = a
+    muloraddvec::Union{Number,MulAdd} = a
 
     swapped = false
     i = max(0, start - 1)
@@ -55,6 +55,6 @@ function bubble_sort(a::NCMul; start=1)
     bubble_sort(muloraddvec; start=i - 1)
 end
 
-normal_order(a::SMA) = bubble_sort(a)
-normal_order(a::Number) = a
+# normal_order(a::MulAdd) = bubble_sort(a)
+# normal_order(a::Number) = a
 bubble_sort(a::Number; kwargs...) = a
