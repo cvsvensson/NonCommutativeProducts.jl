@@ -35,5 +35,5 @@ jobs:
         shell: julia --project=docs --color=yes {0}
         run: |
           using Documenter: DocMeta, doctest
-          using FermionicHilbertSpaces
-          doctest(FermionicHilbertSpaces)
+          using NonCommutativeProducts
+          doctest(NonCommutativeProducts)
