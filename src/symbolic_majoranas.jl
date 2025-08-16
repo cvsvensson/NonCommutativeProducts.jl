@@ -4,7 +4,6 @@ struct SymbolicMajoranaBasis
 end
 Base.hash(x::SymbolicMajoranaBasis, h::UInt) = hash(x.name, hash(x.universe, h))
 
-abstract type AbstractMajoranaSym <: AbstractFermionSym end
 """
     @majoranas a b ...
 
@@ -30,19 +29,19 @@ macro majoranas(xs...)
     Expr(:block, defs...,
         :(tuple($(map(x -> esc(x), xs)...))))
 end
-Base.getindex(f::SymbolicMajoranaBasis, is...) = MajoranaSym(is, f)
-Base.getindex(f::SymbolicMajoranaBasis, i) = MajoranaSym(i, f)
+Base.getindex(f::SymbolicMajoranaBasis, is...) = Majorana(is, f)
+Base.getindex(f::SymbolicMajoranaBasis, i) = Majorana(i, f)
 Base.:(==)(a::SymbolicMajoranaBasis, b::SymbolicMajoranaBasis) = a.name == b.name && a.universe == b.universe
 
-struct MajoranaSym{L,B} <: AbstractMajoranaSym
+struct Majorana{L,B}
     label::L
     basis::B
 end
-Base.:(==)(a::MajoranaSym, b::MajoranaSym) = a.label == b.label && a.basis == b.basis
-Base.hash(a::MajoranaSym, h::UInt) = hash(a.label, hash(a.basis, h))
-Base.adjoint(x::MajoranaSym) = MajoranaSym(x.label, x.basis)
-Base.iszero(x::MajoranaSym) = false
-function Base.show(io::IO, x::MajoranaSym)
+Base.:(==)(a::Majorana, b::Majorana) = a.label == b.label && a.basis == b.basis
+Base.hash(a::Majorana, h::UInt) = hash(a.label, hash(a.basis, h))
+Base.adjoint(x::Majorana) = Majorana(x.label, x.basis)
+Base.iszero(x::Majorana) = false
+function Base.show(io::IO, x::Majorana)
     print(io, x.basis.name)
     if Base.isiterable(typeof(x.label))
         Base.show_delim_array(io, x.label, "[", ",", "]", false)
@@ -50,7 +49,7 @@ function Base.show(io::IO, x::MajoranaSym)
         print(io, "[", x.label, "]")
     end
 end
-function Base.isless(a::MajoranaSym, b::MajoranaSym)
+function Base.isless(a::Majorana, b::Majorana)
     if a.basis.universe !== b.basis.universe
         a.basis.universe < b.basis.universe
     elseif a.basis.name == b.basis.name
@@ -59,7 +58,7 @@ function Base.isless(a::MajoranaSym, b::MajoranaSym)
         a.basis.name < b.basis.name
     end
 end
-function Base.:^(a::MajoranaSym, b)
+function Base.:^(a::Majorana, b)
     if b isa Number && iszero(b)
         1
     elseif b isa Number && b == 1
@@ -70,24 +69,22 @@ function Base.:^(a::MajoranaSym, b)
         throw(ArgumentError("Invalid exponent $b"))
     end
 end
-function ordered_product(a::MajoranaSym, b::MajoranaSym, ::NormalOrdering)
+function ordered_product(a::Majorana, b::Majorana, ::NormalOrdering)
     if a == b
         1
     elseif a < b
-        FermionMul(1, [a, b])
+        NCMul(1, [a, b])
     elseif a > b
-        FermionMul((-1)^(a.basis.universe == b.basis.universe), [b, a]) + Int(a.label == b.label && a.basis == b.basis)
+        NCMul((-1)^(a.basis.universe == b.basis.universe), [b, a]) + Int(a.label == b.label && a.basis == b.basis)
     else
         throw(ArgumentError("Don't know how to multiply $a * $b"))
     end
 end
 
-TermInterface.operation(::MajoranaSym) = MajoranaSym
-TermInterface.arguments(a::MajoranaSym) = [a.label, a.basis]
-TermInterface.children(a::MajoranaSym) = arguments(a)
+TermInterface.operation(::Majorana) = Majorana
+TermInterface.arguments(a::Majorana) = [a.label, a.basis]
+TermInterface.children(a::Majorana) = arguments(a)
 
-Base.valtype(::AbstractMajoranaSym) = Complex{Int}
-Base.valtype(::FermionMul{C,S}) where {C,S<:AbstractMajoranaSym} = complex(C)
 
 @testitem "MajoranaSym" begin
     using Symbolics
@@ -140,7 +137,7 @@ Base.valtype(::FermionMul{C,S}) where {C,S<:AbstractMajoranaSym} = complex(C)
     @test substitute(γ[1], 1 => 2) == γ[2]
     @test NonCommutativeProducts.canonicalize!(substitute(γ[:a] * γ[:b] + 1, :a => :b)) == 2
 
-    r = (@rule ~x::(x -> x isa NonCommutativeProducts.AbstractFermionSym) => (~x).basis[min((~x).label + 1, 10)])
+    r = (@rule ~x::(x -> x isa NonCommutativeProducts.Majorana) => (~x).basis[min((~x).label + 1, 10)])
     @test r(f[1]) == f[2]
     @test simplify(f[1]; rewriter=r) == f[10] # applies rule repeatedly until no change
     r2 = Rewriters.Prewalk(Rewriters.PassThrough(r)) # should work on composite expressions. Postwalk also works.

@@ -31,17 +31,17 @@ macro fermions(xs...)
         :(tuple($(map(x -> esc(x), xs)...))))
 end
 Base.:(==)(a::SymbolicFermionBasis, b::SymbolicFermionBasis) = a.name == b.name && a.universe == b.universe
-Base.getindex(f::SymbolicFermionBasis, is...) = FermionSym(false, is, f)
-Base.getindex(f::SymbolicFermionBasis, i) = FermionSym(false, i, f)
+Base.getindex(f::SymbolicFermionBasis, is...) = Fermion(false, is, f)
+Base.getindex(f::SymbolicFermionBasis, i) = Fermion(false, i, f)
 
-struct FermionSym{L,B} <: AbstractFermionSym
+struct Fermion{L,B}
     creation::Bool
     label::L
     basis::B
 end
-Base.adjoint(x::FermionSym) = FermionSym(!x.creation, x.label, x.basis)
-Base.iszero(x::FermionSym) = false
-function Base.show(io::IO, x::FermionSym)
+Base.adjoint(x::Fermion) = Fermion(!x.creation, x.label, x.basis)
+Base.iszero(x::Fermion) = false
+function Base.show(io::IO, x::Fermion)
     print(io, x.basis.name, x.creation ? "†" : "")
     if Base.isiterable(typeof(x.label))
         Base.show_delim_array(io, x.label, "[", ",", "]", false)
@@ -49,7 +49,7 @@ function Base.show(io::IO, x::FermionSym)
         print(io, "[", x.label, "]")
     end
 end
-function Base.isless(a::FermionSym, b::FermionSym)
+function Base.isless(a::Fermion, b::Fermion)
     if a.basis.universe !== b.basis.universe
         a.basis.universe < b.basis.universe
     elseif a.creation == b.creation
@@ -59,23 +59,30 @@ function Base.isless(a::FermionSym, b::FermionSym)
         a.creation > b.creation
     end
 end
-Base.:(==)(a::FermionSym, b::FermionSym) = a.creation == b.creation && a.label == b.label && a.basis == b.basis
-Base.hash(a::FermionSym, h::UInt) = hash(a.creation, hash(a.label, hash(a.basis, h)))
+Base.:(==)(a::Fermion, b::Fermion) = a.creation == b.creation && a.label == b.label && a.basis == b.basis
+Base.hash(a::Fermion, h::UInt) = hash(a.creation, hash(a.label, hash(a.basis, h)))
 
-function ordered_product(a::FermionSym, b::FermionSym, ::NormalOrdering)
+
+TermInterface.head(::T) where {T<:Fermion} = T
+TermInterface.iscall(::Fermion) = true
+TermInterface.isexpr(::Fermion) = true
+TermInterface.maketerm(::Type{Q}, head::Type{T}, args, metadata) where {Q<:Union{Fermion,<:NCMul,<:NCAdd},T<:Fermion} = T(args...)
+
+
+function ordered_product(a::Fermion, b::Fermion, ::NormalOrdering)
     a_uni = a.basis.universe
     b_uni = b.basis.universe
     if a == b
         0
     elseif a < b
-        FermionMul(1, [a, b])
+        NCMul(1, [a, b])
     elseif a > b
-        FermionMul((-1)^(a_uni == b_uni), [b, a]) + Int(a.label == b.label && a.basis == b.basis)
+        NCMul((-1)^(a_uni == b_uni), [b, a]) + Int(a.label == b.label && a.basis == b.basis)
     else
         throw(ArgumentError("Don't know how to multiply $a * $b"))
     end
 end
-function Base.:^(a::FermionSym, b)
+function Base.:^(a::Fermion, b)
     if b isa Number && iszero(b)
         1
     elseif b isa Number && b == 1
@@ -116,10 +123,10 @@ end
 
     @test iszero(f1 - f1)
     @test iszero(f1 * f1)
-    @test f1 * f2 isa NonCommutativeProducts.FermionMul
+    @test f1 * f2 isa NonCommutativeProducts.NCMul
     @test iszero(2 * f1 - 2 * f1)
     @test iszero(0 * f1)
-    @test 2 * f1 isa NonCommutativeProducts.FermionMul
+    @test 2 * f1 isa NonCommutativeProducts.NCMul
     @test iszero(f1 * 0)
     @test iszero(f1^2)
     @test iszero(0 * (f1 + f2))
@@ -131,8 +138,8 @@ end
     @test iszero(f12' * f12')
     nf1 = f1' * f1
     @test nf1^2 == nf1
-    @test f1' * f1 isa NonCommutativeProducts.FermionMul
-    @test f1 * f1' isa NonCommutativeProducts.FermionAdd
+    @test f1' * f1 isa NonCommutativeProducts.NCMul
+    @test f1 * f1' isa NonCommutativeProducts.NCAdd
 
     @test 1 + (f1 + f2) == 1 + f1 + f2 == f1 + f2 + 1 == f1 + 1 + f2 == 1 * f1 + f2 + 1 == f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2) == (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2) == (1 + f1' + (1 * f2)')'
     @test iszero((2 * f1) * (2 * f1))
@@ -169,9 +176,9 @@ end
     @test NonCommutativeProducts.iscall(ex)
 
     ex = f1
-    @test NonCommutativeProducts.head(ex) <: NonCommutativeProducts.FermionSym
+    @test NonCommutativeProducts.head(ex) <: NonCommutativeProducts.Fermion
     @test NonCommutativeProducts.children(ex) == [false, :a, f]
-    @test NonCommutativeProducts.operation(ex) == NonCommutativeProducts.FermionSym
+    @test NonCommutativeProducts.operation(ex) == NonCommutativeProducts.Fermion
     @test NonCommutativeProducts.arguments(ex) == [false, :a, f]
     @test NonCommutativeProducts.isexpr(ex)
     @test NonCommutativeProducts.iscall(ex)
@@ -190,6 +197,6 @@ end
     @test substitute(f[:a]' * f[:b] + 1, :a => :b) == f[:b]' * f[:b] + 1
 end
 
-TermInterface.operation(::FermionSym) = FermionSym
-TermInterface.arguments(a::FermionSym) = [a.creation, a.label, a.basis]
-TermInterface.children(a::FermionSym) = arguments(a)
+TermInterface.operation(::Fermion) = Fermion
+TermInterface.arguments(a::Fermion) = [a.creation, a.label, a.basis]
+TermInterface.children(a::Fermion) = arguments(a)
