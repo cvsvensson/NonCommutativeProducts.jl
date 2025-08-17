@@ -30,7 +30,28 @@ to_add_tuple(a, coeff=1) = (NCMul(a) => coeff,)
 
 Base.:^(a::Union{NCMul,NCAdd}, b) = Base.power_by_squaring(a, b)
 
+macro nc(T)
+    quote
+        Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(1, [x]) + NCMul(1, [y])
+        Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(1, [x]) + y
+        Base.:+(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x + NCMul(1, [y])
 
+        Base.:-(x::$(esc(T)), y::$(esc(T))) = NCMul(1, [x]) - NCMul(1, [y])
+        Base.:-(x::$(esc(T))) = NCMul(-1, [x])
+        Base.:-(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x - NCMul(1, [y])
+        Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(1, [x]) - y
+
+
+        Base.:*(x::$(esc(T)), y::$(esc(T))) = NCMul(1, [x, y])
+        Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(1, [y])
+        Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(1, [x]) * y
+        Base.:*(x::$(esc(T)), y::NCMul) = NCMul(y.coeff, pushfirst!!(copy(y.factors), x))
+        Base.:*(x::NCMul, y::$(esc(T))) = NCMul(x.coeff, push!!(copy(x.factors), y))
+        Base.:^(a::$(esc(T)), b) = Base.power_by_squaring(a, b)
+        Base.convert(::Type{NCMul{C,S}}, x::$(esc(T))) where {C,S<:$(esc(T))} = NCMul(one(C), [x])
+    end
+end
+# Base.convert(::Type{NCMul{C,F}}, x::Fermion) where {C,F<:Fermion} = NCMul(one(C), [x])
 
 
 ##

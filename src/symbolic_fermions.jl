@@ -53,10 +53,7 @@ function Base.show(io::IO, x::Fermion)
 end
 Base.:(==)(a::Fermion, b::Fermion) = a.creation == b.creation && a.label == b.label && a.basis == b.basis
 Base.hash(a::Fermion, h::UInt) = hash(a.creation, hash(a.label, hash(a.basis, h)))
-
-Base.:*(a::Fermion, b::Fermion) = NCMul(1, [a, b])
-# ordered_product(as::NCMul, bs::NCMul, ::NormalOrdering) = canonicalize!(normal_order(ordered_product(as, bs, NaiveOrdering())))
-
+@nc Fermion
 
 # TermInterface.head(::T) where {T<:Fermion} = T
 # TermInterface.iscall(::Fermion) = true
@@ -102,7 +99,7 @@ function swap_effect(a::Fermion, b::Fermion)
 end
 
 @testitem "SymbolicFermions" begin
-    import NonCommutativeProducts: TotalOrder, filter_zeros!
+    import NonCommutativeProducts: TotalOrder, filter_zeros!, bubble_sort
     using Symbolics, LinearAlgebra
     @fermions f c
     @fermions b
@@ -110,9 +107,9 @@ end
     f1 = f[:a]
     f2 = f[:b]
     f3 = f[1, :↑]
-
     ord(op) = bubble_sort(op, TotalOrder())
-    ord_equals(a, b) = iszero(filter_zeros!(ord(a - b)))
+    ord_equals(a, b) = (iszero(filter_zeros!(ord(a - b))))
+    ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
     # Test canonical commutation relations
     @test ord_equals(f1' * f1 + f1 * f1', 1)
     @test ord_equals(f1 * f2 + f2 * f1, 0)
@@ -132,42 +129,43 @@ end
     @test_nowarn display(1 + a * f2 - 5 * f1 + 2 * z * f1 * f2)
 
     @test iszero(f1 - f1)
-    @test iszero(f1 * f1)
+    @test ord_equals(f1 * f1, 0)
     @test f1 * f2 isa NonCommutativeProducts.NCMul
     @test iszero(2 * f1 - 2 * f1)
     @test iszero(0 * f1)
     @test 2 * f1 isa NonCommutativeProducts.NCMul
     @test iszero(f1 * 0)
-    @test iszero(f1^2)
-    @test iszero(0 * (f1 + f2))
+    @test ord_equals(f1^2, 0)
+    @test ord_equals(0 * (f1 + f2), 0)
     @test iszero((f1 + f2) * 0)
-    @test iszero(f1 * f2 * f1)
+    @test ord_equals(f1 * f2 * f1, 0)
     f12 = f1 * f2
     @test iszero(f12'' - f12)
-    @test iszero(f12 * f12)
-    @test iszero(f12' * f12')
+    @test ord_equals(f12 * f12, 0)
+    @test ord_equals(f12' * f12', 0)
     nf1 = f1' * f1
-    @test nf1^2 == nf1
+    @test ord_equals(nf1^2, nf1)
     @test f1' * f1 isa NonCommutativeProducts.NCMul
-    @test f1 * f1' isa NonCommutativeProducts.NCAdd
+    @test ord(f1 * f1') isa NonCommutativeProducts.NCAdd
 
+    @test ord_equals(1 + (f1 + f2), 1 + f1 + f2, f1 + f2 + 1, f1 + 1 + f2, 1 * f1 + f2 + 1, f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2), (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2), (1 + f1' + (1 * f2)')')
     @test 1 + (f1 + f2) == 1 + f1 + f2 == f1 + f2 + 1 == f1 + 1 + f2 == 1 * f1 + f2 + 1 == f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2) == (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2) == (1 + f1' + (1 * f2)')'
-    @test iszero((2 * f1) * (2 * f1))
-    @test iszero((2 * f1)^2)
-    @test (2 * f2) * (2 * f1) == -4 * f1 * f2
-    @test f1 == (f1 * (f1 + 1)) == (f1 + 1) * f1
-    @test iszero(f1 * (f1 + f2) * f1)
-    @test (f1 * (f1 + f2)) == f1 * f2
-    @test (2nf1 - 1) * (2nf1 - 1) == 1
+    @test ord_equals((2 * f1) * (2 * f1), 0)
+    @test ord_equals((2 * f1)^2, 0)
+    @test ord_equals((2 * f2) * (2 * f1), -4 * f1 * f2)
+    @test ord_equals(f1, (f1 * (f1 + 1)), (f1 + 1) * f1)
+    @test ord_equals(f1 * (f1 + f2) * f1, 0)
+    @test ord_equals((f1 * (f1 + f2)), f1 * f2)
+    @test ord_equals((2nf1 - 1) * (2nf1 - 1), 1)
 
-    @test (1 * f1) * f2 == f1 * f2
-    @test (1 * f1) * (1 * f2) == f1 * f2
-    @test f1 * f2 == f1 * (1 * f2) == f1 * f2
-    @test f1 - 1 == (1 * f1) - 1 == (0.5 + f1) - 1.5
+    @test ord_equals((1 * f1) * f2, f1 * f2)
+    @test ord_equals((1 * f1) * (1 * f2), f1 * f2)
+    @test ord_equals(f1 * f2, f1 * (1 * f2), f1 * f2)
+    @test ord_equals(f1 - 1, (1 * f1) - 1, (0.5 + f1) - 1.5)
 
     for op in [f1, f1 + f2, f1' * f2, f1 * f2 + 1]
-        @test op + 1.0I == op + 1.0
-        @test op - 1.0I == op - 1.0 == -(1.0I - op) == -(1.0 - op)
+        @test ord_equals(op + 1.0I, op + 1.0)
+        @test ord_equals(op - 1.0I, op - 1.0, -(1.0I - op), -(1.0 - op))
     end
 
     ex = 2 * f1

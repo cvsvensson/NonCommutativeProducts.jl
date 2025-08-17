@@ -89,8 +89,8 @@ function Base.show(io::IO, x::NCAdd)
         return show_compact_sum(io, x)
     end
     compact = get(io, :compact, false)
-    args = arguments(x)
-    print_one = !iszero(x.coeff)
+    args = collect(arguments(x))
+    print_one = !iszero(x.coeff) || length(args) == 0
     if print_one
         if isreal(x.coeff)
             print(io, real(x.coeff), "I")
@@ -165,20 +165,24 @@ function Base.:+(a::NCAdd, b::NCAdd)
     NCAdd(coeff, dict)
 end
 
-ordered_product(x::Number, y::Number, ordering) = x * y
-ordered_product(x::Number, a::NCAdd, ordering) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
-ordered_product(a::MulAdd, x::Number, ordering) = ordered_product(x, a, ordering)
+# ordered_product(x::Number, y::Number, ordering) = x * y
+# ordered_product(x::Number, a::NCAdd, ordering) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
+# ordered_product(a::MulAdd, x::Number, ordering) = ordered_product(x, a, ordering)
 additive_coeff(a::NCAdd) = a.coeff
-additive_coeff(a::MulAdd) = 0
+additive_coeff(a::NCMul) = 0
 
 Base.:*(a::MulAdd, b::MulAdd) = ordered_product(a, b, NaiveOrdering())
-Base.:*(a::MulAdd, x) = ordered_product(a, NCMul(x), NaiveOrdering())
-Base.:*(x, a::MulAdd) = ordered_product(NCMul(x), a, NaiveOrdering())
-function ordered_product(a::NCAdd, b::MulAdd, ordering::AbstractOrdering)
+# Base.:*(a::MulAdd, x) = ordered_product(a, NCMul(x), NaiveOrdering())
+# Base.:*(x, a::MulAdd) = ordered_product(NCMul(x), a, NaiveOrdering())
+
+Base.:*(x::Number, a::NCAdd) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
+Base.:*(a::NCAdd, x::Number) = x * a
+
+function ordered_product(a::NCAdd, b::NCMul, ordering::AbstractOrdering)
     c = zero(a)
     return trymul!(c, a, b, ordering)
 end
-function ordered_product(a::MulAdd, b::NCAdd, ordering)
+function ordered_product(a::NCMul, b::NCAdd, ordering)
     c = zero(b)
     return trymul!(c, a, b, ordering)
 end
@@ -190,10 +194,10 @@ function trymul!(c::NCAdd, a::MulAdd, b::MulAdd, ordering)
     acoeff = additive_coeff(a)
     bcoeff = additive_coeff(b)
     if !iszero(acoeff)
-        c = tryadd!(c, ordered_product(acoeff, b, ordering))
+        c = tryadd!(c, acoeff * b)
     end
     if !iszero(bcoeff)
-        c = tryadd!(c, ordered_product(a, bcoeff, ordering))
+        c = tryadd!(c, a * bcoeff)
         c = tryadd!(c, -acoeff * bcoeff) # We've double counted this term so subtract it
     end
     for bterm in NCterms(b)

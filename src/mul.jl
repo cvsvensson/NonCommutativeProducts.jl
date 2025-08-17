@@ -56,7 +56,7 @@ NCterms(a::NCMul) = (a,)
 Base.:-(a::NCMul) = NCMul(-a.coeff, a.factors)
 
 Base.:*(x::Number, a::NCMul) = NCMul(x * a.coeff, a.factors)
-Base.:*(a::NCMul, x::Number) = NCMul(x * a.coeff, a.factors)
+Base.:*(m::NCMul, x::Number) = x * m
 
 ordered_product(x::Number, a::NCMul, ordering) = NCMul(x * a.coeff, a.factors)
 ordered_product(a::NCMul, b::NCMul, ::NaiveOrdering) = NCMul(a.coeff * b.coeff, vcat(a.factors, b.factors))

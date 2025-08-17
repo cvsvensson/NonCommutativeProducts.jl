@@ -73,7 +73,7 @@ function bubble_sort(a::NCMul, ordering; kwargs...)
     bubble_sort(NCAdd(0, to_add(a)), ordering; kwargs...)
 end
 function bubble_sort(ncadd::NCAdd, ordering)
-    terms = collect(prod(p) for p in pairs(ncadd.dict))
+    terms = collect(v * copy(k) for (k, v) in pairs(ncadd.dict))
     sorted_terms = bubble_sort!(terms, ordering)
     newadd = zero(ncadd)
     for term in sorted_terms
@@ -93,9 +93,17 @@ function bubble_sort!(terms::AbstractVector{<:NCMul}, ordering)
         done = false
         count = 0
         start = 1
-        while !done && count < 10
+        while !done && n <= length(terms) && count < 10
             count += 1
+            # println(terms)
             terms, done, start = bubble_sort!(terms, n, ordering; start)
+            if iszero(terms[n].coeff)
+                done = false
+                start = 1
+                deleteat!(terms, n)
+            end
+            # println(length(terms))
+            # println("n: ", n)
         end
         n += 1
     end
@@ -124,14 +132,14 @@ function bubble_sort!(terms::AbstractVector{<:NCMul}, index, ordering; start=1)
         effect = mul_effect(a, b)
         if effect isa NCMul
             no_effect = false
-            ncmul = splice!!(ncmul, i:i+1, effect.factors)
+            ncmul = splice!!(ncmul, i:i+1, effect)
         elseif effect isa NCExp
             no_effect = false
-            ncmul = splice!!(ncmul, i:i+1, [effect])
+            ncmul = splice!!(ncmul, i:i+1, effect)
         elseif effect isa ScalarMul
             no_effect = false
             ncmul.coeff *= effect.λ
-            ncmul = splice!!(ncmul, i:i+1, ncmul.factors[i+2:end])
+            ncmul = splice!!(ncmul, i:i+1)
         elseif effect isa MaybeSwap
             if should_swap(a, b, ordering)
                 no_effect = false
@@ -180,6 +188,10 @@ function mysplice!!(v::V, i, replacement::W) where {V,W}
     else
         return Vector{T}(vcat(v[1:first(i)-1], replacement, v[last(i)+1:end]))
     end
+end
+function BangBang.splice!!(ncmul::NCMul, i)
+    splice!(ncmul.factors, i)
+    return ncmul
 end
 function BangBang.splice!!(ncmul::NCMul, i, term::NCMul)
     ncmul.coeff *= term.coeff
