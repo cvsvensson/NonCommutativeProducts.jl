@@ -51,53 +51,58 @@ function Base.show(io::IO, x::Fermion)
         print(io, "[", x.label, "]")
     end
 end
-function Base.isless(a::Fermion, b::Fermion)
-    if a.basis.universe !== b.basis.universe
-        a.basis.universe < b.basis.universe
-    elseif a.creation == b.creation
-        a.basis.name == b.basis.name && return a.label < b.label
-        a.basis.name < b.basis.name
-    else
-        a.creation > b.creation
-    end
-end
 Base.:(==)(a::Fermion, b::Fermion) = a.creation == b.creation && a.label == b.label && a.basis == b.basis
 Base.hash(a::Fermion, h::UInt) = hash(a.creation, hash(a.label, hash(a.basis, h)))
 
+Base.:*(a::Fermion, b::Fermion) = NCMul(1, [a, b])
 # ordered_product(as::NCMul, bs::NCMul, ::NormalOrdering) = canonicalize!(normal_order(ordered_product(as, bs, NaiveOrdering())))
 
-TermInterface.head(::T) where {T<:Fermion} = T
-TermInterface.iscall(::Fermion) = true
-TermInterface.isexpr(::Fermion) = true
-TermInterface.maketerm(::Type{Q}, head::Type{T}, args, metadata) where {Q<:Union{Fermion,<:NCMul,<:NCAdd},T<:Fermion} = T(args...)
+
+# TermInterface.head(::T) where {T<:Fermion} = T
+# TermInterface.iscall(::Fermion) = true
+# TermInterface.isexpr(::Fermion) = true
+# TermInterface.maketerm(::Type{Q}, head::Type{T}, args, metadata) where {Q<:Union{Fermion,<:NCMul,<:NCAdd},T<:Fermion} = T(args...)
 
 
-function ordered_product(a::Fermion, b::Fermion, ::NormalOrdering)
-    a_uni = a.basis.universe
-    b_uni = b.basis.universe
-    if a == b
-        0
-    elseif a < b
-        NCMul(1, [a, b])
-    elseif a > b
-        NCMul((-1)^(a_uni == b_uni), [b, a]) + Int(a.label == b.label && a.basis == b.basis)
+function mul_effect(a::Fermion, b::Fermion)
+    a == b && return ScalarMul(0)
+    return MaybeSwap()
+end
+
+
+self_product_effect_type(::Fermion) = Nilpotent()
+
+function should_swap(a::Fermion, b::Fermion, ::NormalOrdering)
+    if a.basis.universe !== b.basis.universe
+        a.basis.universe > b.basis.universe
     else
-        throw(ArgumentError("Don't know how to multiply $a * $b"))
+        a.creation < b.creation
     end
 end
-function Base.:^(a::Fermion, b)
-    if b isa Number && iszero(b)
-        1
-    elseif b isa Number && b == 1
-        a
-    elseif b isa Integer && b >= 2
-        0
+struct TotalOrder end
+function should_swap(a::Fermion, b::Fermion, ::TotalOrder)
+    if a.basis.universe !== b.basis.universe
+        a.basis.universe > b.basis.universe
+    elseif a.creation == b.creation
+        a.basis.name == b.basis.name && return a.label > b.label
+        a.basis.name > b.basis.name
     else
-        throw(ArgumentError("Invalid exponent $b"))
+        a.creation < b.creation
     end
+end
+
+function swap_effect(a::Fermion, b::Fermion)
+    if a == b
+        return self_product_effect(a)
+    end
+    ua = a.basis.universe
+    ub = b.basis.universe
+    ua == ub && a.label == b.label && xor(a.creation, b.creation) && return AddTerms((NCMul(-1, [b, a]), 1))
+    return ScalarMul((-1)^(ua == ub))
 end
 
 @testitem "SymbolicFermions" begin
+    import NonCommutativeProducts: TotalOrder, filter_zeros!
     using Symbolics, LinearAlgebra
     @fermions f c
     @fermions b
@@ -106,15 +111,17 @@ end
     f2 = f[:b]
     f3 = f[1, :↑]
 
+    ord(op) = bubble_sort(op, TotalOrder())
+    ord_equals(a, b) = iszero(filter_zeros!(ord(a - b)))
     # Test canonical commutation relations
-    @test f1' * f1 + f1 * f1' == 1
-    @test iszero(f1 * f2 + f2 * f1)
-    @test iszero(f1' * f2 + f2 * f1')
+    @test ord_equals(f1' * f1 + f1 * f1', 1)
+    @test ord_equals(f1 * f2 + f2 * f1, 0)
+    @test ord_equals(f1' * f2 + f2 * f1', 0)
 
     # c anticommutes with f
-    @test iszero(f1' * c[1] + c[1] * f1')
+    @test ord_equals(f1' * c[1] + c[1] * f1', 0)
     # b commutes with f
-    @test iszero(f1' * b[1] - b[1] * f1')
+    @test ord_equals(f1' * b[1] - b[1] * f1', 0)
 
     @test_nowarn display(f1)
     @test_nowarn display(f3)

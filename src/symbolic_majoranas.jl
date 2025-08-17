@@ -135,7 +135,7 @@ TermInterface.children(a::Majorana) = arguments(a)
     @test substitute(f1', f1 => f2) == f1'
 
     @test substitute(γ[1], 1 => 2) == γ[2]
-    @test NonCommutativeProducts.canonicalize!(substitute(γ[:a] * γ[:b] + 1, :a => :b)) == 2
+    #@test NonCommutativeProducts.canonicalize!(substitute(γ[:a] * γ[:b] + 1, :a => :b)) == 2
 
     r = (@rule ~x::(x -> x isa NonCommutativeProducts.Majorana) => (~x).basis[min((~x).label + 1, 10)])
     @test r(f[1]) == f[2]

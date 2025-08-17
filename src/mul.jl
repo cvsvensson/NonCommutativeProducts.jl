@@ -1,23 +1,25 @@
 abstract type AbstractOrdering end
 struct NaiveOrdering <: AbstractOrdering end
 
-struct NCMul{C,S}
+mutable struct NCMul{C,S}
     coeff::C
     factors::Vector{S}
     function NCMul(coeff::C, factors) where {C}
         new{C,eltype(factors)}(coeff, factors)
     end
 end
-ordered_product(a, b, ::NaiveOrdering) = NCMul(1, [a, b])
+# ordered_product(a, b, ::NaiveOrdering) = NCMul(1, [a, b])
 Base.convert(::Type{NCMul{C,S}}, x::NCMul{<:Any,S}) where {C,S} = NCMul(convert(C, x.coeff), x.factors)
-function canonicalize!(a::NCMul)
-    if iszero(a.coeff)
-        return a.coeff
-    elseif length(a.factors) == 1 && isone(a.coeff)
-        return only(a.factors)
-    end
-    return a
-end
+Base.copy(x::NCMul) = NCMul(copy(x.coeff), copy(x.factors))
+isscalar(x::NCMul) = length(x.factors) == 0
+# function canonicalize!(a::NCMul)
+#     if iszero(a.coeff)
+#         return a.coeff
+#     elseif length(a.factors) == 1 && isone(a.coeff)
+#         return only(a.factors)
+#     end
+#     return a
+# end
 
 function Base.show(io::IO, x::NCMul)
     #isscalar(x) && print(io, x.coeff)
@@ -51,6 +53,7 @@ NCMul(f::NCMul) = f
 NCMul(f) = NCMul(1, [f])
 
 NCterms(a::NCMul) = (a,)
+Base.:-(a::NCMul) = NCMul(-a.coeff, a.factors)
 
 Base.:*(x::Number, a::NCMul) = NCMul(x * a.coeff, a.factors)
 Base.:*(a::NCMul, x::Number) = NCMul(x * a.coeff, a.factors)

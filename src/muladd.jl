@@ -1,7 +1,13 @@
-NCMul(f::NCAdd) = (length(f.dict) == 0 && iszero(f.coeff) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul: $f"))
+NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(f.coeff) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul: $f"))
 
 
-
+function Base.:(==)(a::NCAdd, b::NCMul)
+    iszero(a.coeff) || return false
+    length(a.dict) == 1 || return false
+    ncmul, coeff = only(a.dict)
+    NCMul(coeff, ncmul.factors) == b
+end
+Base.:(==)(a::NCMul, b::NCAdd) = b == a
 
 Base.:+(a::NCMul, b) = a + NCMul(b)
 Base.:+(a, b::NCMul) = NCMul(a) + b
@@ -11,10 +17,10 @@ function Base.:+(a::NCMul{CA,KA}, b::NCMul{CB,KB}) where {CA,CB,KA,KB}
     D = Dict{K,C}
     if a.factors == b.factors
         coeff = a.coeff + b.coeff
-        return canonicalize!(NCAdd(0, D(NCMul(1, a.factors) => coeff)))
+        return (NCAdd(0, D(NCMul(1, a.factors) => coeff)))
     end
     at, bt = to_add_tuple(a), to_add_tuple(b)
-    return canonicalize!(NCAdd(0, D(at..., bt...)))
+    return (NCAdd(0, D(at..., bt...)))
 end
 
 to_add(a::NCMul, coeff=1) = Dict(NCMul(1, a.factors) => a.coeff * coeff)

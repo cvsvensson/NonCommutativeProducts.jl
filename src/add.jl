@@ -1,35 +1,78 @@
+function filter_scalars!(d::Dict{K,V}) where {K<:NCMul,V}
+    coeff = zero(V)
+    for (k, v) in d
+        if isscalar(k)
+            coeff += k.coeff * v
+            delete!(d, k)
+        end
+    end
+    # coeff = sum(v for (k, v) in pairs(d) if length(k) == 0)
+    # filter!(kv -> length(kv.first.factors) > 0, pairs(d))
+    return coeff
+end
+function filter_zeros!(d::Dict{K,V}) where {K<:NCMul,V}
+    for (k, v) in d
+        if iszero(v)
+            delete!(d, k)
+        end
+    end
+    return d
+end
 
 mutable struct NCAdd{C,D}
     coeff::C
     dict::D
+    function NCAdd(coeff::C, dict::D; zeros=false) where {C,D}
+        zeros || filter_zeros!(dict)
+        coeff += filter_scalars!(dict)
+        new{C,D}(coeff, dict)
+    end
 end
 const MulAdd = Union{NCMul,NCAdd}
+function filter_scalars!(x::NCAdd)
+    x += filter_scalars!(x.dict)
+end
+filter_zeros!(x::NCAdd) = (filter_zeros!(x.dict); return x)
 
 Base.:(==)(a::NCAdd, b::NCAdd) = a.coeff == b.coeff && a.dict == b.dict
-Base.hash(a::NCAdd, h::UInt) = hash(a.coeff, hash(a.dict, h))
-function filter_scalars!(f::NCAdd)
-    for (k, v) in f.dict
-        if isscalar(k)
-            f.coeff += k.coeff * v
-            delete!(f.dict, k)
-        end
+Base.:(==)(a::NCAdd, b::Number) = a.coeff == b && isempty(a.dict)
+Base.:(==)(a::Number, b::NCAdd) = a == b.coeff && isempty(b.dict)
+function Base.hash(a::NCAdd, h::UInt)
+    # if it's only a number, hash should equal hash of number
+    if isempty(a.dict)
+        return hash(a.coeff, h)
     end
-    f
-end
-function canonicalize!(_f::NCAdd{_C,D}, filter_scalars=true) where {_C,D}
-    C = promote_type(_C, valtype(D))
-    f = NCAdd(C(_f.coeff), _f.dict)
-    filter_scalars && filter_scalars!(f)
-    if length(f.dict) == 0
-        return f.coeff
-    elseif length(f.dict) == 1 && iszero(f.coeff)
-        k, v = only(f.dict)
-        return v * k
-    else
-        return NCAdd{C,D}(f.coeff, f.dict)
+    # if coeff is zero and there is only one term, it should hash equals to the corresponding NCMul
+    if iszero(a.coeff) && length(a.dict) == 1
+        ncmul, coeff = only(a.dict)
+        return hash(NCMul(coeff, ncmul.factors), h)
     end
+    return hash(a.coeff, hash(a.dict, h))
 end
-canonicalize!(a::Number) = a
+
+# function filter_scalars!(f::NCAdd)
+#     for (k, v) in f.dict
+#         if isscalar(k)
+#             f.coeff += k.coeff * v
+#             delete!(f.dict, k)
+#         end
+#     end
+#     f
+# end
+# function canonicalize!(_f::NCAdd{_C,D}, filter_scalars=true) where {_C,D}
+#     C = promote_type(_C, valtype(D))
+#     f = NCAdd(C(_f.coeff), _f.dict)
+#     filter_scalars && filter_scalars!(f)
+#     if length(f.dict) == 0
+#         return f.coeff
+#     elseif length(f.dict) == 1 && iszero(f.coeff)
+#         k, v = only(f.dict)
+#         return v * k
+#     else
+#         return NCAdd{C,D}(f.coeff, f.dict)
+#     end
+# end
+# canonicalize!(a::Number) = a
 
 function show_compact_sum(io, x::NCAdd, max_terms=3)
     println(io, "Sum with ", length(x.dict), " terms: ")
@@ -58,7 +101,7 @@ function Base.show(io::IO, x::NCAdd)
     end
     print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
     for (n, arg) in enumerate(args)
-        k = prod(arg.factors)
+        k = NCMul(1, arg.factors)
         v = arg.coeff
         should_print_sign = (n > 1 || print_one)
         if isreal(v)
@@ -89,26 +132,27 @@ Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add(b))
 Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add(b))
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 
-Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, (_merge(+, to_add(a), b.dict; filter=iszero)))
+Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, (_merge(+, to_add(a), b.dict)))
 function add!(a::NCAdd, b::NCAdd)
     a.coeff += b.coeff
-    a.dict = __merge!(+, a.dict, b.dict; filter=iszero)
-    return a
+    a.dict = __merge!(+, a.dict, b.dict)
+    return filter_scalars!(a)
 end
 function add!(a::NCAdd, b::NCMul)
-    a.dict = __merge!(+, a.dict, to_add_tuple(b); filter=iszero)
-    return a
+    a.dict = __merge!(+, a.dict, to_add_tuple(b))
+    return filter_scalars!(a)
 end
 add!(a::NCAdd, b::Number) = (a.coeff += b; return a)
 add!(a::NCAdd, b::UniformScaling) = (a.coeff += b.λ; return a)
 
 Base.:+(a::Number, b::NCAdd) = iszero(a) ? b : NCAdd(a + b.coeff, b.dict)
 Base.:+(a::UniformScaling, b::NCAdd) = iszero(a) ? b : NCAdd(a.λ + b.coeff, b.dict)
-Base.:+(a::NCAdd, b::Union{Number,NCMul,UniformScaling}) = b + a
+Base.:+(a::NCAdd, b::B) where B<:Union{Number,UniformScaling} = b + a
+Base.:+(a::NCAdd, b::B) where B<:NCMul = b + a
 Base.:/(a::MulAdd, b::Number) = inv(b) * a
 Base.:-(a::Union{Number,UniformScaling}, b::MulAdd) = a + (-b)
 Base.:-(a::MulAdd, b::Union{Number,MulAdd,UniformScaling}) = a + (-b)
-Base.:-(a::MulAdd) = -1 * a
+Base.:-(a::NCAdd) = NCAdd(-a.coeff, Dict(k => -v for (k, v) in pairs(a.dict)))
 function NCterms(a::NCAdd)
     (v * k for (k, v) in pairs(a.dict))
 end
@@ -117,7 +161,7 @@ function allterms(a::NCAdd)
 end
 function Base.:+(a::NCAdd, b::NCAdd)
     coeff = a.coeff + b.coeff
-    dict = _merge(+, a.dict, b.dict; filter=iszero)
+    dict = _merge(+, a.dict, b.dict)
     NCAdd(coeff, dict)
 end
 
@@ -158,7 +202,7 @@ function trymul!(c::NCAdd, a::MulAdd, b::MulAdd, ordering)
             c = tryadd!(c, newterm)
         end
     end
-    return canonicalize!(c)
+    return c #canonicalize!(c)
 end
 
 """
