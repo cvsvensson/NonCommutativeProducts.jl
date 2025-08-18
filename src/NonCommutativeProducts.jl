@@ -2,7 +2,8 @@ module NonCommutativeProducts
 
 using LinearAlgebra
 using TestItems
-import BangBang: push!!, pushfirst!!, setindex!!, append!!, mergewith!!
+using BangBang: push!!, pushfirst!!, setindex!!, append!!, mergewith!!
+using BangBang.Extras: modify!!
 
 include("mul.jl")
 include("add.jl")

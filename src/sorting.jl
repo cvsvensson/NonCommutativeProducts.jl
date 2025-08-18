@@ -60,7 +60,7 @@ function bubble_sort!(terms::AbstractVector{<:NCMul}, index, ordering; start=1)
         return terms, done, start
     end
     i = max(0, start - 1)
-    while no_effect && i < length(eachindex(ncmul.factors)) - 1
+    while no_effect && i < length(ncmul.factors) - 1
         i += 1
         a, b = ncmul.factors[i], ncmul.factors[i+1]
         effect = mul_effect(a, b, ordering)
@@ -116,9 +116,9 @@ function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
     ncmul = splice!!(ncmul, i, first(terms.terms))
     return ncmul, newterms
 end
-function splice!!_and_add(ncmul::NCMul, i, effect)
+function splice!!_and_add(ncmul::T, i, effect) where T<:NCMul
     ncmul = splice!!(ncmul, i, effect)
-    return ncmul, []
+    return ncmul, T[]
 end
 
 bubble_sort(a::Number, ordering; kwargs...) = a

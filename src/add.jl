@@ -20,8 +20,8 @@ end
 mutable struct NCAdd{C,K,D}
     coeff::C
     dict::D
-    function NCAdd(coeff::C, dict::Dict{K,C}; zeros=false) where {C,K}
-        zeros || filter_zeros!(dict)
+    function NCAdd(coeff::C, dict::Dict{K,C}; keep_zeros=false) where {C,K}
+        keep_zeros || filter_zeros!(dict)
         coeff += filter_scalars!(dict)
         new{C,K,Dict{K,C}}(coeff, dict)
     end
@@ -123,7 +123,13 @@ end
 
 
 function add!!(a::NCAdd, b::NCMul)
-    newdict = mergewith!!(+, a.dict, to_add(b))
+    key = NCMul(1, b.factors)
+    coeff = b.coeff
+    newdict, ret = modify!!(a.dict, key) do val
+        isnothing(val) && return coeff
+        return something(val, 0) + coeff
+    end
+    newdict === a.dict && return a
     return NCAdd(a.coeff, newdict)
 end
 function add!!(a::NCAdd, b::NCAdd)
