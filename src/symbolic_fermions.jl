@@ -61,13 +61,8 @@ Base.hash(a::Fermion, h::UInt) = hash(a.creation, hash(a.label, hash(a.basis, h)
 # TermInterface.maketerm(::Type{Q}, head::Type{T}, args, metadata) where {Q<:Union{Fermion,<:NCMul,<:NCAdd},T<:Fermion} = T(args...)
 
 
-function mul_effect(a::Fermion, b::Fermion)
-    a == b && return ScalarMul(0)
-    return MaybeSwap()
-end
 
-
-self_product_effect_type(::Fermion) = Nilpotent()
+# self_product_effect_type(::Fermion) = Nilpotent()
 
 function should_swap(a::Fermion, b::Fermion, ::NormalOrdering)
     if a.basis.universe !== b.basis.universe
@@ -77,6 +72,7 @@ function should_swap(a::Fermion, b::Fermion, ::NormalOrdering)
     end
 end
 struct TotalOrder end
+
 function should_swap(a::Fermion, b::Fermion, ::TotalOrder)
     if a.basis.universe !== b.basis.universe
         a.basis.universe > b.basis.universe
@@ -88,14 +84,16 @@ function should_swap(a::Fermion, b::Fermion, ::TotalOrder)
     end
 end
 
-function swap_effect(a::Fermion, b::Fermion)
-    if a == b
-        return self_product_effect(a)
+function mul_effect(a::Fermion, b::Fermion, ordering)
+    a == b && return 0
+    if should_swap(a, b, ordering)
+        ua = a.basis.universe
+        ub = b.basis.universe
+        ua == ub && a.label == b.label && xor(a.creation, b.creation) && return AddTerms((Swap(-1), 1))
+        return Swap((-1)^(ua == ub))
+    else
+        return nothing
     end
-    ua = a.basis.universe
-    ub = b.basis.universe
-    ua == ub && a.label == b.label && xor(a.creation, b.creation) && return AddTerms((NCMul(-1, [b, a]), 1))
-    return ScalarMul((-1)^(ua == ub))
 end
 
 @testitem "SymbolicFermions" begin

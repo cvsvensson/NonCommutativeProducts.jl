@@ -1,25 +1,17 @@
 abstract type AbstractOrdering end
 struct NaiveOrdering <: AbstractOrdering end
 
-mutable struct NCMul{C,S}
+mutable struct NCMul{C,S,F}
     coeff::C
-    factors::Vector{S}
-    function NCMul(coeff::C, factors) where {C}
-        new{C,eltype(factors)}(coeff, factors)
+    factors::F
+    function NCMul(coeff::C, factors::F) where {C,F}
+        new{C,eltype(factors),F}(coeff, factors)
     end
 end
-# ordered_product(a, b, ::NaiveOrdering) = NCMul(1, [a, b])
-Base.convert(::Type{NCMul{C,S}}, x::NCMul{<:Any,S}) where {C,S} = NCMul(convert(C, x.coeff), x.factors)
+Base.convert(::Type{NCMul{C,S,F}}, x::NCMul{<:Any,S,F}) where {C,S,F} = NCMul(convert(C, x.coeff), x.factors)
 Base.copy(x::NCMul) = NCMul(copy(x.coeff), copy(x.factors))
 isscalar(x::NCMul) = length(x.factors) == 0
-# function canonicalize!(a::NCMul)
-#     if iszero(a.coeff)
-#         return a.coeff
-#     elseif length(a.factors) == 1 && isone(a.coeff)
-#         return only(a.factors)
-#     end
-#     return a
-# end
+
 
 function Base.show(io::IO, x::NCMul)
     #isscalar(x) && print(io, x.coeff)
@@ -62,9 +54,6 @@ ordered_product(x::Number, a::NCMul, ordering) = NCMul(x * a.coeff, a.factors)
 ordered_product(a::NCMul, b::NCMul, ::NaiveOrdering) = NCMul(a.coeff * b.coeff, vcat(a.factors, b.factors))
 
 ordered_product(a::NCMul, bs::NCMul, ordering) = ordered_product(a, bs, ordering)
-# ordered_product(a, bs::NCMul, ordering) = ordered_product(NCMul(a), bs, ordering)
-# ordered_product(as::NCMul, b, ordering) = ordered_product(as, NCMul(b), ordering)
 
 Base.adjoint(x::NCMul) = length(x.factors) == 0 ? NCMul(adjoint(x.coeff), x.factors) : adjoint(x.coeff) * foldr(*, Iterators.reverse(Iterators.map(adjoint, x.factors)))
 
-# isscalar(x::NCMul) = iszero(x.coeff) || (length(x.factors) == 0)

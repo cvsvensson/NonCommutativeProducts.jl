@@ -11,9 +11,9 @@ Base.:(==)(a::NCMul, b::NCAdd) = b == a
 
 Base.:+(a::NCMul, b) = a + NCMul(b)
 Base.:+(a, b::NCMul) = NCMul(a) + b
-function Base.:+(a::NCMul{CA,KA}, b::NCMul{CB,KB}) where {CA,CB,KA,KB}
+function Base.:+(a::NCMul{CA,KA,FA}, b::NCMul{CB,KB,FB}) where {CA,CB,KA,KB,FA,FB}
     C = promote_type(CA, CB)
-    K = Union{NCMul{C,KA},NCMul{C,KB}}
+    K = Union{NCMul{C,KA,FA},NCMul{C,KB,FB}}
     D = Dict{K,C}
     if a.factors == b.factors
         coeff = a.coeff + b.coeff
@@ -41,17 +41,15 @@ macro nc(T)
         Base.:-(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x - NCMul(1, [y])
         Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(1, [x]) - y
 
-
         Base.:*(x::$(esc(T)), y::$(esc(T))) = NCMul(1, [x, y])
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(1, [y])
         Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(1, [x]) * y
         Base.:*(x::$(esc(T)), y::NCMul) = NCMul(y.coeff, pushfirst!!(copy(y.factors), x))
         Base.:*(x::NCMul, y::$(esc(T))) = NCMul(x.coeff, push!!(copy(x.factors), y))
         Base.:^(a::$(esc(T)), b) = Base.power_by_squaring(a, b)
-        Base.convert(::Type{NCMul{C,S}}, x::$(esc(T))) where {C,S<:$(esc(T))} = NCMul(one(C), [x])
+        Base.convert(::Type{NCMul{C,S,F}}, x::$(esc(T))) where {C,S<:$(esc(T)),F} = NCMul(one(C), S[x])
     end
 end
-# Base.convert(::Type{NCMul{C,F}}, x::Fermion) where {C,F<:Fermion} = NCMul(one(C), [x])
 
 
 ##

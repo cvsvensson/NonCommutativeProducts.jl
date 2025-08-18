@@ -3,7 +3,7 @@ module NonCommutativeProducts
 using LinearAlgebra
 using TermInterface
 using TestItems
-using BangBang
+import BangBang: push!!, pushfirst!!, setindex!!, append!!
 export @fermions, @majoranas
 
 include("mul.jl")

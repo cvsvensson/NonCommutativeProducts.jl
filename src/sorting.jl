@@ -7,66 +7,14 @@ scalar(s::ScalarMul) = s.λ
 struct AddTerms{T}
     terms::T
 end
-struct NCExp{S}
-    term::S
-    exp::Int
+struct Swap{T}
+    λ::T
 end
-Base.show(io::IO, e::NCExp) = print(io, "$(e.term)^$(e.exp)")
-
 
 struct Nilpotent end
 struct MaybeSwap end
 
 should_swap(a, b, ::NaiveOrdering) = false
-
-
-## Normal ordering
-struct NCExpEffect{E}
-    effect::E
-end
-function mul_effect(a::NCExp, b::NCExp)
-    term_effect = mul_effect(a.term, b.term)
-    if term_effect isa NCExp
-        return NCExp(a.term, a.exp + b.exp)
-    elseif term_effect isa MaybeSwap
-        return MaybeSwap()
-    else
-        return NCExpEffect(term_effect)
-    end
-end
-function mul_effect(a::NCExp, b)
-    term_effect = mul_effect(a.term, b)
-    if term_effect isa NCExp
-        return NCExp(a.term, a.exp + 1)
-    elseif term_effect isa MaybeSwap
-        return MaybeSwap()
-    else
-        return NCExpEffect(term_effect)
-    end
-end
-function mul_effect(a, b::NCExp)
-    term_effect = mul_effect(a, b.term)
-    if term_effect isa NCExp
-        return NCExp(b.term, b.exp + 1)
-    elseif term_effect isa MaybeSwap
-        return MaybeSwap()
-    else
-        return NCExpEffect(term_effect)
-    end
-end
-should_swap(a::NCExp, b, ordering) = should_swap(a.term, b, ordering)
-should_swap(a, b::NCExp, ordering) = should_swap(a, b.term, ordering)
-should_swap(a::NCExp, b::NCExp, ordering) = should_swap(a.term, b.term, ordering)
-function swap_effect(a::NCExp, b::NCExp)
-    term_effect = swap_effect(a.term, b.term)
-    if term_effect isa ScalarMul
-        return ScalarMul(term_effect.λ^(a.exp * b.exp))
-    else
-        throw(ArgumentError("Don't know how to swap $a and $b"))
-    end
-end
-swap_effect(a::NCExp, b) = swap_effect(a, NCExp(b, 1))
-swap_effect(a, b::NCExp) = swap_effect(NCExp(a, 1), b)
 
 
 function bubble_sort(a::NCMul, ordering; kwargs...)
@@ -83,36 +31,27 @@ function bubble_sort(ncadd::NCAdd, ordering)
 end
 
 function bubble_sort!(terms::AbstractVector{<:NCMul}, ordering)
-    # ncmul = copy(terms)
-    # done = false
-    # count = 0 # Just to avoid infinite loops for now. Remove later
-    # start = 1
-    # terms_to_sort = [(ncmul, false, 1)]
     n = 1
     while n <= length(terms)
         done = false
         count = 0
         start = 1
-        while !done && n <= length(terms) && count < 10
+        while !done && n <= length(terms)
             count += 1
-            # println(terms)
             terms, done, start = bubble_sort!(terms, n, ordering; start)
             if iszero(terms[n].coeff)
                 done = false
                 start = 1
                 deleteat!(terms, n)
             end
-            # println(length(terms))
-            # println("n: ", n)
+            if count > 100
+                @warn "Bubble sort took too long, stopping early"
+                break
+            end
         end
         n += 1
     end
     return terms
-    # while !done && count < 10
-    #     count += 1
-    #     # newterms = []
-    #     ncmul, done, start = bubble_sort!(ncmul, ordering, terms_to_sort; start)
-    # end
 end
 
 function bubble_sort!(terms::AbstractVector{<:NCMul}, index, ordering; start=1)
@@ -122,63 +61,25 @@ function bubble_sort!(terms::AbstractVector{<:NCMul}, index, ordering; start=1)
         done = true
         return terms, done, start
     end
-    # muloraddvec::Union{Number,MulAdd} = a
-    # newterms = []
     i = max(0, start - 1)
-    # triple_prod(a, b, c) = ordered_product(ordered_product(a, b, NaiveOrdering()), c, NaiveOrdering())
     while no_effect && i < length(eachindex(ncmul.factors)) - 1
         i += 1
         a, b = ncmul.factors[i], ncmul.factors[i+1]
-        effect = mul_effect(a, b)
-        if effect isa NCMul
-            no_effect = false
-            ncmul = splice!!(ncmul, i:i+1, effect)
-        elseif effect isa NCExp
-            no_effect = false
-            ncmul = splice!!(ncmul, i:i+1, effect)
-        elseif effect isa ScalarMul
-            no_effect = false
-            ncmul.coeff *= effect.λ
-            ncmul = splice!!(ncmul, i:i+1)
-        elseif effect isa MaybeSwap
-            if should_swap(a, b, ordering)
-                no_effect = false
-                effect = swap_effect(a, b)
-                if effect isa ScalarMul
-                    ncmul.coeff *= effect.λ
-                    ncmul = splice!!(ncmul, i:i+1, NCMul(1, [b, a]))
-                elseif effect isa AddTerms
-                    no_effect = false
-                    ncmul, newterms = splice!!(ncmul, i:i+1, effect)
-                    terms = append!!(terms, newterms)
-                end
-            end
-        elseif !isnothing(effect)
-            throw(ArgumentError("Don't know how to multiply $a * $b"))
+        effect = mul_effect(a, b, ordering)
+        isnothing(effect) && continue
+
+        no_effect = false
+        ncmul, newterms = splice!!_and_add(ncmul, i:i+1, effect)
+        if length(newterms) > 0
+            terms = append!!(terms, newterms)
         end
-        if !no_effect
-            terms = setindex!!(terms, ncmul, index)
-        end
+        terms = setindex!!(terms, ncmul, index)
     end
     done = no_effect
     newstart = i - 1
     return terms, done, newstart
 end
 
-# function BangBang.splice!!(ncmul::NCMul{C,S}, i, replacement::V) where {C,S,V}
-#     possible = promote_type(S, eltype(V)) <: S
-#     if possible
-#         splice!(ncmul.factors, i, replacement)
-#     else
-#         # println(ncmul.factors |> typeof)
-#         println(S)
-#         println(replacement |> typeof)
-#         T = Union{S,eltype(replacement)}
-#         ncmul = NCMul{C,T}(ncmul.coeff, Vector{T}(vcat(ncmul.factors[1:first(i)-1], replacement, ncmul.factors[last(i)+1:end])))
-#         # println(ncmul.factors |> typeof)
-#     end
-#     return ncmul#NCMul(ncmul.coeff, newfactors)
-# end
 
 function mysplice!!(v::V, i, replacement::W) where {V,W}
     T = promote_type(eltype(W), eltype(V))
@@ -189,57 +90,61 @@ function mysplice!!(v::V, i, replacement::W) where {V,W}
         return Vector{T}(vcat(v[1:first(i)-1], replacement, v[last(i)+1:end]))
     end
 end
-function BangBang.splice!!(ncmul::NCMul, i)
+function splice!!(ncmul::NCMul, i)
     splice!(ncmul.factors, i)
     return ncmul
 end
-function BangBang.splice!!(ncmul::NCMul, i, term::NCMul)
+function splice!!(ncmul::NCMul, i, term::NCMul)
     ncmul.coeff *= term.coeff
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
     newfactors === ncmul.factors && return ncmul
     return NCMul(ncmul.coeff, newfactors)
 end
-function BangBang.splice!!(ncmul::NCMul, i, coeff::Number)
+function splice!!(ncmul::NCMul{C,S}, i, term::S) where {C,S}
+    splice!!(ncmul, i, NCMul(1, (term,)))
+end
+function splice!!(ncmul::NCMul, i, coeff::Number)
     deleteat!(ncmul.factors, i)
     ncmul.coeff *= coeff
     return ncmul
 end
-function BangBang.splice!!(ncmul::NCMul, i, terms::AddTerms)
+function splice!!(ncmul::NCMul, i, swap::Swap)
+    length(i) == 2 && i[2] == i[1] + 1 || throw(ArgumentError("Invalid index for swap"))
+    a, b = ncmul.factors[i]
+    splice!!(ncmul, i, NCMul(swap.λ, [b, a]))
+end
+function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
     newterms = [splice!!(copy(ncmul), i, term) for term in Iterators.drop(terms.terms, 1)]
     ncmul = splice!!(ncmul, i, first(terms.terms))
     return ncmul, newterms
-    # terms = append!!(terms, newterms)
 end
-# function append_terms!(terms_with_sort_info, effect::AddTerms)
-#     for term in effect.newterms
-#         push!(terms_with_sort_info, (term, false, 1))
-#     end
-# end
+function splice!!_and_add(ncmul::NCMul, i, effect)
+    ncmul = splice!!(ncmul, i, effect)
+    return ncmul, []
+end
 
-# normal_order(a::MulAdd) = bubble_sort(a)
-# normal_order(a::Number) = a
 bubble_sort(a::Number, ordering; kwargs...) = a
-# function mul_effect end
 
 @testitem "Signed permutation" begin
-    using NonCommutativeProducts
-    import NonCommutativeProducts: ordered_product, NaiveOrdering, should_swap, NCMul, NCAdd, bubble_sort, swap_effect, ScalarMul, NCExp, MaybeSwap, mul_effect, AddTerms
+    import NonCommutativeProducts: bubble_sort, Swap, @nc, NCMul, mul_effect
 
     struct NCInt
         n::Int
+        exp::Int
     end
-    Base.show(io::IO, x::NCInt) = print(io, "̲$(x.n)")
+    NCInt(n::Int) = NCInt(n, 1)
+    Base.show(io::IO, x::NCInt) = print(io, "[$(x.n)^$(x.exp)]")
     Base.:(==)(a::NCInt, b::NCInt) = a.n == b.n
+    @nc NCInt
     struct IntOrder end
-    Base.:*(a::NCInt, b::NCInt) = NCMul(1, [a, b])
-    mul_effect(a::NCInt, b::NCInt) = (a == b && return NCExp(a, 2)) || return MaybeSwap()
-    should_swap(a::NCInt, b::NCInt, ::IntOrder) = a.n > b.n
-    swap_effect(::NCInt, ::NCInt) = ScalarMul(-1)
-
+    function mul_effect(a::NCInt, b::NCInt, ::IntOrder)
+        (a.n == b.n && return NCInt(a.n, a.exp + b.exp)) # Collect powers
+        a.n > b.n && return Swap(-1) # swap and multiply by -1
+        return nothing # Do nothing
+    end
 
     a, b, c, d = NCInt.(1:4)
     ab = a * b
-    # ab = ordered_product(a, b, NaiveOrdering())
     @test ab == NCMul(1, [a, b])
     ab2 = bubble_sort(ab, IntOrder())
     ab3 = -bubble_sort(b * a, IntOrder())
@@ -247,5 +152,8 @@ bubble_sort(a::Number, ordering; kwargs...) = a
     @test hash(ab) == hash(ab2)
     @test bubble_sort(ab * a, IntOrder()) == bubble_sort(-1 * (a * ab), IntOrder())
 
-    bubble_sort(prod(rand((a, b, d, c)) for k in 1:10), IntOrder())
+    op = bubble_sort(prod(rand((a, b, d, c)) for k in 1:10), IntOrder())
+    @test length(op.dict) == 1
+    @test map(x -> x.n, only(keys(op.dict)).factors) == 1:4
+    @test sum(x -> x.exp, only(keys(op.dict)).factors) == 10
 end
