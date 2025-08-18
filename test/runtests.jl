@@ -47,6 +47,11 @@ end
     ord_equals(a, b) = (iszero(filter_zeros!(ord(a - b))))
     ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
 
+    @test 1 * f1 == f1
+    @test 1 * f1 + 0 == f1
+    @test 1 * f1 + 0 == 1 * f1
+    @test hash(f1) == hash(1 * f1) == hash(1 * f1 + 0)
+
     # Test canonical commutation relations
     @test ord_equals(f1' * f1 + f1 * f1', 1)
     @test ord_equals(f1 * f2 + f2 * f1, 0)
@@ -138,6 +143,11 @@ end
     @variables a::Real z::Complex
     γ = Majorana.(1:4)
 
+    @test 1 * γ[1] == γ[1]
+    @test 1 * γ[1] + 0 == γ[1]
+    @test 1 * γ[1] + 0 == 1 * γ[1]
+    @test hash(γ[1]) == hash(1 * γ[1]) == hash(1 * γ[1] + 0)
+
     #test canonical anticommutation relations
     @test γ[1] * γ[1] == 1
     @test γ[1] * γ[2] == -γ[2] * γ[1]
@@ -147,6 +157,12 @@ end
 
     f1 = (γ[1] + 1im * γ[2]) / 2
     f2 = (γ[3] + 1im * γ[4]) / 2
+
+    @test 1 * f1 == f1
+    @test 1 * f1 + 0 == f1
+    @test hash(f1) == hash(1 * f1) == hash(1 * f1 + 0)
+
+
     @test iszero(f1 - f1)
     @test iszero(f1 * f1)
     @test iszero(2 * f1 - 2 * f1)

@@ -38,9 +38,8 @@ Base.iszero(x::NCMul) = iszero(x.coeff)
 
 Base.:(==)(a::NCMul, b::Number) = isscalar(a) && a.coeff == b
 Base.:(==)(a::NCMul, b::NCMul) = a.coeff == b.coeff && a.factors == b.factors
-Base.hash(a::NCMul, h::UInt) = hash(a.coeff, hash(a.factors, h))
+Base.hash(a::NCMul, h::UInt) = isone(a.coeff) && length(a.factors) == 1 ? hash(only(a.factors), h) : hash(a.coeff, hash(a.factors, h))
 NCMul(f::NCMul) = f
-# NCMul(f) = NCMul(1, [f])
 
 NCterms(a::NCMul) = (a,)
 Base.:-(a::NCMul) = NCMul(-a.coeff, a.factors)
