@@ -10,7 +10,6 @@ using TestItemRunner
     end
     Base.adjoint(x::Fermion) = Fermion(x.label, !x.creation)
     Fermion(k) = Fermion(k, false)
-    # Base.iszero(x::Fermion) = false
     Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
     Base.:(==)(a::Fermion, b::Fermion) = a.creation == b.creation && a.label == b.label
     @nc Fermion
@@ -100,6 +99,11 @@ end
         @test ord_equals(op + 1.0I, op + 1.0)
         @test ord_equals(op - 1.0I, op - 1.0, -(1.0I - op), -(1.0 - op))
     end
+
+    bigprod = prod(Fermion(rand(1:15), rand(Bool)) + Fermion(rand(1:15), rand(Bool)) for k in 1:10)
+    @test ord(bigprod) == ord(ord(bigprod))
+    bigprodhc = bigprod + bigprod'
+    @test ord(bigprodhc) == ord(bigprodhc')
 end
 
 
@@ -159,7 +163,6 @@ end
     nf1 = f1' * f1
     @test nf1^2 == nf1
     @test 1 + (f1 + f2) == 1 + f1 + f2 == f1 + f2 + 1 == f1 + 1 + f2 == 1 * f1 + f2 + 1 == f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2) == (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2) == (1 + f1' + (1 * f2)')'
-    # @test ord_equals(1 + (f1 + f2), 1 + f1 + f2, f1 + f2 + 1, f1 + 1 + f2, 1 * f1 + f2 + 1, f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2), (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2), (1 + f1' + (1 * f2)')')
     @test iszero((2 * f1) * (2 * f1))
     @test iszero((2 * f1)^2)
     @test (2 * f2) * (2 * f1) == -4 * f1 * f2
@@ -172,5 +175,11 @@ end
     @test (1 * f1) * (1 * f2) == f1 * f2
     @test f1 * f2 == f1 * (1 * f2) == f1 * f2
     @test f1 - 1 == (1 * f1) - 1 == (0.5 + f1) - 1.5
+
+    bigprod = prod(Majorana(rand(1:15)) for k in 1:20)
+    @test NonCommutativeProducts.bubble_sort(bigprod, Majoranas.Ordering()) == bigprod
+    bigprod2 = prod(Majorana(rand(1:15)) + Majorana(rand(1:15)) for k in 1:10)
+    @test NonCommutativeProducts.bubble_sort(bigprod2, Majoranas.Ordering()) == bigprod2
+    @test NonCommutativeProducts.bubble_sort(bigprod2', Majoranas.Ordering()) == bigprod2'
 end
 @run_package_tests

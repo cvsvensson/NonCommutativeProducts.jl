@@ -25,7 +25,7 @@ function bubble_sort(ncadd::NCAdd, ordering)
     for term in sorted_terms
         newadd = add!!(newadd, term)
     end
-    return ncadd.coeff + newadd
+    return filter_scalars!(filter_zeros!(ncadd.coeff + newadd))
 end
 
 function bubble_sort!(terms::AbstractVector{<:NCMul}, ordering)
@@ -42,10 +42,10 @@ function bubble_sort!(terms::AbstractVector{<:NCMul}, ordering)
                 start = 1
                 deleteat!(terms, n)
             end
-            if count > 100
-                @warn "Bubble sort took too long, stopping early"
-                break
-            end
+            # if count > 100
+            #     @warn "Bubble sort took too long, stopping early"
+            #     break
+            # end
         end
         n += 1
     end
@@ -151,7 +151,7 @@ function mul_effect end
     @test hash(ab) == hash(ab2)
     @test bubble_sort(ab * a, IntOrder()) == bubble_sort(-1 * (a * ab), IntOrder())
 
-    op = bubble_sort(prod(rand((a, b, d, c)) for k in 1:10), IntOrder())
+    op = bubble_sort(prod([a, b, c, d, a, b, c, d, a, b]), IntOrder())
     @test length(op.dict) == 1
     @test map(x -> x.n, only(keys(op.dict)).factors) == 1:4
     @test sum(x -> x.exp, only(keys(op.dict)).factors) == 10
