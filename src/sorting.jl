@@ -11,13 +11,11 @@ struct Swap{T}
     λ::T
 end
 
-struct Nilpotent end
-struct MaybeSwap end
-
-should_swap(a, b, ::NaiveOrdering) = false
-
 
 function bubble_sort(a::NCMul, ordering; kwargs...)
+    if length(a.factors) == 0
+        return a
+    end
     bubble_sort(NCAdd(0, to_add(a)), ordering; kwargs...)
 end
 function bubble_sort(ncadd::NCAdd, ordering)
@@ -25,7 +23,7 @@ function bubble_sort(ncadd::NCAdd, ordering)
     sorted_terms = bubble_sort!(terms, ordering)
     newadd = zero(ncadd)
     for term in sorted_terms
-        newadd = tryadd!(newadd, term)
+        newadd = add!!(newadd, term)
     end
     return ncadd.coeff + newadd
 end
@@ -124,6 +122,7 @@ function splice!!_and_add(ncmul::NCMul, i, effect)
 end
 
 bubble_sort(a::Number, ordering; kwargs...) = a
+function mul_effect end
 
 @testitem "Signed permutation" begin
     import NonCommutativeProducts: bubble_sort, Swap, @nc, NCMul, mul_effect

@@ -9,19 +9,30 @@ function Base.:(==)(a::NCAdd, b::NCMul)
 end
 Base.:(==)(a::NCMul, b::NCAdd) = b == a
 
-Base.:+(a::NCMul, b) = a + NCMul(b)
-Base.:+(a, b::NCMul) = NCMul(a) + b
-function Base.:+(a::NCMul{CA,KA,FA}, b::NCMul{CB,KB,FB}) where {CA,CB,KA,KB,FA,FB}
-    C = promote_type(CA, CB)
-    K = Union{NCMul{C,KA,FA},NCMul{C,KB,FB}}
-    D = Dict{K,C}
+function Base.:+(_a::NCMul, _b::NCMul)
+    a, b = promote(_a, _b)
     if a.factors == b.factors
-        coeff = a.coeff + b.coeff
-        return (NCAdd(0, D(NCMul(1, a.factors) => coeff)))
+        return NCAdd(0, Dict(NCMul(1, a.factors) => a.coeff + b.coeff))
     end
-    at, bt = to_add_tuple(a), to_add_tuple(b)
-    return (NCAdd(0, D(at..., bt...)))
+    return NCAdd(0, Dict(NCMul(1, a.factors) => a.coeff, NCMul(1, b.factors) => b.coeff))
 end
+
+Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add(b))
+Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add(b))
+Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
+Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, mergewith!!(+, to_add(a), b.dict))
+
+# function Base.:+(a::NCMul{CA,KA,FA}, b::NCMul{CB,KB,FB}) where {CA,CB,KA,KB,FA,FB}
+#     C = promote_type(CA, CB)
+#     K = Union{NCMul{C,KA,FA},NCMul{C,KB,FB}}
+#     D = Dict{K,C}
+#     if a.factors == b.factors
+#         coeff = a.coeff + b.coeff
+#         return (NCAdd(0, D(NCMul(1, a.factors) => coeff)))
+#     end
+#     at, bt = to_add_tuple(a), to_add_tuple(b)
+#     return (NCAdd(0, D(at..., bt...)))
+# end
 
 to_add(a::NCMul, coeff=1) = Dict(NCMul(1, a.factors) => a.coeff * coeff)
 to_add(a, coeff=1) = Dict(NCMul(a) => coeff)
@@ -33,8 +44,10 @@ Base.:^(a::Union{NCMul,NCAdd}, b) = Base.power_by_squaring(a, b)
 macro nc(T)
     quote
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(1, [x]) + NCMul(1, [y])
-        Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(1, [x]) + y
-        Base.:+(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x + NCMul(1, [y])
+        Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(1, [x]) + y
+        Base.:+(x::Union{Number,UniformScaling,NCMul,NCAdd}, y::$(esc(T))) = y + x
+
+        NonCommutativeProducts.add!!(x::NCAdd, y::$(esc(T))) = add!!(x, NCMul(1, [y]))
 
         Base.:-(x::$(esc(T)), y::$(esc(T))) = NCMul(1, [x]) - NCMul(1, [y])
         Base.:-(x::$(esc(T))) = NCMul(-1, [x])
@@ -50,23 +63,4 @@ macro nc(T)
         Base.convert(::Type{NCMul{C,S,F}}, x::$(esc(T))) where {C,S<:$(esc(T)),F} = NCMul(one(C), S[x])
     end
 end
-
-
-##
-TermInterface.head(a::Union{NCMul,NCAdd}) = operation(a)
-TermInterface.iscall(::Union{NCMul,NCAdd}) = true
-TermInterface.isexpr(::Union{NCMul,NCAdd}) = true
-
-TermInterface.operation(::NCMul) = (*)
-TermInterface.operation(::NCAdd) = (+)
-TermInterface.arguments(a::NCMul) = [a.coeff, a.factors...]
-TermInterface.arguments(a::NCAdd) = iszero(a.coeff) ? NCterms(a) : allterms(a)
-TermInterface.sorted_arguments(a::NCAdd) = iszero(a.coeff) ? sort(NCterms(a), by=x -> x.factors) : [a.coeff, sort(NCterms(a); by=x -> x.factors)...]
-TermInterface.children(a::Union{NCMul,NCAdd}) = arguments(a)
-TermInterface.sorted_children(a::Union{NCMul,NCAdd}) = sorted_arguments(a)
-
-TermInterface.maketerm(::Type{<:NCMul}, ::typeof(*), args, metadata) = *(args...)
-TermInterface.maketerm(::Type{<:NCAdd}, ::typeof(+), args, metadata) = +(args...)
-
-TermInterface.maketerm(::Type{Q}, head::Type{T}, args, metadata) where {Q<:Union{<:NCMul,<:NCAdd},T} = T(args...)
 

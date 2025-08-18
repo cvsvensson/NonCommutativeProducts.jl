@@ -1,5 +1,3 @@
-abstract type AbstractOrdering end
-struct NaiveOrdering <: AbstractOrdering end
 
 mutable struct NCMul{C,S,F}
     coeff::C
@@ -9,12 +7,12 @@ mutable struct NCMul{C,S,F}
     end
 end
 Base.convert(::Type{NCMul{C,S,F}}, x::NCMul{<:Any,S,F}) where {C,S,F} = NCMul(convert(C, x.coeff), x.factors)
+Base.convert(::Type{NCMul{C,S,F}}, x::NCMul) where {C,S,F} = NCMul(convert(C, x.coeff), F(x.factors))
 Base.copy(x::NCMul) = NCMul(copy(x.coeff), copy(x.factors))
 isscalar(x::NCMul) = length(x.factors) == 0
-
+Base.promote_rule(::Type{NCMul{C,S,F}}, x::Type{NCMul{C2,S2,F2}}) where {C,S,F,C2,S2,F2} = NCMul{promote_type(C, C2),promote_type(S, S2),promote_type(F, F2)}
 
 function Base.show(io::IO, x::NCMul)
-    #isscalar(x) && print(io, x.coeff)
     print_coeff = !isone(x.coeff)
     if print_coeff
         v = x.coeff
@@ -42,18 +40,14 @@ Base.:(==)(a::NCMul, b::Number) = isscalar(a) && a.coeff == b
 Base.:(==)(a::NCMul, b::NCMul) = a.coeff == b.coeff && a.factors == b.factors
 Base.hash(a::NCMul, h::UInt) = hash(a.coeff, hash(a.factors, h))
 NCMul(f::NCMul) = f
-NCMul(f) = NCMul(1, [f])
+# NCMul(f) = NCMul(1, [f])
 
 NCterms(a::NCMul) = (a,)
 Base.:-(a::NCMul) = NCMul(-a.coeff, a.factors)
 
 Base.:*(x::Number, a::NCMul) = NCMul(x * a.coeff, a.factors)
 Base.:*(m::NCMul, x::Number) = x * m
+Base.:*(a::NCMul, b::NCMul) = NCMul(a.coeff * b.coeff, vcat(a.factors, b.factors))
 
-ordered_product(x::Number, a::NCMul, ordering) = NCMul(x * a.coeff, a.factors)
-ordered_product(a::NCMul, b::NCMul, ::NaiveOrdering) = NCMul(a.coeff * b.coeff, vcat(a.factors, b.factors))
-
-ordered_product(a::NCMul, bs::NCMul, ordering) = ordered_product(a, bs, ordering)
-
-Base.adjoint(x::NCMul) = length(x.factors) == 0 ? NCMul(adjoint(x.coeff), x.factors) : adjoint(x.coeff) * foldr(*, Iterators.reverse(Iterators.map(adjoint, x.factors)))
+Base.adjoint(x::NCMul) = length(x.factors) == 0 ? NCMul(adjoint(x.coeff), x.factors) : NCMul(adjoint(x.coeff), collect(Iterators.reverse(Iterators.map(adjoint, x.factors))))
 

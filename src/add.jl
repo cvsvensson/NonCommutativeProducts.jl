@@ -6,8 +6,6 @@ function filter_scalars!(d::Dict{K,V}) where {K<:NCMul,V}
             delete!(d, k)
         end
     end
-    # coeff = sum(v for (k, v) in pairs(d) if length(k) == 0)
-    # filter!(kv -> length(kv.first.factors) > 0, pairs(d))
     return coeff
 end
 function filter_zeros!(d::Dict{K,V}) where {K<:NCMul,V}
@@ -19,14 +17,18 @@ function filter_zeros!(d::Dict{K,V}) where {K<:NCMul,V}
     return d
 end
 
-mutable struct NCAdd{C,D}
+mutable struct NCAdd{C,K,D}
     coeff::C
     dict::D
-    function NCAdd(coeff::C, dict::D; zeros=false) where {C,D}
+    function NCAdd(coeff::C, dict::Dict{K,C}; zeros=false) where {C,K}
         zeros || filter_zeros!(dict)
         coeff += filter_scalars!(dict)
-        new{C,D}(coeff, dict)
+        new{C,K,Dict{K,C}}(coeff, dict)
     end
+end
+function NCAdd(coeff::C, dict::Dict{K,V}; kwargs...) where {C,K,V}
+    T = promote_type(C, V)
+    NCAdd(T(coeff), Dict{K,T}(dict); kwargs...)
 end
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
@@ -50,29 +52,8 @@ function Base.hash(a::NCAdd, h::UInt)
     return hash(a.coeff, hash(a.dict, h))
 end
 
-# function filter_scalars!(f::NCAdd)
-#     for (k, v) in f.dict
-#         if isscalar(k)
-#             f.coeff += k.coeff * v
-#             delete!(f.dict, k)
-#         end
-#     end
-#     f
-# end
-# function canonicalize!(_f::NCAdd{_C,D}, filter_scalars=true) where {_C,D}
-#     C = promote_type(_C, valtype(D))
-#     f = NCAdd(C(_f.coeff), _f.dict)
-#     filter_scalars && filter_scalars!(f)
-#     if length(f.dict) == 0
-#         return f.coeff
-#     elseif length(f.dict) == 1 && iszero(f.coeff)
-#         k, v = only(f.dict)
-#         return v * k
-#     else
-#         return NCAdd{C,D}(f.coeff, f.dict)
-#     end
-# end
-# canonicalize!(a::Number) = a
+isscalar(x::NCAdd) = length(x.dict) == 0 || all(isscalar, keys(x.dict)) || all(iszero(values(x.dict)))
+Base.copy(x::NCAdd) = NCAdd(copy(x.coeff), copy(x.dict))
 
 function show_compact_sum(io, x::NCAdd, max_terms=3)
     println(io, "Sum with ", length(x.dict), " terms: ")
@@ -89,20 +70,17 @@ function Base.show(io::IO, x::NCAdd)
         return show_compact_sum(io, x)
     end
     compact = get(io, :compact, false)
-    args = collect(arguments(x))
-    print_one = !iszero(x.coeff) || length(args) == 0
+    print_one = !iszero(x.coeff) || length(x.dict) == 0
     if print_one
         if isreal(x.coeff)
             print(io, real(x.coeff), "I")
         else
             print(io, "(", x.coeff, ")", "I")
         end
-        args = args[2:end]
+        # args = args[2:end]
     end
     print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
-    for (n, arg) in enumerate(args)
-        k = NCMul(1, arg.factors)
-        v = arg.coeff
+    for (n, (k, v)) in enumerate(pairs(x.dict))
         should_print_sign = (n > 1 || print_one)
         if isreal(v)
             v = real(v)
@@ -128,22 +106,6 @@ function Base.show(io::IO, x::NCAdd)
 end
 print_num(io::IO, x) = isreal(x) ? print(io, real(x)) : print(io, "(", x, ")")
 
-Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add(b))
-Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add(b))
-Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
-
-Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, (_merge(+, to_add(a), b.dict)))
-function add!(a::NCAdd, b::NCAdd)
-    a.coeff += b.coeff
-    a.dict = __merge!(+, a.dict, b.dict)
-    return filter_scalars!(a)
-end
-function add!(a::NCAdd, b::NCMul)
-    a.dict = __merge!(+, a.dict, to_add_tuple(b))
-    return filter_scalars!(a)
-end
-add!(a::NCAdd, b::Number) = (a.coeff += b; return a)
-add!(a::NCAdd, b::UniformScaling) = (a.coeff += b.λ; return a)
 
 Base.:+(a::Number, b::NCAdd) = iszero(a) ? b : NCAdd(a + b.coeff, b.dict)
 Base.:+(a::UniformScaling, b::NCAdd) = iszero(a) ? b : NCAdd(a.λ + b.coeff, b.dict)
@@ -153,88 +115,85 @@ Base.:/(a::MulAdd, b::Number) = inv(b) * a
 Base.:-(a::Union{Number,UniformScaling}, b::MulAdd) = a + (-b)
 Base.:-(a::MulAdd, b::Union{Number,MulAdd,UniformScaling}) = a + (-b)
 Base.:-(a::NCAdd) = NCAdd(-a.coeff, Dict(k => -v for (k, v) in pairs(a.dict)))
-function NCterms(a::NCAdd)
-    (v * k for (k, v) in pairs(a.dict))
-end
-function allterms(a::NCAdd)
-    [a.coeff, [v * k for (k, v) in pairs(a.dict)]...]
-end
 function Base.:+(a::NCAdd, b::NCAdd)
     coeff = a.coeff + b.coeff
-    dict = _merge(+, a.dict, b.dict)
+    dict = mergewith(+, a.dict, b.dict)
     NCAdd(coeff, dict)
 end
 
-# ordered_product(x::Number, y::Number, ordering) = x * y
-# ordered_product(x::Number, a::NCAdd, ordering) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
-# ordered_product(a::MulAdd, x::Number, ordering) = ordered_product(x, a, ordering)
+
+function add!!(a::NCAdd, b::NCMul)
+    newdict = mergewith!!(+, a.dict, to_add(b))
+    return NCAdd(a.coeff, newdict)
+end
+function add!!(a::NCAdd, b::NCAdd)
+    newdict = mergewith!!(+, a.dict, b.dict)
+    newdict === a.dict && return add!!(a, b.coeff)
+    return NCAdd(a.coeff + b.coeff, newdict)
+end
+function add!!(a::NCAdd{C}, b::C2) where {C,C2<:Number}
+    promote_type(C, C2) <: C && (a.coeff += b; return a)
+    return a + b
+end
+function add!!(a::NCAdd{C}, b::UniformScaling{C2}) where {C,C2<:Number}
+    promote_type(C, C2) <: C && return (a.coeff += b.λ; return a)
+    return a + b
+end
+
+
+function NCterms(a::NCAdd)
+    (v * k for (k, v) in pairs(a.dict))
+end
 additive_coeff(a::NCAdd) = a.coeff
 additive_coeff(a::NCMul) = 0
-
-Base.:*(a::MulAdd, b::MulAdd) = ordered_product(a, b, NaiveOrdering())
-# Base.:*(a::MulAdd, x) = ordered_product(a, NCMul(x), NaiveOrdering())
-# Base.:*(x, a::MulAdd) = ordered_product(NCMul(x), a, NaiveOrdering())
 
 Base.:*(x::Number, a::NCAdd) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
 Base.:*(a::NCAdd, x::Number) = x * a
 
-function ordered_product(a::NCAdd, b::NCMul, ordering::AbstractOrdering)
+function Base.:*(a::NCAdd, b::NCMul)
     c = zero(a)
-    return trymul!(c, a, b, ordering)
+    return mul!!(c, a, b)
 end
-function ordered_product(a::NCMul, b::NCAdd, ordering)
+function Base.:*(a::NCMul, b::NCAdd)
     c = zero(b)
-    return trymul!(c, a, b, ordering)
+    return mul!!(c, a, b)
 end
-function ordered_product(a::NCAdd, b::NCAdd, ordering)
+function Base.:*(a::NCAdd, b::NCAdd)
     c = zero(a)
-    return trymul!(c, a, b, ordering)
+    ret = mul!!(c, a, b)
+    return ret
 end
-function trymul!(c::NCAdd, a::MulAdd, b::MulAdd, ordering)
+function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     acoeff = additive_coeff(a)
     bcoeff = additive_coeff(b)
     if !iszero(acoeff)
-        c = tryadd!(c, acoeff * b)
+        c = add!!(c, acoeff * b)
     end
     if !iszero(bcoeff)
-        c = tryadd!(c, a * bcoeff)
-        c = tryadd!(c, -acoeff * bcoeff) # We've double counted this term so subtract it
+        c = add!!(c, a * bcoeff)
+        c = add!!(c, -acoeff * bcoeff) # We've double counted this term so subtract it
     end
     for bterm in NCterms(b)
         for aterm in NCterms(a)
-            newterm = ordered_product(aterm, bterm, ordering)
-            c = tryadd!(c, newterm)
+            newterm = aterm * bterm
+            c = add!!(c, newterm)
         end
     end
-    return c #canonicalize!(c)
+    return c
 end
 
-"""
-    tryadd!(c::NCAdd, term)
-
-This function tries to add `term` to `c` in place. If it fails, it catches the error and returns the out of place sum.
-"""
-function tryadd!(c::NCAdd, term)
-    try
-        return add!(c, term)
-    catch e
-        @debug e
-    end
-    c + term
-end
-tryadd!(c::NCMul, term) = c + term
-tryadd!(c::Number, term) = c + term
-
+add!!(c::NCMul, term) = c + term
+add!!(c::Number, term) = c + term
 
 function Base.adjoint(x::NCAdd)
     newx = zero(x)
     newx.coeff = adjoint(x.coeff)
     for (f, v) in x.dict
-        add!(newx, v' * f')
+        newx = add!!(newx, v' * f')
     end
     newx
 end
-Base.zero(::NCAdd{C,D}) where {C,D} = NCAdd(zero(C), D())
+Base.zero(::NCAdd{C,K,D}) where {C,K,D} = NCAdd(zero(C), D())
 
 function sorted_noduplicates(v)
     I = eachindex(v)
@@ -244,47 +203,17 @@ function sorted_noduplicates(v)
     return true
 end
 
-isscalar(x::NCAdd) = length(x.dict) == 0 || all(isscalar, keys(x.dict)) || all(iszero(values(x.dict)))
-
-
-#From SymbolicUtils
-function _merge(f, d, others...; filter=x -> false)
-    T = Union{promote_type(valtype(d), valtype.(others)...)}
-    K = Union{keytype(d),keytype.(others)...}
-    d2 = Dict{K,T}(d)
-    return __merge!(f, d2, others...; filter)
-end
-function __merge!(f::F, d, others...; filter=x -> false) where {F}
-    acc = d
-    for other in others
-        for (k, v) in other
-            v = f(v)
-            ak = get(acc, k, nothing)
-            if ak !== nothing
-                v = ak + v
-            end
-            if filter(v)
-                delete!(acc, k)
-            else
-                acc[k] = v
-            end
-        end
-    end
-    acc
-end
-
-
-Base.copy(x::NCAdd) = NCAdd(copy(x.coeff), copy(x.dict))
-@testitem "Consistency between + and add!" begin
-    import NonCommutativeProducts: add!
-    @fermions f
+@testitem "Consistency between + and add!" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!
+    f = Fermion.(1:2)
     a = 1.0 * f[2] * f[1] + 1 + f[1]
     for b in [1.0, 1, f[1], 1.0 * f[1], f[2] * f[1], a]
         a2 = copy(a)
-        a3 = add!(a2, b)
+        a3 = add!!(a2, b) # Should mutate
         @test a + b == a3
         @test a2 == a3
-        @test_throws InexactError add!(a, 1im * b)
+        anew = add!!(a, 1im * b) #Should not mutate
+        @test a2 !== anew
     end
     @test a == 1.0 * f[2] * f[1] + 1 + f[1]
 end
