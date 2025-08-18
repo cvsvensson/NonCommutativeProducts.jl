@@ -35,7 +35,7 @@ function filter_scalars!(x::NCAdd)
     x += filter_scalars!(x.dict)
 end
 filter_zeros!(x::NCAdd) = (filter_zeros!(x.dict); return x)
-
+Base.iszero(x::NCAdd) = iszero(x.coeff) && all(iszero, values(x.dict))
 Base.:(==)(a::NCAdd, b::NCAdd) = a.coeff == b.coeff && a.dict == b.dict
 Base.:(==)(a::NCAdd, b::Number) = a.coeff == b && isempty(a.dict)
 Base.:(==)(a::Number, b::NCAdd) = a == b.coeff && isempty(b.dict)
@@ -152,16 +152,15 @@ Base.:*(a::NCAdd, x::Number) = x * a
 
 function Base.:*(a::NCAdd, b::NCMul)
     c = zero(a)
-    return mul!!(c, a, b)
+    filter_scalars!(filter_zeros!(mul!!(c, a, b)))
 end
 function Base.:*(a::NCMul, b::NCAdd)
     c = zero(b)
-    return mul!!(c, a, b)
+    filter_scalars!(filter_zeros!(mul!!(c, a, b)))
 end
 function Base.:*(a::NCAdd, b::NCAdd)
     c = zero(a)
-    ret = mul!!(c, a, b)
-    return ret
+    filter_scalars!(filter_zeros!(mul!!(c, a, b)))
 end
 function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     acoeff = additive_coeff(a)
@@ -176,6 +175,11 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     for bterm in NCterms(b)
         for aterm in NCterms(a)
             newterm = aterm * bterm
+            if eager(aterm)
+                newterm = bubble_sort(newterm, Ordering(aterm))
+            elseif eager(bterm)
+                newterm = bubble_sort(newterm, Ordering(bterm))
+            end
             c = add!!(c, newterm)
         end
     end

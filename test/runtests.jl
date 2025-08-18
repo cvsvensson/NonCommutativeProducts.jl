@@ -106,15 +106,15 @@ end
 @testmodule Majoranas begin
     using NonCommutativeProducts
     export Majorana
-    import NonCommutativeProducts: AddTerms, Swap, mul_effect, @nc
+    import NonCommutativeProducts: AddTerms, Swap, mul_effect, @nc_eager
     struct Majorana{L}
         label::L
     end
-    @nc Majorana
     Base.:(==)(a::Majorana, b::Majorana) = a.label == b.label
     Base.adjoint(x::Majorana) = Majorana(x.label)
     Base.show(io::IO, x::Majorana) = print(io, "γ[", x.label, "]")
     struct Ordering end
+    @nc_eager Majorana Ordering()
     function NonCommutativeProducts.mul_effect(a::Majorana, b::Majorana, ::Ordering)
         if a == b
             return 1
@@ -134,44 +134,39 @@ end
     @variables a::Real z::Complex
     γ = Majorana.(1:4)
 
-    ord(op) = NonCommutativeProducts.bubble_sort(op, Majoranas.Ordering())
-    # ord(op) = NonCommutativeProducts.bubble_sort(op, Ordering())
-    ord_equals(a, b) = (iszero(NonCommutativeProducts.filter_zeros!(ord(a - b))))
-    ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
-
     #test canonical anticommutation relations
-    @test ord_equals(γ[1] * γ[1], 1)
-    @test ord_equals(γ[1] * γ[2], -γ[2] * γ[1])
+    @test γ[1] * γ[1] == 1
+    @test γ[1] * γ[2] == -γ[2] * γ[1]
 
-    @test ord_equals(γ[1] * γ[2] * γ[1], -γ[2])
-    @test ord_equals(γ[1] * γ[2] * γ[3], -γ[3] * γ[2] * γ[1])
+    @test γ[1] * γ[2] * γ[1] == -γ[2]
+    @test γ[1] * γ[2] * γ[3] == -γ[3] * γ[2] * γ[1]
 
     f1 = (γ[1] + 1im * γ[2]) / 2
     f2 = (γ[3] + 1im * γ[4]) / 2
     @test iszero(f1 - f1)
-    @test ord_equals(f1 * f1, 0)
+    @test iszero(f1 * f1)
     @test iszero(2 * f1 - 2 * f1)
     @test iszero(0 * f1)
     @test iszero(f1 * 0)
-    @test ord_equals(f1^2, 0)
+    @test iszero(f1^2)
     @test iszero(0 * (f1 + f2))
     @test iszero((f1 + f2) * 0)
-    @test ord_equals(f1 * f2 * f1, 0)
+    @test iszero(f1 * f2 * f1)
     f12 = f1 * f2
     @test iszero(f12'' - f12)
-    @test ord_equals(f12 * f12, 0)
-    @test ord_equals(f12' * f12', 0)
+    @test iszero(f12 * f12)
+    @test iszero(f12' * f12')
     nf1 = f1' * f1
-    @test ord_equals(nf1^2, nf1)
-    # @test 1 + (f1 + f2) == 1 + f1 + f2 == f1 + f2 + 1 == f1 + 1 + f2 == 1 * f1 + f2 + 1 == f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2) == (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2) == (1 + f1' + (1 * f2)')'
-    @test ord_equals(1 + (f1 + f2), 1 + f1 + f2, f1 + f2 + 1, f1 + 1 + f2, 1 * f1 + f2 + 1, f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2), (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2), (1 + f1' + (1 * f2)')')
-    @test ord_equals((2 * f1) * (2 * f1), 0)
-    @test ord_equals((2 * f1)^2, 0)
-    @test ord_equals((2 * f2) * (2 * f1), -4 * f1 * f2)
-    @test ord_equals(f1, (f1 * (f1 + 1)), (f1 + 1) * f1)
-    @test ord_equals(f1 * (f1 + f2) * f1, 0)
-    @test ord_equals((f1 * (f1 + f2)), f1 * f2)
-    @test ord_equals((2nf1 - 1) * (2nf1 - 1), 1)
+    @test nf1^2 == nf1
+    @test 1 + (f1 + f2) == 1 + f1 + f2 == f1 + f2 + 1 == f1 + 1 + f2 == 1 * f1 + f2 + 1 == f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2) == (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2) == (1 + f1' + (1 * f2)')'
+    # @test ord_equals(1 + (f1 + f2), 1 + f1 + f2, f1 + f2 + 1, f1 + 1 + f2, 1 * f1 + f2 + 1, f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2), (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2), (1 + f1' + (1 * f2)')')
+    @test iszero((2 * f1) * (2 * f1))
+    @test iszero((2 * f1)^2)
+    @test (2 * f2) * (2 * f1) == -4 * f1 * f2
+    @test f1 == (f1 * (f1 + 1)) == (f1 + 1) * f1
+    @test iszero(f1 * (f1 + f2) * f1)
+    @test (f1 * (f1 + f2)) == f1 * f2
+    @test (2nf1 - 1) * (2nf1 - 1) == 1
 
     @test (1 * f1) * f2 == f1 * f2
     @test (1 * f1) * (1 * f2) == f1 * f2
