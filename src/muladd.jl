@@ -17,15 +17,16 @@ function Base.:+(_a::NCMul, _b::NCMul)
     return NCAdd(0, LittleDict([NCMul(1, a.factors), NCMul(1, b.factors)], [a.coeff, b.coeff]))
 end
 
-Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add_dict(b))
-Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add_dict(b))
+Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add_littledict(b))
+Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add_littledict(b))
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, mergewith!!(+, to_add_dict(a), b.dict))
-Base.convert(::Type{NCAdd{C,NCMul{C,S,F},D}}, x::NCMul{C,S,F}) where {C,S,F,D} = NCAdd(zero(C), D(to_add_dict(x)))
+Base.convert(::Type{NCAdd{C,NCMul{C,S,F},D}}, x::NCMul{C,S,F}) where {C,S,F,D} = NCAdd(zero(C), D(to_add_littledict(x)))
 
 import OrderedCollections: LittleDict
 # to_add_dict(a::NCMul, coeff=1) = Dict(NCMul(1, a.factors) => a.coeff * coeff)
-to_add_dict(a::NCMul, coeff=1) = LittleDict([NCMul(1, a.factors)], [a.coeff * coeff])
+to_add_dict(a::NCMul, coeff=1) = Dict(NCMul(1, a.factors) => a.coeff * coeff)
+to_add_littledict(a::NCMul, coeff=1) = LittleDict([NCMul(1, a.factors)], [a.coeff * coeff])
 to_add_non_mutable(a::NCMul, coeff=1) = LittleDict((NCMul(1, a.factors),), (a.coeff * coeff,))
 # to_add(a::NCMul, coeff=1) = LittleDict((NCMul(1, a.factors),), (a.coeff * coeff,))
 # to_add(a, coeff=1) = Dict(NCMul(a) => coeff)
