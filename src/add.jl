@@ -20,16 +20,16 @@ end
 mutable struct NCAdd{C,K,D}
     coeff::C
     dict::D
-    function NCAdd(coeff::C, dict::D; keep_zeros=false) where {C,D<:AbstractDict{K,C} where K}
+    function NCAdd(coeff::C, dict::D; keep_zeros=false) where {C,D<:AbstractDict}
         keep_zeros || filter_zeros!(dict)
         coeff += filter_scalars!(dict)
-        new{C,keytype(D),D}(coeff, dict)
+        new{promote_type(C, valtype(D)),keytype(D),D}(coeff, dict)
     end
 end
-function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict{K,V} where {K,V}}
-    T = promote_type(C, valtype(D))
-    NCAdd(T(coeff), Dict{keytype(D),T}(dict); kwargs...)
-end
+# function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict{K,V} where {K,V}}
+#     T = promote_type(C, valtype(D))
+#     NCAdd(T(coeff), Dict{keytype(D),T}(dict); kwargs...)
+# end
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
     add!!(x, filter_scalars!(x.dict))
@@ -153,7 +153,8 @@ end
 additive_coeff(a::NCAdd) = a.coeff
 additive_coeff(a::NCMul) = 0
 
-Base.:*(x::Number, a::NCAdd) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
+# Base.:*(x::Number, a::NCAdd) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
+Base.:*(x::Number, a::NCAdd) = NCAdd(x * a.coeff, LittleDict(keys(a.dict), values(a.dict) .* x))
 Base.:*(a::NCAdd, x::Number) = x * a
 
 function Base.:*(a::NCAdd, b::NCMul)
