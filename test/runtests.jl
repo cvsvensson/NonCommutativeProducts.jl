@@ -36,6 +36,8 @@ end
 @testitem "Fermions" setup = [Fermions] begin
     import NonCommutativeProducts: filter_zeros!, bubble_sort
     using Symbolics, LinearAlgebra
+    using Random: seed!
+    seed!(1)
 
     @variables a::Real z::Complex
     f1 = Fermion(:a)
@@ -136,6 +138,8 @@ end
 
 @testitem "Majoranas" setup = [Majoranas] begin
     using Symbolics
+    using Random: seed!
+    seed!(1)
     @variables a::Real z::Complex
     γ = Majorana.(1:4)
 

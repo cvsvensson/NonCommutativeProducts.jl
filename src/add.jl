@@ -114,7 +114,7 @@ Base.:+(a::NCAdd, b::B) where B<:NCMul = b + a
 Base.:/(a::MulAdd, b::Number) = inv(b) * a
 Base.:-(a::Union{Number,UniformScaling}, b::MulAdd) = a + (-b)
 Base.:-(a::MulAdd, b::Union{Number,MulAdd,UniformScaling}) = a + (-b)
-Base.:-(a::NCAdd) = NCAdd(-a.coeff, Dict(k => -v for (k, v) in pairs(a.dict)))
+Base.:-(a::NCAdd) = (-1) * a
 function Base.:+(a::NCAdd, b::NCAdd)
     coeff = a.coeff + b.coeff
     dict = mergewith(+, a.dict, b.dict)
