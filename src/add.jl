@@ -1,4 +1,4 @@
-function filter_scalars!(d::Dict{K,V}) where {K<:NCMul,V}
+function filter_scalars!(d::AbstractDict{K,V}) where {K<:NCMul,V}
     coeff = zero(V)
     for (k, v) in d
         if isscalar(k)
@@ -8,7 +8,7 @@ function filter_scalars!(d::Dict{K,V}) where {K<:NCMul,V}
     end
     return coeff
 end
-function filter_zeros!(d::Dict{K,V}) where {K<:NCMul,V}
+function filter_zeros!(d::AbstractDict{K,V}) where {K<:NCMul,V}
     for (k, v) in d
         if iszero(v)
             delete!(d, k)
@@ -20,15 +20,15 @@ end
 mutable struct NCAdd{C,K,D}
     coeff::C
     dict::D
-    function NCAdd(coeff::C, dict::Dict{K,C}; keep_zeros=false) where {C,K}
+    function NCAdd(coeff::C, dict::D; keep_zeros=false) where {C,D<:AbstractDict{K,C} where K}
         keep_zeros || filter_zeros!(dict)
         coeff += filter_scalars!(dict)
-        new{C,K,Dict{K,C}}(coeff, dict)
+        new{C,keytype(D),D}(coeff, dict)
     end
 end
-function NCAdd(coeff::C, dict::Dict{K,V}; kwargs...) where {C,K,V}
-    T = promote_type(C, V)
-    NCAdd(T(coeff), Dict{K,T}(dict); kwargs...)
+function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict{K,V} where {K,V}}
+    T = promote_type(C, valtype(D))
+    NCAdd(T(coeff), Dict{keytype(D),T}(dict); kwargs...)
 end
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)

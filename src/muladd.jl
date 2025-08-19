@@ -22,7 +22,8 @@ Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add(b))
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, mergewith!!(+, to_add(a), b.dict))
 
-to_add(a::NCMul, coeff=1) = Dict(NCMul(1, a.factors) => a.coeff * coeff)
+import OrderedCollections: LittleDict
+to_add(a::NCMul, coeff=1) = LittleDict((NCMul(1, a.factors),), (a.coeff * coeff,))
 # to_add(a, coeff=1) = Dict(NCMul(a) => coeff)
 # to_add_tuple(a::NCMul, coeff=1) = (NCMul(1, a.factors) => a.coeff * coeff,)
 # to_add_tuple(a, coeff=1) = (NCMul(a) => coeff,)
