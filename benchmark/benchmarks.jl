@@ -14,7 +14,7 @@ Fermion(k) = Fermion(k, false)
 Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
 
 struct Ordering end
-@nc_eager Fermion Ordering
+@nc_eager Fermion Ordering()
 function should_swap(a::Fermion, b::Fermion, ::Ordering)
     if a.creation == b.creation
         return a.label > b.label
