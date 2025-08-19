@@ -153,10 +153,14 @@ end
 additive_coeff(a::NCAdd) = a.coeff
 additive_coeff(a::NCMul) = 0
 
-function Base.:*(x::Number, a::NCAdd)
-    dictcopy = copy(a.dict)
-    map!(v -> x * v, values(dictcopy))
-    NCAdd(x * a.coeff, dictcopy)
+function Base.:*(x::C, a::NCAdd{C2}) where {C<:Number,C2}
+    if promote_type(C, C2) <: C2
+        dictcopy = copy(a.dict)
+        map!(v -> x * v, values(dictcopy))
+        return NCAdd(x * a.coeff, dictcopy)
+    else
+        return NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
+    end
 end
 Base.:*(a::NCAdd, x::Number) = x * a
 
