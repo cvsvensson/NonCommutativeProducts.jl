@@ -127,7 +127,6 @@ end
         elseif a.label < b.label
             return nothing # a*b => a*b
         elseif a.label > b.label
-            a.label == b.label && return AddTerms(Swap(-1), 1) # a*b => -b*a + 1
             return Swap(-1) # a*b => -b*a
         else
             throw(ArgumentError("Don't know how to multiply $a * $b"))
