@@ -26,7 +26,7 @@ function _bubble_sort!(terms::Vector{T}, ordering) where {T<:NCMul}
     if length(sorted_terms) == 0
         return NCAdd(0, Dict{T,Int}())
     end
-    newadd = NCAdd(0, to_add(first(sorted_terms)))
+    newadd = NCAdd(0, to_add_dict(first(sorted_terms)))
     for term in Iterators.drop(sorted_terms, 1)
         newadd = add!!(newadd, term)
     end
