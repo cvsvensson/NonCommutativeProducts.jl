@@ -57,10 +57,19 @@ prod(Fermion(n) + Fermion(n)' for n in 1:4)
 #=Sum with 16 terms: 
 - c†[2]*c†[4]*c[1]*c[3] + c†[3]*c†[4]*c[1]*c[2] - c†[2]*c†[3]*c†[4]*c[1] + ...=#
 ```
+Note that with this ordering, some terms might be equivalent to others under further swaps. One could also sort the terms via their label to get a unique representation, which is done in the examples in the tests of this package. 
 
 ## Remarks
 
 This package is flexible, but not very efficient. Sorting is done via bubble sort, which is suitable for this use case since it is based on swapping adjacent elements. But it does not scale well with the length of the list, so it won't perform well for products of many elements.
+
+```julia
+@time op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
+#=0.327861 seconds (3.05 M allocations: 129.336 MiB, 12.88% compilation time)
+Sum with 59048 terms: 
+c†[8]*c[2]*c[3]*c[5]*c[6]*c[9]*c[10] + c†[1]*c†[4]*c†[6]*c†[8]*c†[10]*c[2]*c[5]*c[9] - c†[1]*c†[2]*c†[6]*c[5]*c[7]*c[10] + ...=#
+```
+
 
 To cut down on allocations, one can use `NonCommutativeProducts.add!!` which tries to perform addition in place, but widens the type if not possible.
 ```julia
