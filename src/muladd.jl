@@ -12,10 +12,8 @@ Base.:(==)(a::NCMul, b::NCAdd) = b == a
 function Base.:+(_a::NCMul, _b::NCMul)
     a, b = promote(_a, _b)
     if a.factors == b.factors
-        # return NCAdd(0, LittleDict([NCMul(1, a.factors)], [a.coeff + b.coeff]))
         return NCAdd(0, Dict(NCMul(1, a.factors) => a.coeff + b.coeff))
     end
-    # return NCAdd(0, LittleDict([NCMul(1, a.factors), NCMul(1, b.factors)], [a.coeff, b.coeff]))
     return NCAdd(0, Dict(NCMul(1, a.factors) => a.coeff, NCMul(1, b.factors) => b.coeff))
 end
 
@@ -23,18 +21,9 @@ Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add_dict(b))
 Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add_dict(b))
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, mergewith!!(+, to_add_dict(a), b.dict))
-# Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, mergewith!!(+, copy(b.dict), to_add_non_mutable(a)))
 Base.convert(::Type{NCAdd{C,NCMul{C,S,F},D}}, x::NCMul{C,S,F}) where {C,S,F,D} = NCAdd(zero(C), D(to_add_dict(x)))
 
-import OrderedCollections: LittleDict
-# to_add_dict(a::NCMul, coeff=1) = Dict(NCMul(1, a.factors) => a.coeff * coeff)
-to_add_dict(a::NCMul, coeff=1) = Dict(NCMul(1, a.factors) => a.coeff * coeff)
-to_add_littledict(a::NCMul, coeff=1) = LittleDict([NCMul(1, a.factors)], [a.coeff * coeff])
-to_add_non_mutable(a::NCMul, coeff=1) = LittleDict((NCMul(1, a.factors),), (a.coeff * coeff,))
-# to_add(a::NCMul, coeff=1) = LittleDict((NCMul(1, a.factors),), (a.coeff * coeff,))
-# to_add(a, coeff=1) = Dict(NCMul(a) => coeff)
-# to_add_tuple(a::NCMul, coeff=1) = (NCMul(1, a.factors) => a.coeff * coeff,)
-# to_add_tuple(a, coeff=1) = (NCMul(a) => coeff,)
+to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => a.coeff)
 
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)
