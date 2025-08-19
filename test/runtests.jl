@@ -11,7 +11,6 @@ using TestItemRunner
     Base.adjoint(x::Fermion) = Fermion(x.label, !x.creation)
     Fermion(k) = Fermion(k, false)
     Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
-    Base.:(==)(a::Fermion, b::Fermion) = a.creation == b.creation && a.label == b.label
     @nc Fermion
 
     struct Ordering end
@@ -24,10 +23,10 @@ using TestItemRunner
     end
 
     function NonCommutativeProducts.mul_effect(a::Fermion, b::Fermion, ordering::Ordering)
-        a == b && return 0
+        a == b && return 0 # a*b => 0
         if should_swap(a, b, ordering)
-            a.label == b.label && xor(a.creation, b.creation) && return AddTerms((Swap(-1), 1))
-            return Swap(-1)
+            a.label == b.label && xor(a.creation, b.creation) && return AddTerms((Swap(-1), 1)) #  a*b => -b*a + 1
+            return Swap(-1) # a*b => -b*a
         else
             return nothing
         end
@@ -43,8 +42,7 @@ end
     f2 = Fermion(:b)
     f3 = Fermion((1, :↑))
     ord(op) = bubble_sort(op, Fermions.Ordering())
-    # ord(op) = bubble_sort(op, Ordering())
-    ord_equals(a, b) = (iszero(filter_zeros!(ord(a - b))))
+    ord_equals(a, b) = iszero(ord(a - b))
     ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
 
     @test 1 * f1 == f1
@@ -119,19 +117,18 @@ end
     struct Majorana{L}
         label::L
     end
-    Base.:(==)(a::Majorana, b::Majorana) = a.label == b.label
     Base.adjoint(x::Majorana) = Majorana(x.label)
     Base.show(io::IO, x::Majorana) = print(io, "γ[", x.label, "]")
     struct Ordering end
     @nc_eager Majorana Ordering()
     function NonCommutativeProducts.mul_effect(a::Majorana, b::Majorana, ::Ordering)
-        if a == b
-            return 1
+        if a.label == b.label
+            return 1 # a*b => 1
         elseif a.label < b.label
-            return nothing
+            return nothing # a*b => a*b
         elseif a.label > b.label
-            a.label == b.label && return AddTerms(Swap(-1), 1)
-            return Swap(-1)
+            a.label == b.label && return AddTerms(Swap(-1), 1) # a*b => -b*a + 1
+            return Swap(-1) # a*b => -b*a
         else
             throw(ArgumentError("Don't know how to multiply $a * $b"))
         end
