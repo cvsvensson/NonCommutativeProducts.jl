@@ -32,7 +32,7 @@ function NCAdd(coeff::C, dict::Dict{K,V}; kwargs...) where {C,K,V}
 end
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
-    x += filter_scalars!(x.dict)
+    add!!(x, filter_scalars!(x.dict))
 end
 filter_zeros!(x::NCAdd) = (filter_zeros!(x.dict); return x)
 Base.iszero(x::NCAdd) = iszero(x.coeff) && all(iszero, values(x.dict))
@@ -180,18 +180,15 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     end
     for bterm in NCterms(b)
         for aterm in NCterms(a)
-            newterm = aterm * bterm
-            if eager(aterm)
-                newterm = bubble_sort(newterm, Ordering(aterm))
-            elseif eager(bterm)
-                newterm = bubble_sort(newterm, Ordering(bterm))
-            end
+            newterm = catenate(aterm, bterm)
             c = add!!(c, newterm)
         end
     end
+    if eager(c)
+        c = bubble_sort(c, Ordering(c))
+    end
     return c
 end
-
 add!!(c::NCMul, term) = c + term
 add!!(c::Number, term) = c + term
 
@@ -204,14 +201,6 @@ function Base.adjoint(x::NCAdd)
     newx
 end
 Base.zero(::NCAdd{C,K,D}) where {C,K,D} = NCAdd(zero(C), D())
-
-function sorted_noduplicates(v)
-    I = eachindex(v)
-    for i in I[1:end-1]
-        isequal(v[i], v[i+1]) && return false
-    end
-    return true
-end
 
 @testitem "Consistency between + and add!" setup = [Fermions] begin
     import NonCommutativeProducts: add!!

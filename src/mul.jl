@@ -46,13 +46,21 @@ Base.:-(a::NCMul) = NCMul(-a.coeff, a.factors)
 
 Base.:*(x::Number, a::NCMul) = NCMul(x * a.coeff, a.factors)
 Base.:*(m::NCMul, x::Number) = x * m
-Base.:*(a::NCMul, b::NCMul) = NCMul(a.coeff * b.coeff, vcat(a.factors, b.factors))
+function Base.:*(a::NCMul, b::NCMul)
+    ncmul = catenate(a, b)
+    if eager(ncmul)
+        return bubble_sort!(ncmul, Ordering(ncmul))
+    end
+    return ncmul
+end
+catenate(x::NCMul, others...) = NCMul(x.coeff * prod(y -> y.coeff, others), vcat(x.factors, map(y -> y.factors, others)...))
 
 function Base.adjoint(x::NCMul)
     length(x.factors) == 0 && return NCMul(adjoint(x.coeff), x.factors)
+    # adjoint(x.coeff) * foldr(*, Iterators.reverse(Iterators.map(adjoint, x.factors)))
     ncmul = NCMul(adjoint(x.coeff), collect(Iterators.reverse(Iterators.map(adjoint, x.factors))))
     if eager(x)
-        return bubble_sort(ncmul, Ordering(ncmul))
+        return bubble_sort!(ncmul, Ordering(ncmul))
     end
     return ncmul
 end
