@@ -153,8 +153,11 @@ end
 additive_coeff(a::NCAdd) = a.coeff
 additive_coeff(a::NCMul) = 0
 
-# Base.:*(x::Number, a::NCAdd) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
-Base.:*(x::Number, a::NCAdd) = NCAdd(x * a.coeff, LittleDict(keys(a.dict), values(a.dict) .* x))
+function Base.:*(x::Number, a::NCAdd)
+    dictcopy = copy(a.dict)
+    map!(v -> x * v, values(dictcopy))
+    NCAdd(x * a.coeff, dictcopy)
+end
 Base.:*(a::NCAdd, x::Number) = x * a
 
 function Base.:*(a::NCAdd, b::NCMul)
