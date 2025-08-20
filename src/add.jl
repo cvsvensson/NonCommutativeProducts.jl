@@ -26,10 +26,6 @@ mutable struct NCAdd{C,K,D}
         new{promote_type(C, valtype(D)),keytype(D),D}(coeff, dict)
     end
 end
-# function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict{K,V} where {K,V}}
-#     T = promote_type(C, valtype(D))
-#     NCAdd(T(coeff), Dict{keytype(D),T}(dict); kwargs...)
-# end
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
     add!!(x, filter_scalars!(x.dict))

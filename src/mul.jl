@@ -58,7 +58,6 @@ catenate(x::NCMul, others...) = NCMul(x.coeff * prod(y -> y.coeff, others), vcat
 
 function Base.adjoint(x::NCMul)
     length(x.factors) == 0 && return NCMul(adjoint(x.coeff), x.factors)
-    # adjoint(x.coeff) * foldr(*, Iterators.reverse(Iterators.map(adjoint, x.factors)))
     ncmul = NCMul(adjoint(x.coeff), collect(Iterators.reverse(Iterators.map(adjoint, x.factors))))
     if eager(x)
         return bubble_sort!(ncmul, Ordering(ncmul))
