@@ -1,7 +1,7 @@
 name = "NonCommutativeProducts"
 uuid = "a9a0a982-c603-4485-bf80-6b61b825abb4"
 authors = ["Viktor Svensson <13223396+cvsvensson@users.noreply.github.com> and contributors"]
-version = "0.3.3"
+version = "0.3.4"
 
 [deps]
 BangBang = "198e06fe-97b7-11e9-32a5-e1d131e6ad66"
