@@ -50,6 +50,8 @@ end
     @test 1 * f1 == f1
     @test 1 * f1 + 0 == f1
     @test 1 * f1 + 0 == 1 * f1
+    @test 0 * f1  == 1
+    @test 0 * f1 + 1 == 1
     @test hash(f1) == hash(1 * f1) == hash(1 * f1 + 0)
 
     # Test canonical commutation relations

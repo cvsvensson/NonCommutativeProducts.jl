@@ -14,7 +14,7 @@ Base.copy(x::NCMul) = NCMul(copy(x.coeff), copy(x.factors))
 isscalar(x::NCMul) = length(x.factors) == 0
 
 function Base.show(io::IO, x::NCMul)
-    print_coeff = !isone(x.coeff)
+    print_coeff = !isone(x.coeff) || isscalar(x)
     if print_coeff
         v = x.coeff
         if isreal(v)

@@ -51,17 +51,6 @@ end
 isscalar(x::NCAdd) = length(x.dict) == 0 || all(isscalar, keys(x.dict)) || all(iszero(values(x.dict)))
 Base.copy(x::NCAdd) = NCAdd(copy(x.coeff), copy(x.dict))
 
-function show_compact_sum(io, x::NCAdd, max_terms=3)
-    println(io, "Sum with ", length(x.dict), " terms: ")
-    N = min(max_terms, length(x.dict))
-    (!iszero(x.coeff) || length(x.dict) == 0) && print_coeff(io, x.coeff)
-    args = sum(v * k for (k, v) in Iterators.take(pairs(x.dict), N))
-    show(io, args)
-    if N < length(x.dict)
-        print(io, " + ...")
-    end
-    return nothing
-end
 function print_coeff(io, coeff)
     if isreal(coeff)
         print(io, real(coeff), "I")
