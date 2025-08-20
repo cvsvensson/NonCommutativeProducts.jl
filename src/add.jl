@@ -54,6 +54,7 @@ Base.copy(x::NCAdd) = NCAdd(copy(x.coeff), copy(x.dict))
 function show_compact_sum(io, x::NCAdd, max_terms=3)
     println(io, "Sum with ", length(x.dict), " terms: ")
     N = min(max_terms, length(x.dict))
+    (!iszero(x.coeff) || length(x.dict) == 0) && print_coeff(io, x.coeff)
     args = sum(v * k for (k, v) in Iterators.take(pairs(x.dict), N))
     show(io, args)
     if N < length(x.dict)
@@ -61,22 +62,25 @@ function show_compact_sum(io, x::NCAdd, max_terms=3)
     end
     return nothing
 end
-function Base.show(io::IO, x::NCAdd)
-    if length(x.dict) > 3
-        return show_compact_sum(io, x)
+function print_coeff(io, coeff)
+    if isreal(coeff)
+        print(io, real(coeff), "I")
+    else
+        print(io, "(", coeff, ")", "I")
     end
+end
+function Base.show(io::IO, x::NCAdd; max_terms = 3)
     compact = get(io, :compact, false)
     print_one = !iszero(x.coeff) || length(x.dict) == 0
-    if print_one
-        if isreal(x.coeff)
-            print(io, real(x.coeff), "I")
-        else
-            print(io, "(", x.coeff, ")", "I")
-        end
-        # args = args[2:end]
-    end
+    compact = length(x.dict) > max_terms
     print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
+    
+    compact && println(io, "Sum with ", length(x.dict) + !iszero(x.coeff), " terms: ")
+    N = min(max_terms, length(x.dict))
+    
+    print_one && print_coeff(io, x.coeff)
     for (n, (k, v)) in enumerate(pairs(x.dict))
+        n > max_terms && break
         should_print_sign = (n > 1 || print_one)
         if isreal(v)
             v = real(v)
@@ -97,6 +101,9 @@ function Base.show(io::IO, x::NCAdd)
             should_print_sign && print_sign("+")
             print(io, "(", v, ")*", k)
         end
+    end
+    if N < length(x.dict)
+        print(io, " + ...")
     end
     return nothing
 end
