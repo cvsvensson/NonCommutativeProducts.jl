@@ -71,7 +71,7 @@ This package is flexible, but not very efficient. Sorting is done via bubble sor
 ```julia
 @time op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
 #=0.327861 seconds (3.05 M allocations: 129.336 MiB, 12.88% compilation time)
-Sum with 59048 terms: 
+Sum with 59049 terms: 
 1I-c†[1]*c†[2]*c†[6]*c[5]*c[7]*c[10]+c†[8]*c[2]*c[3]*c[5]*c[6]*c[9]*c[10]+c†[1]*c†[4]*c†[6]*c†[8]*c†[10]*c[2]*c[5]*c[9] + ...=#
 ```
 
