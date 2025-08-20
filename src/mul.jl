@@ -8,9 +8,10 @@ mutable struct NCMul{C,S,F}
 end
 Base.convert(::Type{NCMul{C,S,F}}, x::NCMul{<:Any,S,F}) where {C,S,F} = NCMul(convert(C, x.coeff), x.factors)
 Base.convert(::Type{NCMul{C,S,F}}, x::NCMul) where {C,S,F} = NCMul(convert(C, x.coeff), F(x.factors))
+Base.promote_rule(::Type{NCMul{C,S,F}}, x::Type{NCMul{C2,S2,F2}}) where {C,S,F,C2,S2,F2} = NCMul{promote_type(C, C2),promote_type(S, S2),promote_type(F, F2)}
+
 Base.copy(x::NCMul) = NCMul(copy(x.coeff), copy(x.factors))
 isscalar(x::NCMul) = length(x.factors) == 0
-Base.promote_rule(::Type{NCMul{C,S,F}}, x::Type{NCMul{C2,S2,F2}}) where {C,S,F,C2,S2,F2} = NCMul{promote_type(C, C2),promote_type(S, S2),promote_type(F, F2)}
 
 function Base.show(io::IO, x::NCMul)
     print_coeff = !isone(x.coeff)
@@ -57,7 +58,6 @@ catenate(x::NCMul, others...) = NCMul(x.coeff * prod(y -> y.coeff, others), vcat
 
 function Base.adjoint(x::NCMul)
     length(x.factors) == 0 && return NCMul(adjoint(x.coeff), x.factors)
-    # adjoint(x.coeff) * foldr(*, Iterators.reverse(Iterators.map(adjoint, x.factors)))
     ncmul = NCMul(adjoint(x.coeff), collect(Iterators.reverse(Iterators.map(adjoint, x.factors))))
     if eager(x)
         return bubble_sort!(ncmul, Ordering(ncmul))

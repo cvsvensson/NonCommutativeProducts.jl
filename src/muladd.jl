@@ -17,15 +17,13 @@ function Base.:+(_a::NCMul, _b::NCMul)
     return NCAdd(0, Dict(NCMul(1, a.factors) => a.coeff, NCMul(1, b.factors) => b.coeff))
 end
 
-Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add(b))
-Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add(b))
+Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add_dict(b))
+Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add_dict(b))
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
-Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, mergewith!!(+, to_add(a), b.dict))
+Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, mergewith!!(+, to_add_dict(a), b.dict))
+Base.convert(::Type{NCAdd{C,NCMul{C,S,F},D}}, x::NCMul{C,S,F}) where {C,S,F,D} = NCAdd(zero(C), D(to_add_dict(x)))
 
-to_add(a::NCMul, coeff=1) = Dict(NCMul(1, a.factors) => a.coeff * coeff)
-# to_add(a, coeff=1) = Dict(NCMul(a) => coeff)
-# to_add_tuple(a::NCMul, coeff=1) = (NCMul(1, a.factors) => a.coeff * coeff,)
-# to_add_tuple(a, coeff=1) = (NCMul(a) => coeff,)
+to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => a.coeff)
 
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)

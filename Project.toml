@@ -1,7 +1,7 @@
 name = "NonCommutativeProducts"
 uuid = "a9a0a982-c603-4485-bf80-6b61b825abb4"
 authors = ["Viktor Svensson <13223396+cvsvensson@users.noreply.github.com> and contributors"]
-version = "0.3.3"
+version = "0.3.4"
 
 [deps]
 BangBang = "198e06fe-97b7-11e9-32a5-e1d131e6ad66"
@@ -11,9 +11,9 @@ TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 [compat]
 BangBang = "0.4"
 LinearAlgebra = "1"
+Test = "1"
 TestItems = "1"
 julia = "1.11"
-Test = "1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

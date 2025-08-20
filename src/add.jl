@@ -1,4 +1,4 @@
-function filter_scalars!(d::Dict{K,V}) where {K<:NCMul,V}
+function filter_scalars!(d::AbstractDict{K,V}) where {K<:NCMul,V}
     coeff = zero(V)
     for (k, v) in d
         if isscalar(k)
@@ -8,7 +8,7 @@ function filter_scalars!(d::Dict{K,V}) where {K<:NCMul,V}
     end
     return coeff
 end
-function filter_zeros!(d::Dict{K,V}) where {K<:NCMul,V}
+function filter_zeros!(d::AbstractDict{K,V}) where {K<:NCMul,V}
     for (k, v) in d
         if iszero(v)
             delete!(d, k)
@@ -20,15 +20,11 @@ end
 mutable struct NCAdd{C,K,D}
     coeff::C
     dict::D
-    function NCAdd(coeff::C, dict::Dict{K,C}; keep_zeros=false) where {C,K}
+    function NCAdd(coeff::C, dict::D; keep_zeros=false) where {C,D<:AbstractDict}
         keep_zeros || filter_zeros!(dict)
         coeff += filter_scalars!(dict)
-        new{C,K,Dict{K,C}}(coeff, dict)
+        new{promote_type(C, valtype(D)),keytype(D),D}(coeff, dict)
     end
-end
-function NCAdd(coeff::C, dict::Dict{K,V}; kwargs...) where {C,K,V}
-    T = promote_type(C, V)
-    NCAdd(T(coeff), Dict{K,T}(dict); kwargs...)
 end
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
@@ -114,7 +110,7 @@ Base.:+(a::NCAdd, b::B) where B<:NCMul = b + a
 Base.:/(a::MulAdd, b::Number) = inv(b) * a
 Base.:-(a::Union{Number,UniformScaling}, b::MulAdd) = a + (-b)
 Base.:-(a::MulAdd, b::Union{Number,MulAdd,UniformScaling}) = a + (-b)
-Base.:-(a::NCAdd) = NCAdd(-a.coeff, Dict(k => -v for (k, v) in pairs(a.dict)))
+Base.:-(a::NCAdd) = (-1) * a
 function Base.:+(a::NCAdd, b::NCAdd)
     coeff = a.coeff + b.coeff
     dict = mergewith(+, a.dict, b.dict)
@@ -153,7 +149,15 @@ end
 additive_coeff(a::NCAdd) = a.coeff
 additive_coeff(a::NCMul) = 0
 
-Base.:*(x::Number, a::NCAdd) = NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
+function Base.:*(x::C, a::NCAdd{C2}) where {C<:Number,C2}
+    if promote_type(C, C2) <: C2
+        dictcopy = copy(a.dict)
+        map!(v -> x * v, values(dictcopy))
+        return NCAdd(x * a.coeff, dictcopy)
+    else
+        return NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
+    end
+end
 Base.:*(a::NCAdd, x::Number) = x * a
 
 function Base.:*(a::NCAdd, b::NCMul)

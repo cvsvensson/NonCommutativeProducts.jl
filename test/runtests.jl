@@ -36,6 +36,8 @@ end
 @testitem "Fermions" setup = [Fermions] begin
     import NonCommutativeProducts: filter_zeros!, bubble_sort
     using Symbolics, LinearAlgebra
+    using Random: seed!
+    seed!(1)
 
     @variables a::Real z::Complex
     f1 = Fermion(:a)
@@ -127,7 +129,6 @@ end
         elseif a.label < b.label
             return nothing # a*b => a*b
         elseif a.label > b.label
-            a.label == b.label && return AddTerms(Swap(-1), 1) # a*b => -b*a + 1
             return Swap(-1) # a*b => -b*a
         else
             throw(ArgumentError("Don't know how to multiply $a * $b"))
@@ -137,6 +138,8 @@ end
 
 @testitem "Majoranas" setup = [Majoranas] begin
     using Symbolics
+    using Random: seed!
+    seed!(1)
     @variables a::Real z::Complex
     γ = Majorana.(1:4)
 
