@@ -34,7 +34,7 @@ using TestItemRunner
 end
 
 @testitem "Fermions" setup = [Fermions] begin
-    import NonCommutativeProducts: filter_zeros!, bubble_sort
+    import NonCommutativeProducts: bubble_sort
     using Symbolics, LinearAlgebra
     using Random: seed!
     seed!(1)
@@ -50,7 +50,8 @@ end
     @test 1 * f1 == f1
     @test 1 * f1 + 0 == f1
     @test 1 * f1 + 0 == 1 * f1
-    @test 0 * f1  == 1
+    @test 0 * f1 == 0
+    @test 1 * f1 !== 1
     @test 0 * f1 + 1 == 1
     @test hash(f1) == hash(1 * f1) == hash(1 * f1 + 0)
 
