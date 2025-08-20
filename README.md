@@ -10,9 +10,7 @@
 ## Example: Fermions
 
 Let's see how to define fermions which satisfy
-<p align="center">
-  <img src="https://latex.codecogs.com/svg.image?\bg{white}\begin{align}\{c_i^\dagger,c_j\}&=\delta_{ij}\\\{c_i,c_j\}&=0\\\{c_i^\dagger,c_j^\dagger\}&=0.\end{align}">
-</p>
+$$ \begin{align*}\{c_i^\dagger,c_j\}&=\delta_{ij}\\\{c_i,c_j\}&=0\\\{c_i^\dagger,c_j^\dagger\}&=0.\end{align*} $$
 
 We'll sort them in normal order i.e. all creation operators appear before annihilation operators. First let's define a struct representing a fermion.
 ```julia
