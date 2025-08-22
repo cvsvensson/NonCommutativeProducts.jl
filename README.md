@@ -16,9 +16,14 @@ What you need to make it work is
 To let the package handle the arithmetic of the type `T` you can use either `@nc T` or `@nc_eager T O`, which will define multiplication and addition for the type `T`. The difference between the two macros is that `@nc` only sorts things when explicitly prompted, while `@nc_eager` will apply the ordering `O` at every multiplication.
 
 The function `mul_effect(a::T, b::T, o::O)` defines the behaviour of `a*b` under the ordering `O`. The return values can be
-* `nothing`: Keeps the order `a*b`. This return value is important as the sorting only terminates when this is the return value for each neighbouring pair product. If you don't have this, you'll get stuck in an infinite loop.
-* `Swap(λ)`: Swaps the order of `a` and `b` and multiplies by a scalar `λ`.
-* `AddTerms(terms)`: `a*b` should be replaced by multiple terms. `terms` should be an iterable such as a vector or a tuple, and the elements can be numbers, `Swap`, `T`, or an `NCMul` containing `T`.
+* `nothing`: Keeps `a*b`. This return value is important as the sorting only terminates when this is the return value for each neighbouring pair product. If you don't have this, you'll get stuck in an infinite loop.
+* `λ::Number`: replaces `a*b` by `λ`.
+* `x::T`: replaces `a*b` by `x`
+* `NCMul(λ::Number, xs::Vector{T})`: replaces `a*b` by `λ*x[1]*x[2]...`
+* `Swap(λ::Number)`: Replaces `a*b` by `λ*b*a`. This is an instance of the rule above but more convenient.
+* `AddTerms(terms)`: `a*b` should be replaced by a sum of terms. `terms` should be an iterable such as a vector or a tuple, and the elements can be of the four types above.
+
+This is a young package and not every combination has been tested thoroughly. Do write tests for your specific use case to verify that it works and please report any bugs here.
 
 No names are currently exported from the package, so you'll need to import the names you need.
 
