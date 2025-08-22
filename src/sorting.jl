@@ -124,8 +124,8 @@ end
 bubble_sort(a::Number, ordering; kwargs...) = a
 function mul_effect end
 
-@testitem "Signed permutation" begin
-    import NonCommutativeProducts: bubble_sort, Swap, @nc, NCMul, mul_effect
+@testitem "Collecting powers, signed swap" begin
+    import NonCommutativeProducts: bubble_sort, Swap, @nc, NCMul, mul_effect, AddTerms
 
     struct NCInt
         n::Int
@@ -146,10 +146,10 @@ function mul_effect end
     ab = a * b
     @test ab == NCMul(1, [a, b])
     ab2 = bubble_sort(ab, IntOrder())
-    ab3 = -bubble_sort(b * a, IntOrder())
-    @test ab == ab2 == ab3
+    ab3 = bubble_sort(b * a, IntOrder())
+    @test ab == ab2 == -ab3
     @test hash(ab) == hash(ab2)
-    @test bubble_sort(ab * a, IntOrder()) == bubble_sort(-1 * (a * ab), IntOrder())
+    @test bubble_sort(ab * a, IntOrder()) == -1 * bubble_sort((a * ab), IntOrder())
 
     op = bubble_sort(prod([a, b, c, d, a, b, c, d, a, b]), IntOrder())
     @test length(op.dict) == 1

@@ -5,7 +5,24 @@
 [![Build Status](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl)
 
-**NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. This readme shows how to define and sort fermions, and the tests also shows majorana fermions.
+**NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. 
+
+## How to do it
+What you need to make it work is
+* A type `T` that represents your non-commuting objects.
+* A type `O` that represents the ordering.
+* Overload `mul_effect(a::T, b::T, o::O)` to define the behaviour of `a*b` under the ordering `O`.
+
+To let the package handle the arithmetic of the type `T` you can use either `@nc T` or `@nc_eager T O`, which will define multiplication and addition for the type `T`. The difference between the two macros is that `@nc` only sorts things when explicitly prompted, while `@nc_eager` will apply the ordering `O` at every multiplication.
+
+The function `mul_effect(a::T, b::T, o::O)` defines the behaviour of `a*b` under the ordering `O`. The return values can be
+* `nothing`: Keeps the order `a*b`. This return value is important as the sorting only terminates when this is the return value for each neighbouring pair product. If you don't have this, you'll get stuck in an infinite loop.
+* `Swap(λ)`: Swaps the order of `a` and `b` and multiplies by a scalar `λ`.
+* `AddTerms(terms)`: `a*b` should be replaced by multiple terms. `terms` should be an iterable such as a vector or a tuple, and the elements can be numbers, `Swap`, `T`, or an `NCMul` containing `T`.
+
+No names are currently exported from the package, so you'll need to import the names you need.
+
+Let's look at an example that shows how to define and sort fermions. The tests of this package contains a similar example with majorana fermions, and another test shows how one can collect powers.
 
 ## Example: Fermions
 
@@ -28,15 +45,15 @@ Base.adjoint(x::Fermion) = Fermion(x.label, !x.dagger)
 Fermion(k) = Fermion(k, false)
 Base.show(io::IO, x::Fermion) = print(io, "c", x.dagger ? "†" : "", "[", x.label, "]")
 ```
-Then, we need to hook up our struct to the package to let it handle the arithmetic. Use either `@nc Fermion` or `@nc_eager Fermion Ordering`. The difference is that `@nc` only sorts things when explicitly prompted, while `@nc_eager` will apply them eagerly according to `Ordering`. Let's do it eagerly here.
+Then, we need to hook up our struct to the package to let it handle the arithmetic. Let's do it eagerly here with `@nc_eager`. Let's load the package and import the functions we are gonna use.
 ```julia
 using NonCommutativeProducts
 import NonCommutativeProducts: Swap, AddTerms, @nc_eager, mul_effect
-struct NormalOrder end
-@nc_eager Fermion NormalOrder()
 ```
 Now let's define what happens when we multiply two fermions under normal ordering.
 ```julia
+struct NormalOrder end
+@nc_eager Fermion NormalOrder()
 function mul_effect(a::Fermion, b::Fermion, ::NormalOrder)
     # If the fermion is multiplied with itself, we replace it by zero. 
     a.label == b.label && a.dagger == b.dagger && return 0 
