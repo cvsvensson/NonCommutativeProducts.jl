@@ -216,7 +216,7 @@ end
 
     m = NonCommutativeProducts.NCMul(2, [γ[1]])
     @test substitute(m, Dict(γ[1] => γ[2])) == 2 * γ[2]
-    NonCommutativeProducts.arguments(m) == [2, γ[1]]
+    NonCommutativeProducts.TermInterface.arguments(m) == [2, γ[1]]
 end
 
 @run_package_tests
