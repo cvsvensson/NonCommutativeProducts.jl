@@ -200,5 +200,19 @@ end
     bigprod2 = prod(Majorana(rand(1:15)) + Majorana(rand(1:15)) for k in 1:10)
     @test NonCommutativeProducts.bubble_sort(bigprod2, Majoranas.Ordering()) == bigprod2
     @test NonCommutativeProducts.bubble_sort(bigprod2', Majoranas.Ordering()) == bigprod2'
+
+    ## TermInterface
+    @test substitute(γ[1], Dict(γ[1] => γ[2])) == γ[2]
+    @test substitute(1 * γ[1], Dict(γ[1] => γ[2])) == γ[2]
+    @test substitute(1 * γ[1] * γ[2], Dict(γ[1] => γ[2])) == γ[2]^2
+
+    @test substitute(γ[1] + γ[2], Dict(γ[1] => γ[2])) == 2γ[2]
+    @test substitute(1 * γ[1] + γ[2], Dict(γ[1] => γ[2])) == 2γ[2]
+    @test substitute(1 * γ[1] * γ[2] + γ[2], Dict(γ[1] => γ[2])) == γ[2]^2 + γ[2]
+
+    @test substitute(γ[1] + γ[2] + 1, Dict(γ[1] => γ[2])) == 2γ[2] + 1
+    @test substitute(1 * γ[1] + γ[2] + 1, Dict(γ[1] => γ[2])) == 2γ[2] + 1
+    @test substitute(1 * γ[1] * γ[2] + 1.0 * γ[2] + 1, Dict(γ[1] => γ[2])) == γ[2]^2 + γ[2] + 1
 end
+
 @run_package_tests
