@@ -213,6 +213,10 @@ end
     @test substitute(γ[1] + γ[2] + 1, Dict(γ[1] => γ[2])) == 2γ[2] + 1
     @test substitute(1 * γ[1] + γ[2] + 1, Dict(γ[1] => γ[2])) == 2γ[2] + 1
     @test substitute(1 * γ[1] * γ[2] + 1.0 * γ[2] + 1, Dict(γ[1] => γ[2])) == γ[2]^2 + γ[2] + 1
+
+    m = NonCommutativeProducts.NCMul(2, [γ[1]])
+    @test substitute(m, Dict(γ[1] => γ[2])) == 2 * γ[2]
+    NonCommutativeProducts.arguments(m) == [2, γ[1]]
 end
 
 @run_package_tests

@@ -17,7 +17,7 @@ TermInterface.children(x::NCMul) = arguments(x)
 ##
 function TermInterface.arguments(x::NCAdd{C1,NCMul{C2,T,F}}) where {C1,C2,T,F}
     C = promote_type(C1, C2)
-    args = [NCMul{C,T,F}(x.coeff, T[])]
+    args = NCMul{C,T,F}[NCMul(C(x.coeff), T[])]
     for (k, v) in x.dict
         args = push!(args, v * k)
     end
@@ -28,8 +28,10 @@ function TermInterface.maketerm(::Type{NCAdd}, head, args, metadata)
     sum(args)
 end
 
-function TermInterface.arguments(x::NCMul)
-    [x.coeff, x.factors...]
+function TermInterface.arguments(x::NCMul{C,T,F}) where {C,T,F}
+    args = Union{C,T}[x.coeff]
+    append!(args, x.factors)
+    args
 end
 function TermInterface.maketerm(::Type{NCMul}, head, args, metadata)
     @assert head == :* "Head must be :* for NCMul"
