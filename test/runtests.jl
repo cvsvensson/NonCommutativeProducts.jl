@@ -46,7 +46,7 @@ end
 
     function NonCommutativeProducts.mul_effect(a::Boson, b::Boson)
         sign(a.exp) == sign(b.exp) && return Boson(a.exp + b.exp)
-        if a.exp > 0 && b.exp < 0
+        if a.exp < 0 && b.exp > 0
             return AddTerms((Swap(1), 1))
         else
             return nothing
@@ -229,8 +229,7 @@ end
     import NonCommutativeProducts: bubble_sort, @nc
     using Symbolics, LinearAlgebra
     using Random: seed!
-    # NonCommutativeProducts.mul_effect(::Fermion, ::Boson) = NonCommutativeProducts.Swap(1)
-    # NonCommutativeProducts.mul_effect(::Boson, ::Fermion) = nothing
+    NonCommutativeProducts.enable_autosort!()
     NonCommutativeProducts.@commutative Fermion Boson
     @variables a::Real z::Complex
     f1 = Fermion(:a)
