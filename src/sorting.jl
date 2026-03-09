@@ -75,7 +75,7 @@ function __bubble_sort!(terms::Vector, index, start)
     end
     done = no_effect
     newstart = i - 1
-    return terms::Vector, done, newstart
+    return terms, done, newstart
 end
 
 

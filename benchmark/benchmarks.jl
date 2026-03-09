@@ -13,7 +13,8 @@ Base.adjoint(x::Fermion) = Fermion(x.label, !x.creation)
 Fermion(k) = Fermion(k, false)
 Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
 
-@nc Fermion true
+@nc Fermion
+NonCommutativeProducts.enable_autosort!()
 function should_swap(a::Fermion, b::Fermion)
     if a.creation == b.creation
         return a.label > b.label
