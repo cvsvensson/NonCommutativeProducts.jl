@@ -4,7 +4,7 @@ using Random
 const SUITE = BenchmarkGroup()
 Random.seed!(1)
 
-import NonCommutativeProducts: AddTerms, Swap, @nc_eager
+import NonCommutativeProducts: AddTerms, Swap, @nc
 struct Fermion{L}
     label::L
     creation::Bool
@@ -13,9 +13,8 @@ Base.adjoint(x::Fermion) = Fermion(x.label, !x.creation)
 Fermion(k) = Fermion(k, false)
 Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
 
-struct Ordering end
-@nc_eager Fermion Ordering()
-function should_swap(a::Fermion, b::Fermion, ::Ordering)
+@nc Fermion true
+function should_swap(a::Fermion, b::Fermion)
     if a.creation == b.creation
         return a.label > b.label
     else
@@ -23,9 +22,9 @@ function should_swap(a::Fermion, b::Fermion, ::Ordering)
     end
 end
 
-function NonCommutativeProducts.mul_effect(a::Fermion, b::Fermion, ordering::Ordering)
+function NonCommutativeProducts.mul_effect(a::Fermion, b::Fermion)
     a == b && return 0 # a*b => 0
-    if should_swap(a, b, ordering)
+    if should_swap(a, b)
         a.label == b.label && xor(a.creation, b.creation) && return AddTerms((Swap(-1), 1)) #  a*b => -b*a + 1
         return Swap(-1) # a*b => -b*a
     else

@@ -26,6 +26,8 @@ mutable struct NCAdd{C,K,D}
         new{promote_type(C, valtype(D)),keytype(D),D}(coeff, dict)
     end
 end
+Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D} = NCAdd(convert(C, x.coeff), D(x.dict))
+
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
     add!!(x, filter_scalars!(x.dict))
@@ -58,15 +60,15 @@ function print_coeff(io, coeff)
         print(io, "(", coeff, ")", "I")
     end
 end
-function Base.show(io::IO, x::NCAdd; max_terms = 3)
+function Base.show(io::IO, x::NCAdd; max_terms=3)
     compact = get(io, :compact, false)
     print_one = !iszero(x.coeff) || length(x.dict) == 0
     compact = length(x.dict) > max_terms
     print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
-    
+
     compact && println(io, "Sum with ", length(x.dict) + !iszero(x.coeff), " terms: ")
     N = min(max_terms, length(x.dict))
-    
+
     print_one && print_coeff(io, x.coeff)
     for (n, (k, v)) in enumerate(pairs(x.dict))
         n > max_terms && break
@@ -184,8 +186,8 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
             c = add!!(c, newterm)
         end
     end
-    if eager(c)
-        c = bubble_sort(c, Ordering(c))
+    if autosort()
+        c = bubble_sort(c)
     end
     return c
 end

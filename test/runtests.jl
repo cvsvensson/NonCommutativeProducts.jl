@@ -1,7 +1,7 @@
 using TestItemRunner
 
 @testmodule Fermions begin
-    export Fermion, Ordering
+    export Fermion
     using NonCommutativeProducts
     import NonCommutativeProducts: AddTerms, Swap, @nc
     struct Fermion{L}
@@ -13,8 +13,7 @@ using TestItemRunner
     Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
     @nc Fermion
 
-    struct Ordering end
-    function should_swap(a::Fermion, b::Fermion, ::Ordering)
+    function should_swap(a::Fermion, b::Fermion)
         if a.creation == b.creation
             return a.label > b.label
         else
@@ -22,11 +21,37 @@ using TestItemRunner
         end
     end
 
-    function NonCommutativeProducts.mul_effect(a::Fermion, b::Fermion, ordering::Ordering)
+    function NonCommutativeProducts.mul_effect(a::Fermion, b::Fermion)
         a == b && return 0 # a*b => 0
-        if should_swap(a, b, ordering)
+        if should_swap(a, b)
             a.label == b.label && xor(a.creation, b.creation) && return AddTerms((Swap(-1), 1)) #  a*b => -b*a + 1
             return Swap(-1) # a*b => -b*a
+        else
+            return nothing
+        end
+    end
+end
+
+@testmodule Bosons begin
+    export Boson
+    using NonCommutativeProducts
+    import NonCommutativeProducts: AddTerms, Swap, @nc
+    struct Boson
+        exp::Int
+    end
+    Base.adjoint(x::Boson) = Boson(-x.exp)
+    Boson() = Boson(-1)
+    Base.show(io::IO, x::Boson) = print(io, "b", x.exp > 0 ? "†" : "", abs(x.exp) > 1 ? "^($(x.exp))" : "")
+    @nc Boson
+
+    function should_swap(a::Boson, b::Boson)
+        a.exp > 0 && b.exp < 0
+    end
+
+    function NonCommutativeProducts.mul_effect(a::Boson, b::Boson)
+        sign(a.exp) == sign(b.exp) && return Boson(a.exp + b.exp)
+        if should_swap(a, b)
+            return Swap(1)
         else
             return nothing
         end
@@ -43,7 +68,7 @@ end
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     f3 = Fermion((1, :↑))
-    ord(op) = bubble_sort(op, Fermions.Ordering())
+    ord(op) = bubble_sort(op)
     ord_equals(a, b) = iszero(ord(a - b))
     ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
 
@@ -118,15 +143,16 @@ end
 @testmodule Majoranas begin
     using NonCommutativeProducts
     export Majorana
-    import NonCommutativeProducts: AddTerms, Swap, mul_effect, @nc_eager
+    import NonCommutativeProducts: AddTerms, Swap, mul_effect, @nc
     struct Majorana{L}
         label::L
     end
     Base.adjoint(x::Majorana) = Majorana(x.label)
     Base.show(io::IO, x::Majorana) = print(io, "γ[", x.label, "]")
-    struct Ordering end
-    @nc_eager Majorana Ordering()
-    function NonCommutativeProducts.mul_effect(a::Majorana, b::Majorana, ::Ordering)
+
+    @nc Majorana
+    NonCommutativeProducts.enable_autosort!()
+    function NonCommutativeProducts.mul_effect(a::Majorana, b::Majorana)
         if a.label == b.label
             return 1 # a*b => 1
         elseif a.label < b.label
@@ -196,9 +222,34 @@ end
     @test f1 - 1 == (1 * f1) - 1 == (0.5 + f1) - 1.5
 
     bigprod = prod(Majorana(rand(1:15)) for k in 1:20)
-    @test NonCommutativeProducts.bubble_sort(bigprod, Majoranas.Ordering()) == bigprod
+    @test NonCommutativeProducts.bubble_sort(bigprod) == bigprod
     bigprod2 = prod(Majorana(rand(1:15)) + Majorana(rand(1:15)) for k in 1:10)
-    @test NonCommutativeProducts.bubble_sort(bigprod2, Majoranas.Ordering()) == bigprod2
-    @test NonCommutativeProducts.bubble_sort(bigprod2', Majoranas.Ordering()) == bigprod2'
+    @test NonCommutativeProducts.bubble_sort(bigprod2) == bigprod2
+    @test NonCommutativeProducts.bubble_sort(bigprod2') == bigprod2'
 end
+
+
+@testitem "Fermions+Bosons" setup = [Fermions, Bosons] begin
+    import NonCommutativeProducts: bubble_sort, @nc
+    using Symbolics, LinearAlgebra
+    using Random: seed!
+    # NonCommutativeProducts.mul_effect(::Fermion, ::Boson) = NonCommutativeProducts.Swap(1)
+    # NonCommutativeProducts.mul_effect(::Boson, ::Fermion) = nothing
+    NonCommutativeProducts.@commutative Fermion Boson
+    @variables a::Real z::Complex
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    b = Boson()
+
+    @test b * b == b^2
+    @test (b + f1) * (b' + f2) == b' * b + b' * f1 + f2 * b + f1 * f2
+
+    @test 1 * f1 * b == b * f1
+    @test 1 * f1 + b == f1 + b
+    @test b * 1 * f1 + 0 == b * 1 * f1
+    @test 0 * (f1 * b) == 0
+    @test hash(f1 * b) == hash(1 * f1 * b) == hash(1 * b * f1 + 0)
+
+end
+
 @run_package_tests
