@@ -126,8 +126,7 @@ end
     SpinOp(label) = SpinOp(label, :z)
 
     function Base.show(io::IO, x::SpinOp)
-        syms = Dict(:z => "z", :+ => "+", :- => "-")
-        print(io, "S", syms[x.op], "[$(x.label)]")
+        print(io, "S", x.op, "[$(x.label)]")
     end
 
     @nc SpinOp

@@ -44,14 +44,10 @@ end
     Base.show(io::IO, x::Boson) = print(io, "b", x.exp > 0 ? "†" : "", abs(x.exp) > 1 ? "^($(x.exp))" : "")
     @nc Boson
 
-    function should_swap(a::Boson, b::Boson)
-        a.exp > 0 && b.exp < 0
-    end
-
     function NonCommutativeProducts.mul_effect(a::Boson, b::Boson)
         sign(a.exp) == sign(b.exp) && return Boson(a.exp + b.exp)
-        if should_swap(a, b)
-            return Swap(1)
+        if a.exp > 0 && b.exp < 0
+            return AddTerms((Swap(1), 1))
         else
             return nothing
         end
@@ -242,14 +238,14 @@ end
     b = Boson()
 
     @test b * b == b^2
-    @test (b + f1) * (b' + f2) == b' * b + b' * f1 + f2 * b + f1 * f2
+    @test b * b' == b' * b + 1
+    @test (b + b' + f1)^2 == b^2 + b'^2 + f1^2 + b * b' + b' * b + 2 * b * f1 + 2 * b' * f1
 
     @test 1 * f1 * b == b * f1
     @test 1 * f1 + b == f1 + b
     @test b * 1 * f1 + 0 == b * 1 * f1
     @test 0 * (f1 * b) == 0
     @test hash(f1 * b) == hash(1 * f1 * b) == hash(1 * b * f1 + 0)
-
 end
 
-@run_package_tests verbose=true
+@run_package_tests verbose = true
