@@ -59,7 +59,6 @@ end
     using Symbolics, LinearAlgebra
     using Random: seed!
     seed!(1)
-
     @variables a::Real z::Complex
     f1 = Fermion(:a)
     f2 = Fermion(:b)
@@ -162,10 +161,8 @@ end
 end
 
 @testitem "Majoranas" setup = [Majoranas] begin
-    using Symbolics
     using Random: seed!
     seed!(1)
-    @variables a::Real z::Complex
     γ = Majorana.(1:4)
 
     @test 1 * γ[1] == γ[1]
@@ -226,12 +223,11 @@ end
 
 
 @testitem "Fermions+Bosons" setup = [Fermions, Bosons] begin
-    import NonCommutativeProducts: bubble_sort, @nc
-    using Symbolics, LinearAlgebra
+    import NonCommutativeProducts: bubble_sort, @nc, add!!
+    using LinearAlgebra
     using Random: seed!
     NonCommutativeProducts.enable_autosort!()
     NonCommutativeProducts.@commutative Fermion Boson
-    @variables a::Real z::Complex
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     b = Boson()
@@ -245,6 +241,16 @@ end
     @test b * 1 * f1 + 0 == b * 1 * f1
     @test 0 * (f1 * b) == 0
     @test hash(f1 * b) == hash(1 * f1 * b) == hash(1 * b * f1 + 0)
+
+    base = 1.0 + f1 + b
+    for term in (f2, b', f2 * b, f1 * b')
+        x = copy(base)
+        y = add!!(x, 1im * term) # should not mutate
+        @test y !== x
+        @test y == base + 1im * term
+        y = add!!(x, term) # should not mutate
+        @test y === x == base + term
+    end
 end
 
 @run_package_tests verbose = true
