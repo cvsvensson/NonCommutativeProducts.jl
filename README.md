@@ -8,14 +8,9 @@
 **NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. 
 
 ## How to do it
-What you need to make it work is
-* A type `T` that represents your non-commuting objects.
-* A type `O` that represents the ordering.
-* Overload `mul_effect(a::T, b::T, o::O)` to define the behaviour of `a*b` under the ordering `O`.
+With a list of types `Ts` that represents your non-commuting objects, call `@nc Ts...` which defines addition and multiplication for these types. In order to sort them, define `mul_effect(a::Tj, b::Tk)` for each pair of types to define the behaviour of `a*b`.
 
-To let the package handle the arithmetic of the type `T` you can use either `@nc T` or `@nc_eager T O`, which will define multiplication and addition for the type `T`. The difference between the two macros is that `@nc` only sorts things when explicitly prompted, while `@nc_eager` will apply the ordering `O` at every multiplication.
-
-The function `mul_effect(a::T, b::T, o::O)` defines the behaviour of `a*b` under the ordering `O`. The return values can be
+The function `mul_effect(a::Tj, b::Tk)` can have return values 
 * `nothing`: Keeps `a*b`. This return value is important as the sorting only terminates when this is the return value for each neighbouring pair product. If you don't have this, you'll get stuck in an infinite loop.
 * `λ::Number`: replaces `a*b` by `λ`.
 * `x::T`: replaces `a*b` by `x`
@@ -50,41 +45,50 @@ Base.adjoint(x::Fermion) = Fermion(x.label, !x.dagger)
 Fermion(k) = Fermion(k, false)
 Base.show(io::IO, x::Fermion) = print(io, "c", x.dagger ? "†" : "", "[", x.label, "]")
 ```
-Then, we need to hook up our struct to the package to let it handle the arithmetic. Let's do it eagerly here with `@nc_eager`. Let's load the package and import the functions we are gonna use.
+Then, we need to hook up our struct to the package to let it handle the arithmetic. Let's load the package and import the functions we are gonna use.
 ```julia
 using NonCommutativeProducts
-import NonCommutativeProducts: Swap, AddTerms, @nc_eager, mul_effect
+import NonCommutativeProducts: Swap, AddTerms, @nc, mul_effect
+@nc Fermion
 ```
-Now let's define what happens when we multiply two fermions under normal ordering.
+Now one can create expressions with these fermions,
 ```julia
-struct NormalOrder end
-@nc_eager Fermion NormalOrder()
-function mul_effect(a::Fermion, b::Fermion, ::NormalOrder)
+Fermion(1)'*Fermion(1) + 1
+```
+but they can't be sorted. To sort them in normal order, we define 
+```julia
+function mul_effect(a::Fermion, b::Fermion)
     # If the fermion is multiplied with itself, we replace it by zero. 
     a.label == b.label && a.dagger == b.dagger && return 0 
     # if a is annihilation and b is creation, we should swap them
     if !a.dagger && b.dagger 
-        if a.label !== b.label 
+        if a.label != b.label 
             return Swap(-1) # Swaps them and multiplies by -1
         end
         # If their labels are the same, swap and add an extra term
         return AddTerms((Swap(-1), 1)) 
+    elseif a.dagger == b.dagger && a.label > b.label
+        return Swap(-1) # If b has smaller label than a, swap them and multiply by -1
     else
         return nothing # No effect
     end
 end
 ```
-Now we can multiply and add these fermions. Normal order will be applied directly.
+Now we can sort expression involving fermions while respecting the commutation relations.
 ```julia
-Fermion(1)'*Fermion(1)
+Fermion(1)'*Fermion(1) |> sort
 #c†[1]*c[1]
-Fermion(1)*Fermion(1)'
+Fermion(1)*Fermion(1)' |> sort
 #1I - c†[1]*c[1]
-prod(Fermion(n) + Fermion(n)' for n in 1:4)
-#=Sum with 16 terms: 
-- c†[2]*c†[4]*c[1]*c[3] + c†[3]*c†[4]*c[1]*c[2] - c†[2]*c†[3]*c†[4]*c[1] + ...=#
 ```
-Note that with this ordering, some terms might be equivalent to others under further swaps. One could also sort the terms via their label to get a unique representation, which is done in the examples in the tests of this package. 
+In order automatically sort them on each multiplication, we can call `enable_autosort!`:
+```julia
+NonCommutativeProducts.enable_autosort!()
+Fermion(1)*Fermion(1)'
+prod(Fermion(n) + Fermion(n)' for n in 1:4) 
+#=Sum with 16 terms: 
+ -c†[1]*c†[2]*c†[4]*c[3] + c†[1]*c[2]*c[3]*c[4] + c†[1]*c†[3]*c†[4]*c[2] + ...=#
+```
 
 ## Remarks
 
@@ -92,7 +96,7 @@ This package is flexible, but not very efficient. Sorting is done via bubble sor
 
 ```julia
 @time op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
-#=0.327861 seconds (3.05 M allocations: 129.336 MiB, 12.88% compilation time)
+#=0.264353 seconds (4.34 M allocations: 155.466 MiB, 24.44% gc time, 8.75% compilation time)
 Sum with 59049 terms: 
 1I-c†[1]*c†[2]*c†[6]*c[5]*c[7]*c[10]+c†[8]*c[2]*c[3]*c[5]*c[6]*c[9]*c[10]+c†[1]*c†[4]*c†[6]*c†[8]*c†[10]*c[2]*c[5]*c[9] + ...=#
 ```
@@ -104,12 +108,12 @@ op = 0
 @time for n in 1:100
     op += Fermion(n)'*Fermion(n)
 end
- #  0.000192 seconds (1.84 k allocations: 371.699 KiB)
+ #  0.000251 seconds (2.55 k allocations: 311.127 KiB)
 
 op2 = zero(op)
 @time for n in 1:100
     op2 = NonCommutativeProducts.add!!(op2, Fermion(n)'*Fermion(n))
 end
-#  0.000130 seconds (1.41 k allocations: 83.998 KiB)
+#  0.000192 seconds (2.12 k allocations: 106.404 KiB)
 op == op2 #true
 ```

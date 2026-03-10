@@ -6,7 +6,10 @@ struct Swap{T}
     λ::T
 end
 
-
+Base.sort(a::NCMul) = bubble_sort(a)
+Base.sort(a::NCAdd) = bubble_sort(a)
+Base.sort!(a::NCMul) = bubble_sort!(a)
+Base.sort!(a::NCAdd) = bubble_sort!(a)
 function bubble_sort(a::NCMul)
     return bubble_sort!(copy(a))
 end
