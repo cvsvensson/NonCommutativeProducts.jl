@@ -30,24 +30,16 @@ end
 Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add_dict(b))
 Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add_dict(b))
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
-# Base.:+(a::NCMul, b::NCAdd) = NCAdd(b.coeff, mergewith!!(+, to_add_dict(a), b.dict))
 function Base.:+(a::NCMul, b::NCAdd)
     newdict = copy(b.dict)
     for (k, v) in b.dict
         if k.factors == a.factors
             newdict[k] = v + a.coeff
             return NCAdd(b.coeff, newdict)
-            # return NCAdd(b.coeff, setindex!!(newdict, k => v + ))
         end
     end
-    # println(newdict)
-    # println(a.factors)
-    # println(a.coeff)
-    # println(setindex!!(newdict, NCMul(1, a.factors), a.coeff))
     nc = NCAdd(b.coeff, setindex!!(newdict, a.coeff, NCMul(1, a.factors)))
     return nc
-
-    # NCAdd(b.coeff, mergewith!!(+, to_add_dict(a), b.dict))
 end
 Base.convert(::Type{NCAdd{C,NCMul{C,S,F},D}}, x::NCMul{C,S,F}) where {C,S,F,D} = NCAdd(zero(C), D(to_add_dict(x)))
 
