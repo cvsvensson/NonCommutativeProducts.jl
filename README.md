@@ -51,11 +51,12 @@ using NonCommutativeProducts
 import NonCommutativeProducts: Swap, AddTerms, @nc, mul_effect
 @nc Fermion
 ```
-Now one can create expressions with these fermions,
+Now one can add and multiply these fermions,
 ```julia
 Fermion(1)'*Fermion(1) + 1
+#1I + c†[1]*c[1]
 ```
-but they can't be sorted. To sort them in normal order, we define 
+but they can't be sorted. To sort them in normal order and by label, we define 
 ```julia
 function mul_effect(a::Fermion, b::Fermion)
     # If the fermion is multiplied with itself, we replace it by zero. 
@@ -84,7 +85,6 @@ Fermion(1)*Fermion(1)' |> sort
 In order automatically sort them on each multiplication, we can call `enable_autosort!`:
 ```julia
 NonCommutativeProducts.enable_autosort!()
-Fermion(1)*Fermion(1)'
 prod(Fermion(n) + Fermion(n)' for n in 1:4) 
 #=Sum with 16 terms: 
  -c†[1]*c†[2]*c†[4]*c[3] + c†[1]*c[2]*c[3]*c[4] + c†[1]*c†[3]*c†[4]*c[2] + ...=#
