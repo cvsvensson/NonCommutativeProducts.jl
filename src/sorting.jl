@@ -7,22 +7,22 @@ struct Swap{T}
 end
 
 
-function bubble_sort(a::NCMul, ordering)
-    return bubble_sort!(copy(a), ordering)
+function bubble_sort(a::NCMul)
+    return bubble_sort!(copy(a))
 end
-function bubble_sort!(a::NCMul, ordering)
+function bubble_sort!(a::NCMul)
     if length(a.factors) <= 1
         return a
     end
-    res = _bubble_sort!([a], ordering)
+    res = _bubble_sort!([a])
     return res
 end
-function bubble_sort(ncadd::NCAdd, ordering)
+function bubble_sort(ncadd::NCAdd)
     terms = collect(NCMul(v, copy(k.factors)) for (k, v) in pairs(ncadd.dict))
-    res = add!!(_bubble_sort!(terms, ordering), ncadd.coeff)
+    res = add!!(_bubble_sort!(terms), ncadd.coeff)
 end
-function _bubble_sort!(terms::Vector{T}, ordering) where {T<:NCMul}
-    sorted_terms = __bubble_sort!(terms, ordering)
+function _bubble_sort!(terms::Vector{T}) where {T<:NCMul}
+    sorted_terms = __bubble_sort!(terms)
     if length(sorted_terms) == 0
         return NCAdd(0, Dict{T,Int}())
     end
@@ -33,13 +33,13 @@ function _bubble_sort!(terms::Vector{T}, ordering) where {T<:NCMul}
     return filter_scalars!(filter_zeros!(newadd))
 end
 
-function __bubble_sort!(terms::Vector{T}, ordering) where {T<:NCMul}
+function __bubble_sort!(terms::Vector{T}) where {T<:NCMul}
     n = 1
     while n <= length(terms)
         done = false
         start = 1
         while !done && n <= length(terms)
-            terms, done, start = __bubble_sort!(terms, n, ordering, start)
+            terms, done, start = __bubble_sort!(terms, n, start)
             if iszero(terms[n].coeff)
                 done = false
                 start = 1
@@ -51,7 +51,7 @@ function __bubble_sort!(terms::Vector{T}, ordering) where {T<:NCMul}
     return terms
 end
 
-function __bubble_sort!(terms::Vector{NCMul{C,S,F}}, index, ordering, start) where {C,S,F}
+function __bubble_sort!(terms::Vector, index, start)
     no_effect = true
     ncmul = terms[index]
     if length(ncmul.factors) <= 1
@@ -62,8 +62,8 @@ function __bubble_sort!(terms::Vector{NCMul{C,S,F}}, index, ordering, start) whe
     N::Int = length(ncmul.factors)
     while no_effect && i < N - 1
         i += 1
-        a, b = ncmul.factors[i]::S, ncmul.factors[i+1]::S
-        effect = mul_effect(a, b, ordering)
+        a, b = ncmul.factors[i], ncmul.factors[i+1]
+        effect = mul_effect(a, b)
         isnothing(effect) && continue
 
         no_effect = false
@@ -75,7 +75,7 @@ function __bubble_sort!(terms::Vector{NCMul{C,S,F}}, index, ordering, start) whe
     end
     done = no_effect
     newstart = i - 1
-    return terms::Vector{NCMul{C,S,F}}, done, newstart
+    return terms, done, newstart
 end
 
 
@@ -121,7 +121,7 @@ function splice!!_and_add(ncmul::T, i, effect) where T<:NCMul
     return ncmul, T[]
 end
 
-bubble_sort(a::Number, ordering; kwargs...) = a
+bubble_sort(a::Number; kwargs...) = a
 function mul_effect end
 
 @testitem "Collecting powers, signed swap" begin
@@ -135,8 +135,7 @@ function mul_effect end
     Base.show(io::IO, x::NCInt) = print(io, "[$(x.n)^$(x.exp)]")
     Base.:(==)(a::NCInt, b::NCInt) = a.n == b.n
     @nc NCInt
-    struct IntOrder end
-    function mul_effect(a::NCInt, b::NCInt, ::IntOrder)
+    function mul_effect(a::NCInt, b::NCInt)
         (a.n == b.n && return NCInt(a.n, a.exp + b.exp)) # Collect powers
         a.n > b.n && return Swap(-1) # swap and multiply by -1
         return nothing # Do nothing
@@ -145,13 +144,13 @@ function mul_effect end
     a, b, c, d = NCInt.(1:4)
     ab = a * b
     @test ab == NCMul(1, [a, b])
-    ab2 = bubble_sort(ab, IntOrder())
-    ab3 = bubble_sort(b * a, IntOrder())
+    ab2 = bubble_sort(ab)
+    ab3 = bubble_sort(b * a)
     @test ab == ab2 == -ab3
     @test hash(ab) == hash(ab2)
-    @test bubble_sort(ab * a, IntOrder()) == -1 * bubble_sort((a * ab), IntOrder())
+    @test bubble_sort(ab * a) == -1 * bubble_sort((a * ab))
 
-    op = bubble_sort(prod([a, b, c, d, a, b, c, d, a, b]), IntOrder())
+    op = bubble_sort(prod([a, b, c, d, a, b, c, d, a, b]))
     @test length(op.dict) == 1
     @test map(x -> x.n, only(keys(op.dict)).factors) == 1:4
     @test sum(x -> x.exp, only(keys(op.dict)).factors) == 10
