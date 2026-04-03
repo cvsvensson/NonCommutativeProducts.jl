@@ -202,7 +202,8 @@ function Base.adjoint(x::NCAdd)
     end
     newx
 end
-Base.zero(::NCAdd{C,K,D}) where {C,K,D} = NCAdd(zero(C), D())
+
+Base.zero(::Type{NCAdd{C,K,D}}) where {C,K,D} = NCAdd(zero(C), D())
 
 @testitem "Consistency between + and add!!" setup = [Fermions] begin
     import NonCommutativeProducts: add!!

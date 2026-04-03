@@ -10,6 +10,7 @@ Base.convert(::Type{NCMul{C,S,F}}, x::NCMul{<:Any,S,F}) where {C,S,F} = NCMul{C,
 Base.convert(::Type{NCMul{C,S,F}}, x::NCMul) where {C,S,F} = NCMul{C,S,F}(convert(C, x.coeff), F(x.factors))
 Base.promote_rule(::Type{NCMul{C,S,F}}, x::Type{NCMul{C2,S2,F2}}) where {C,S,F,C2,S2,F2} = NCMul{promote_type(C, C2),promote_type(S, S2),promote_type(F, F2)}
 
+Base.zero(::Type{NCMul{C,S,F}}) where {C,S,F} = NCAdd(zero(C), Dict{NCMul{Int,S,F},C}())
 Base.copy(x::NCMul) = NCMul(copy(x.coeff), copy(x.factors))
 isscalar(x::NCMul) = length(x.factors) == 0
 

@@ -253,4 +253,27 @@ end
     end
 end
 
+@testitem "Zeros, promotion, conversion" setup = [Fermions] begin
+    f1 = Fermion(:a)
+    f1mul = 1 * f1
+    f1add = 1 * f1 + 0
+    @test zero(f1) == zero(f1mul) == zero(f1add) == 0
+    @test zero(typeof(f1)) == zero(typeof(f1mul)) == zero(typeof(f1add)) == 0
+
+    @test promote_rule(typeof(f1), typeof(f1)) == typeof(f1)
+    @test promote_rule(typeof(f1), typeof(1 * f1)) == typeof(1 * f1)
+    @test promote_rule(typeof(f1), typeof(f1 + 0)) == typeof(f1 + 0)
+
+    @test promote_rule(typeof(f1mul), typeof(f1mul)) == typeof(f1mul)
+    @test promote_rule(typeof(f1mul), typeof(1im * f1mul)) == typeof(1im * f1mul)
+
+    @test promote_rule(typeof(f1mul), typeof(f1add)) == typeof(f1add)
+    @test promote_rule(typeof(f1add), typeof(f1mul)) == typeof(f1add)
+    @test promote_rule(typeof(f1add), typeof(f1add)) == typeof(f1add)
+
+    @test isconcretetype(eltype([f1, f1 * 1]))
+    @test isconcretetype(eltype([f1, f1 + 1]))
+    @test isconcretetype(eltype([f1 * 2, f1 + 1]))
+end
+
 @run_package_tests verbose = true
