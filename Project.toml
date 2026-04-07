@@ -1,6 +1,6 @@
 name = "NonCommutativeProducts"
 uuid = "a9a0a982-c603-4485-bf80-6b61b825abb4"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Viktor Svensson <13223396+cvsvensson@users.noreply.github.com> and contributors"]
 
 [deps]
