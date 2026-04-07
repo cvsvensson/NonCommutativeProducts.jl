@@ -96,18 +96,16 @@ function splice!!(ncmul::NCMul, i)
     return ncmul
 end
 function splice!!(ncmul::NCMul, i, term::NCMul)
-    ncmul.coeff *= term.coeff
+    coeff = term.coeff * ncmul.coeff
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
-    newfactors === ncmul.factors && return ncmul
-    return NCMul(ncmul.coeff, newfactors)
+    return NCMul(coeff, newfactors)
 end
 function splice!!(ncmul::NCMul{C,S}, i, term::S) where {C,S}
     splice!!(ncmul, i, NCMul(1, (term,)))
 end
 function splice!!(ncmul::NCMul, i, coeff::Number)
     deleteat!(ncmul.factors, i)
-    ncmul.coeff *= coeff
-    return ncmul
+    return coeff * ncmul
 end
 function splice!!(ncmul::NCMul, i, swap::Swap)
     length(i) == 2 && i[2] == i[1] + 1 || throw(ArgumentError("Invalid index for swap"))
@@ -116,12 +114,12 @@ function splice!!(ncmul::NCMul, i, swap::Swap)
 end
 function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
     newterms = [splice!!(copy(ncmul), i, term) for term in Iterators.drop(terms.terms, 1)]
-    ncmul = splice!!(ncmul, i, first(terms.terms))
-    return ncmul, newterms
+    ncmul2 = splice!!(ncmul, i, first(terms.terms))
+    return ncmul2, newterms
 end
 function splice!!_and_add(ncmul::T, i, effect) where T<:NCMul
-    ncmul = splice!!(ncmul, i, effect)
-    return ncmul, T[]
+    ncmul2 = splice!!(ncmul, i, effect)
+    return ncmul2, T[]
 end
 
 bubble_sort(a::Number; kwargs...) = a
