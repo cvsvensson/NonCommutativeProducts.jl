@@ -60,7 +60,10 @@ function Base.:+(a::NCMul, b::NCAdd)
     nc = NCAdd(b.coeff, setindex!!(newdict, a.coeff, NCMul(1, a.factors)))
     return nc
 end
-Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},D}}, x::NCMul{C,S,F}) where {C,S,F,D} = NCAdd(zero(C), D(to_add_dict(x)))
+function Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},_D}}, x::NCMul{C2,S,F}) where {C,C2,S,F,_D}
+    D = Dict{NCMul{Int,S,F},C2}
+    NCAdd(zero(C), D(to_add_dict(x)))
+end
 
 to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => a.coeff)
 
