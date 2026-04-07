@@ -1,5 +1,5 @@
 
-mutable struct NCMul{C,S,F}
+struct NCMul{C,S,F}
     coeff::C
     factors::F
 end
