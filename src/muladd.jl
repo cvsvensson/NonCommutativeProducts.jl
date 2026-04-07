@@ -90,6 +90,7 @@ macro nc_common(T)
         Base.:*(x::NCMul, y::$(esc(T))) = autosort() ? sort!(NCMul(x.coeff, push!!(copy(x.factors), y))) : NCMul(x.coeff, push!!(copy(x.factors), y))
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(y)
         Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(x) * y
+        Base.:/(x::$(esc(T)), y::Number) = NCMul(x) / y
 
         Base.:^(a::$(esc(T)), b) = NCMul(a)^b
         Base.convert(::Type{NCMul{C,S,F}}, x::$(esc(T))) where {C,S<:$(esc(T)),F} = NCMul(one(C), S[x])

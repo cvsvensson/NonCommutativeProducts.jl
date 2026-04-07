@@ -73,6 +73,7 @@ end
     @test 0 * f1 == 0
     @test 1 * f1 !== 1
     @test 0 * f1 + 1 == 1
+    @test f1 / 2 + 1 / 2 == (1 + f1) / 2 == (f1 * 1) / 2 + 1 / 2 == (f1 * 1 + 1) / 2
     @test hash(f1) == hash(1 * f1) == hash(1 * f1 + 0)
 
     # Test canonical commutation relations
