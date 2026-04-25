@@ -98,6 +98,12 @@ end
     # Addition
     @test ord_equals(σx + σx, 2 * σx)
     @test iszero(σx - σx)
+
+    # Addition and subtraction between NCMul and Pauli
+    @test (σx + σy * σz) isa NonCommutativeProducts.NCAdd
+    @test (σx - σy * σz) isa NonCommutativeProducts.NCAdd
+    @test (σy * σz + σx) isa NonCommutativeProducts.NCAdd
+    @test (σy * σz - σx) isa NonCommutativeProducts.NCAdd
 end
 
 
