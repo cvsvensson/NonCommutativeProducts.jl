@@ -85,8 +85,8 @@ macro nc_common(T)
 
         Base.:-(x::$(esc(T)), y::$(esc(T))) = NCMul(x) - NCMul(y)
         Base.:-(x::$(esc(T))) = NCMul(-1, [x])
-        Base.:-(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x - NCMul(y)
-        Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(x) - y
+        Base.:-(x::Union{Number,UniformScaling,NCMul,NCAdd}, y::$(esc(T))) = x - NCMul(y)
+        Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) - y
 
         Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
         Base.:*(x::$(esc(T)), y::NCMul) = autosort() ? sort!(NCMul(y.coeff, pushfirst!!(copy(y.factors), x))) : NCMul(y.coeff, pushfirst!!(copy(y.factors), x))
