@@ -9,5 +9,6 @@ include("mul.jl")
 include("add.jl")
 include("muladd.jl")
 include("sorting.jl")
+include("traversal.jl")
 
 end

@@ -127,7 +127,7 @@ function mul_effect end
 
 @testitem "Collecting powers, signed swap" begin
     import NonCommutativeProducts: bubble_sort, Swap, @nc, NCMul, mul_effect, AddTerms
-
+    NonCommutativeProducts.disable_autosort!()
     struct NCInt
         n::Int
         exp::Int

@@ -207,6 +207,7 @@ Base.zero(::Type{NCAdd{C,K,D}}) where {C,K,D} = NCAdd(zero(C), D())
 
 @testitem "Consistency between + and add!!" setup = [Fermions] begin
     import NonCommutativeProducts: add!!
+    NonCommutativeProducts.disable_autosort!()
     f = Fermion.(1:2)
     a = 1.0 * f[2] * f[1] + 1 + f[1]
     for b in [1.0, 1, f[1], 1.0 * f[1], f[2] * f[1], a]
