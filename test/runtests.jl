@@ -148,7 +148,6 @@ end
     Base.show(io::IO, x::Majorana) = print(io, "γ[", x.label, "]")
 
     @nc Majorana
-    NonCommutativeProducts.enable_autosort!()
     function NonCommutativeProducts.mul_effect(a::Majorana, b::Majorana)
         if a.label == b.label
             return 1 # a*b => 1
@@ -165,8 +164,8 @@ end
 @testitem "Majoranas" setup = [Majoranas] begin
     using Random: seed!
     seed!(1)
+    NonCommutativeProducts.enable_autosort!()
     γ = Majorana.(1:4)
-
     @test 1 * γ[1] == γ[1]
     @test 1 * γ[1] + 0 == γ[1]
     @test 1 * γ[1] + 0 == 1 * γ[1]
