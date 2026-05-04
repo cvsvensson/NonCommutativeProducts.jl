@@ -63,6 +63,7 @@ end
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     f3 = Fermion((1, :↑))
+    NonCommutativeProducts.disable_autosort!()
     ord(op) = bubble_sort(op)
     ord_equals(a, b) = iszero(ord(a - b))
     ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
