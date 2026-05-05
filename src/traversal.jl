@@ -1,5 +1,6 @@
-ncmap(f, x::NCMul) = prod(f(factor) for factor in x.factors; init=x.coeff)
 ncmap(f, x::NCAdd) = sum(ncmap(f, term) for term in NCterms(x); init=x.coeff)
+ncmap(f, x::NCMul) = prod(ncmap(f, factor) for factor in x.factors; init=x.coeff)
+ncmap(f, x) = f(x)
 
 @testitem "ncmap" setup = [Fermions, Majoranas] begin
     import NonCommutativeProducts: ncmap
@@ -7,6 +8,7 @@ ncmap(f, x::NCAdd) = sum(ncmap(f, term) for term in NCterms(x); init=x.coeff)
     f = Fermion(:a)
     change_label(x::Fermion) = Fermion(:b, x.creation)
     change_label(x) = x
+    @test ncmap(change_label, f) == Fermion(:b)
     expr = 3 - 4 * f + 2 * f' * f
     fb = Fermion(:b)
     expected = 3 - 4 * fb + 2 * fb' * fb
