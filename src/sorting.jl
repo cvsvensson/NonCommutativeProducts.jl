@@ -1,14 +1,14 @@
 struct AddTerms{T}
     terms::T
     function AddTerms(terms::T) where T
-        Base.depwarn("AddTerms is deprecated. Use normal addition instead, see the readme.", :AddTerms; force=true)
+        Base.depwarn("AddTerms is deprecated. Use normal addition instead, see the readme.", :AddTerms; force=false)
         new{T}(terms)
     end
 end
 struct Swap{T}
     λ::T
     function Swap(λ::T) where T
-        Base.depwarn("Swap is deprecated. Use normal multiplication instead, see the readme.", :Swap; force=true)
+        Base.depwarn("Swap is deprecated. Use normal multiplication instead, see the readme.", :Swap; force=false)
         new{T}(λ)
     end
 end
