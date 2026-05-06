@@ -1,5 +1,6 @@
 module NonCommutativeProducts
 
+using Base.ScopedValues
 using LinearAlgebra
 using TestItems
 using BangBang: push!!, pushfirst!!, setindex!!, append!!, mergewith!!

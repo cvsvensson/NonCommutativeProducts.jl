@@ -125,13 +125,14 @@ macro nc_common(T)
 
     end
 end
-
-
-const _autosort = Ref(false)
-
-autosort() = _autosort[]
-enable_autosort!() = _autosort[] = true
-disable_autosort!() = _autosort[] = false
+const _DEFAULT_AUTOSORT = Ref(false)
+const _autosort = ScopedValue{Union{Bool,Nothing}}(nothing)
+function autosort()
+    isnothing(_autosort[]) && return _DEFAULT_AUTOSORT[]
+    return _autosort[]
+end
+enable_autosort!() = _DEFAULT_AUTOSORT[] = true
+disable_autosort!() = _DEFAULT_AUTOSORT[] = false
 
 
 macro nc(types...)

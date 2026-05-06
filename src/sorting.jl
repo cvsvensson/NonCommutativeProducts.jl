@@ -66,7 +66,9 @@ function __bubble_sort!(terms::Vector, index, start)
     while no_effect && i < N - 1
         i += 1
         a, b = ncmul.factors[i], ncmul.factors[i+1]
-        effect = mul_effect(a, b)
+        effect = with(_autosort => false) do
+            mul_effect(a, b)
+        end
         isnothing(effect) && continue
 
         no_effect = false
