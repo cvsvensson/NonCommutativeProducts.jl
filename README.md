@@ -14,11 +14,7 @@ The function `mul_effect(a::Tj, b::Tk)` can have return values
 * `nothing`: Keeps `a*b`. This return value is important as the sorting only terminates when this is the return value for each neighbouring pair product. If you don't have this, you'll get stuck in an infinite loop.
 * `λ::Number`: replaces `a*b` by `λ`.
 * `x::T`: replaces `a*b` by `x`
-* `NCMul(λ::Number, xs::Vector{T})`: replaces `a*b` by `λ*x[1]*x[2]...`
-* `Swap(λ::Number)`: Replaces `a*b` by `λ*b*a`. This is an instance of the rule above but more convenient.
-* `AddTerms(terms)`: `a*b` should be replaced by a sum of terms. `terms` should be an iterable such as a vector or a tuple, and the elements can be of the four types above.
-
-This is a young package and not every combination has been tested thoroughly. Do write tests for your specific use case to verify that it works and please report any bugs here.
+* Sums and products of such terms, such as `b*a + 1`.
 
 No names are currently exported from the package, so you'll need to import the names you need.
 
@@ -48,7 +44,7 @@ Base.show(io::IO, x::Fermion) = print(io, "c", x.dagger ? "†" : "", "[", x.lab
 Then, we need to hook up our struct to the package to let it handle the arithmetic. Let's load the package and import the functions we are gonna use.
 ```julia
 using NonCommutativeProducts
-import NonCommutativeProducts: Swap, AddTerms, @nc, mul_effect
+import NonCommutativeProducts: @nc, mul_effect
 @nc Fermion
 ```
 Now one can add and multiply these fermions,
@@ -59,20 +55,14 @@ Fermion(1)'*Fermion(1) + 1
 but they can't be sorted. To sort them in normal order and by label, we define 
 ```julia
 function mul_effect(a::Fermion, b::Fermion)
-    # If the fermion is multiplied with itself, we replace it by zero. 
-    a.label == b.label && a.dagger == b.dagger && return 0 
-    # if a is annihilation and b is creation, we should swap them
-    if !a.dagger && b.dagger 
-        if a.label != b.label 
-            return Swap(-1) # Swaps them and multiplies by -1
-        end
-        # If their labels are the same, swap and add an extra term
-        return AddTerms((Swap(-1), 1)) 
-    elseif a.dagger == b.dagger && a.label > b.label
-        return Swap(-1) # If b has smaller label than a, swap them and multiply by -1
-    else
-        return nothing # No effect
-    end
+    # If the fermion is multiplied with itself, replace it by zero. 
+    (a.dagger, a.label) == (b.dagger, b.label) && return 0 
+    # If already sorted, return nothing
+    (!a.dagger, a.label) < (!b.dagger, b.label) && return nothing
+    # Non-trivial anti-commutation relation
+    (!a.dagger, a.label) == (b.dagger, b.label) && return -b*a + 1 
+    # Trivial anti-commutation relation
+    return -b*a
 end
 ```
 Now we can sort expression involving fermions while respecting the commutation relations.
@@ -89,15 +79,16 @@ prod(Fermion(n) + Fermion(n)' for n in 1:4)
 #=Sum with 16 terms: 
  -c†[1]*c†[2]*c†[4]*c[3] + c†[1]*c[2]*c[3]*c[4] + c†[1]*c†[3]*c†[4]*c[2] + ...=#
 ```
+`enable_autosort!` sets the global default. You can override it locally in a scope with `Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do ... end`. This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort = false is always disabled to avoid infinite recursion.
 
 ## Remarks
 
-This package is flexible, but not very efficient. Sorting is done via bubble sort, which is suitable for this use case since it is based on swapping adjacent elements. But it does not scale well with the length of the list, so it won't perform well for products of many elements.
+This package is flexible, but not very efficient. Sorting is done via bubble sort, which is convenient for this use case since it is based on repeatedly swapping adjacent elements where commutation relations can be used. But it does not scale well with the length of the list, so it won't perform well for products of many elements.
 
 ```julia
-@time op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
-#=0.264353 seconds (4.34 M allocations: 155.466 MiB, 24.44% gc time, 8.75% compilation time)
-Sum with 59049 terms: 
+# Example timing: 85.840 ms (1132411 allocations: 82.81 MiB)
+op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
+#= Sum with 59049 terms: 
 1I-c†[1]*c†[2]*c†[6]*c[5]*c[7]*c[10]+c†[8]*c[2]*c[3]*c[5]*c[6]*c[9]*c[10]+c†[1]*c†[4]*c†[6]*c†[8]*c†[10]*c[2]*c[5]*c[9] + ...=#
 ```
 
@@ -105,15 +96,15 @@ Sum with 59049 terms:
 To cut down on allocations, one can use `NonCommutativeProducts.add!!` which tries to perform addition in place, but widens the type if not possible.
 ```julia
 op = 0
-@time for n in 1:100
+for n in 1:100
     op += Fermion(n)'*Fermion(n)
 end
- #  0.000251 seconds (2.55 k allocations: 311.127 KiB)
+# Example timing: 83.000 μs (2280 allocations: 403.52 KiB)
 
 op2 = zero(op)
-@time for n in 1:100
+for n in 1:100
     op2 = NonCommutativeProducts.add!!(op2, Fermion(n)'*Fermion(n))
 end
-#  0.000192 seconds (2.12 k allocations: 106.404 KiB)
+# Example timing: 36.200 μs (1708 allocations: 109.61 KiB)
 op == op2 #true
 ```
