@@ -14,7 +14,7 @@ function bubble_sort!(a::NCMul)
 end
 function bubble_sort(ncadd::NCAdd)
     terms = collect(NCMul(v, copy(k.factors)) for (k, v) in pairs(ncadd.dict))
-    res = add!!(_bubble_sort!(terms), ncadd.coeff)
+    res = add!!(_bubble_sort!(terms), additive_coeff(ncadd))
 end
 function _bubble_sort!(terms::Vector{T}) where {T<:NCMul}
     sorted_terms = with(_autosort => false) do
@@ -37,7 +37,7 @@ function __bubble_sort!(terms::Vector{T}) where {T<:NCMul}
         start = 1
         while !done && n <= length(terms)
             terms, done, start = __bubble_sort!(terms, n, start)
-            if iszero(terms[n].coeff)
+            if iszero(prefactor(terms[n]))
                 done = false
                 start = 1
                 deleteat!(terms, n)
@@ -90,7 +90,7 @@ function splice!!(ncmul::NCMul, i)
     return ncmul
 end
 function splice!!(ncmul::NCMul, i, term::NCMul)
-    coeff = term.coeff * ncmul.coeff
+    coeff = prefactor(term) * prefactor(ncmul)
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
     return NCMul(coeff, newfactors)
 end
@@ -102,13 +102,13 @@ function splice!!(ncmul::NCMul, i, coeff::Number)
     return coeff * ncmul
 end
 function splice!!_and_add(ncmul::NCMul, i, add::NCAdd)
-    if iszero(add.coeff)
+    if iszero(additive_coeff(add))
         terms = NCterms(add)
         newterms = [splice!!(copy(ncmul), i, term) for term in Iterators.drop(terms, 1)]
         ncmul2 = splice!!(ncmul, i, first(terms))
     else
         newterms = [splice!!(copy(ncmul), i, term) for term in NCterms(add)]
-        ncmul2 = splice!!(ncmul, i, add.coeff)
+        ncmul2 = splice!!(ncmul, i, additive_coeff(add))
     end
     return ncmul2, newterms
 end

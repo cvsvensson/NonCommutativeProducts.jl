@@ -1,5 +1,5 @@
-ncmap(f, x::NCMul) = prod(f(factor) for factor in x.factors; init=x.coeff)
-ncmap(f, x::NCAdd) = sum(ncmap(f, term) for term in NCterms(x); init=x.coeff)
+ncmap(f, x::NCMul) = prod(f(factor) for factor in x.factors; init=prefactor(x))
+ncmap(f, x::NCAdd) = sum(ncmap(f, term) for term in NCterms(x); init=additive_coeff(x))
 
 @testitem "ncmap" setup = [Fermions, Majoranas] begin
     import NonCommutativeProducts: ncmap
