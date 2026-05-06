@@ -2,56 +2,12 @@ using TestItemRunner
 
 @testmodule Fermions begin
     export Fermion
-    using NonCommutativeProducts
-    import NonCommutativeProducts: AddTerms, Swap, @nc
-    struct Fermion{L}
-        label::L
-        creation::Bool
-    end
-    Base.adjoint(x::Fermion) = Fermion(x.label, !x.creation)
-    Fermion(k) = Fermion(k, false)
-    Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
-    @nc Fermion
-
-    function should_swap(a::Fermion, b::Fermion)
-        if a.creation == b.creation
-            return a.label > b.label
-        else
-            a.creation < b.creation
-        end
-    end
-
-    function NonCommutativeProducts.mul_effect(a::Fermion, b::Fermion)
-        a == b && return 0 # a*b => 0
-        if should_swap(a, b)
-            a.label == b.label && xor(a.creation, b.creation) && return AddTerms((Swap(-1), 1)) #  a*b => -b*a + 1
-            return Swap(-1) # a*b => -b*a
-        else
-            return nothing
-        end
-    end
+    include("rules/fermions.jl")
 end
 
 @testmodule Bosons begin
     export Boson
-    using NonCommutativeProducts
-    import NonCommutativeProducts: AddTerms, Swap, @nc
-    struct Boson
-        exp::Int
-    end
-    Base.adjoint(x::Boson) = Boson(-x.exp)
-    Boson() = Boson(-1)
-    Base.show(io::IO, x::Boson) = print(io, "b", x.exp > 0 ? "†" : "", abs(x.exp) > 1 ? "^($(x.exp))" : "")
-    @nc Boson
-
-    function NonCommutativeProducts.mul_effect(a::Boson, b::Boson)
-        sign(a.exp) == sign(b.exp) && return Boson(a.exp + b.exp)
-        if a.exp < 0 && b.exp > 0
-            return AddTerms((Swap(1), 1))
-        else
-            return nothing
-        end
-    end
+    include("rules/bosons.jl")
 end
 
 @testitem "Fermions" setup = [Fermions] begin
@@ -138,27 +94,8 @@ end
 
 
 @testmodule Majoranas begin
-    using NonCommutativeProducts
     export Majorana
-    import NonCommutativeProducts: AddTerms, Swap, mul_effect, @nc
-    struct Majorana{L}
-        label::L
-    end
-    Base.adjoint(x::Majorana) = Majorana(x.label)
-    Base.show(io::IO, x::Majorana) = print(io, "γ[", x.label, "]")
-
-    @nc Majorana
-    function NonCommutativeProducts.mul_effect(a::Majorana, b::Majorana)
-        if a.label == b.label
-            return 1 # a*b => 1
-        elseif a.label < b.label
-            return nothing # a*b => a*b
-        elseif a.label > b.label
-            return Swap(-1) # a*b => -b*a
-        else
-            throw(ArgumentError("Don't know how to multiply $a * $b"))
-        end
-    end
+    include("rules/majoranas.jl")
 end
 
 @testitem "Majoranas" setup = [Majoranas] begin
@@ -275,6 +212,40 @@ end
     @test isconcretetype(eltype([f1, f1 * 1]))
     @test isconcretetype(eltype([f1, f1 + 1]))
     @test isconcretetype(eltype([f1 * 2, f1 + 1]))
+end
+
+@testmodule WrappedRules begin
+    using NonCommutativeProducts
+    export Wrapped, Sym
+    import NonCommutativeProducts: @nc, mul_effect, ncmap
+
+    struct Wrapped{S}
+        sym::S
+    end
+    Base.show(io::IO, x::Wrapped) = print(io, "W(", x.sym, ")")
+    @nc Wrapped
+
+    function NonCommutativeProducts.mul_effect(a::Wrapped, b::Wrapped)
+        effect = mul_effect(a.sym, b.sym)
+        effect isa Union{Number,Nothing} && return effect
+        return ncmap(Wrapped, effect)
+    end
+    Base.adjoint(x::Wrapped) = Wrapped(adjoint(x.sym))
+end
+
+@testitem "Wrapped mul_effect delegation" setup = [WrappedRules, Fermions] begin
+    import NonCommutativeProducts: ncmap
+
+    NonCommutativeProducts.enable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    w1, w2 = Wrapped.((f1, f2))
+
+    @test w1 * w2 == ncmap(Wrapped, f1 * f2)
+    @test w2 * w2 == ncmap(Wrapped, f2 * f2)
+    @test w2 * w1 == ncmap(Wrapped, f2 * f1)
+    @test iszero(w1 * w1)
+    @test w1' * w1 + w1 * w1' == 1
 end
 
 @run_package_tests verbose = true

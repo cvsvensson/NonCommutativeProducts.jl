@@ -173,7 +173,7 @@ macro commutative(types...)
         for (n2, T2) in enumerate(types)
             n1 >= n2 && continue
             push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T1)), y::$(esc(T2))) = nothing))
-            push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T2)), y::$(esc(T1))) = Swap(1)))
+            push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T2)), y::$(esc(T1))) = y*x))
         end
     end
     quote

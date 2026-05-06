@@ -1,50 +1,6 @@
 @testmodule Paulis begin
     export Pauli
-    using NonCommutativeProducts
-    import NonCommutativeProducts: Swap, @nc
-
-    """
-        Pauli(label, idx)
-
-    Pauli matrix operator for spin-1/2 systems.
-    - `label`: identifies the site/particle
-    - `idx`: 1 for σx, 2 for σy, 3 for σz
-    """
-    struct Pauli{L}
-        label::L
-        idx::Int
-        Pauli(label::L, idx::Int=1) where L = new{L}(label, idx)
-    end
-
-    Base.adjoint(x::Pauli) = x  # Hermitian
-    Pauli(idx::Int) = Pauli(0, idx)
-
-    function Base.show(io::IO, x::Pauli)
-        syms = ("x", "y", "z")
-        base = "σ" * syms[x.idx]
-        print(io, x.label == 0 ? base : "$base[$(x.label)]")
-    end
-
-    @nc Pauli
-
-    function should_swap(a::Pauli, b::Pauli)
-        a.label != b.label ? a.label > b.label : a.idx > b.idx
-    end
-
-    function NonCommutativeProducts.mul_effect(a::Pauli, b::Pauli)
-        if a.label != b.label
-            # Different sites commute
-            return should_swap(a, b) ? Swap(1) : nothing
-        elseif a.idx == b.idx
-            # σᵢ² = 1
-            return 1
-        elseif should_swap(a, b)
-            # σᵢ σⱼ = -σⱼ σᵢ for i ≠ j (anti-commute)
-            return Swap(-1)
-        else
-            return nothing
-        end
-    end
+    include("rules/paulis.jl")
 end
 
 @testitem "Paulis" setup = [Paulis] begin
@@ -109,61 +65,7 @@ end
 
 @testmodule SpinOperators begin
     export SpinOp
-    using NonCommutativeProducts
-    import NonCommutativeProducts: AddTerms, Swap, @nc
-
-    """
-        SpinOp(label, op)
-
-    General spin operator using raising/lowering basis.
-    - `label`: identifies the site/particle
-    - `op`: :z for Sz, :+ for S+, :- for S-
-    """
-    struct SpinOp{L}
-        label::L
-        op::Symbol
-    end
-
-    function Base.adjoint(x::SpinOp)
-        new_op = x.op == :+ ? :- : x.op == :- ? :+ : :z
-        return SpinOp(x.label, new_op)
-    end
-
-    SpinOp(label) = SpinOp(label, :z)
-
-    function Base.show(io::IO, x::SpinOp)
-        print(io, "S", x.op, "[$(x.label)]")
-    end
-
-    @nc SpinOp
-
-    const OP_ORDER = Dict(:z => 1, :+ => 2, :- => 3)
-
-    function should_swap(a::SpinOp, b::SpinOp)
-        a.label != b.label ? a.label > b.label : OP_ORDER[a.op] > OP_ORDER[b.op]
-    end
-
-    function NonCommutativeProducts.mul_effect(a::SpinOp, b::SpinOp)
-        if a.label != b.label
-            # Different sites commute
-            return should_swap(a, b) ? Swap(1) : nothing
-        end
-
-        # Commutation relations: [Sz, S+] = S+, [Sz, S-] = -S-, [S+, S-] = 2Sz
-        # Canonical order: :z < :+ < :-
-        if a.op == :+ && b.op == :z
-            # S+ Sz = Sz S+ - S+
-            return AddTerms((Swap(1), -SpinOp(a.label, :+)))
-        elseif a.op == :- && b.op == :z
-            # S- Sz = Sz S- + S-
-            return AddTerms((Swap(1), SpinOp(a.label, :-)))
-        elseif a.op == :- && b.op == :+
-            # S- S+ = S+ S- - 2Sz
-            return AddTerms((Swap(1), -2 * SpinOp(a.label, :z)))
-        end
-
-        return nothing
-    end
+    include("rules/spin.jl")
 end
 
 @testitem "SpinOperators" setup = [SpinOperators] begin

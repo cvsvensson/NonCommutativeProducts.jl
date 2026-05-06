@@ -1,11 +1,3 @@
-
-struct AddTerms{T}
-    terms::T
-end
-struct Swap{T}
-    λ::T
-end
-
 Base.sort(a::NCMul) = bubble_sort(a)
 Base.sort(a::NCAdd) = bubble_sort(a)
 Base.sort!(a::NCMul) = bubble_sort!(a)
@@ -109,14 +101,15 @@ function splice!!(ncmul::NCMul, i, coeff::Number)
     deleteat!(ncmul.factors, i)
     return coeff * ncmul
 end
-function splice!!(ncmul::NCMul, i, swap::Swap)
-    length(i) == 2 && i[2] == i[1] + 1 || throw(ArgumentError("Invalid index for swap"))
-    a, b = ncmul.factors[i]
-    splice!!(ncmul, i, NCMul(swap.λ, [b, a]))
-end
-function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
-    newterms = [splice!!(copy(ncmul), i, term) for term in Iterators.drop(terms.terms, 1)]
-    ncmul2 = splice!!(ncmul, i, first(terms.terms))
+function splice!!_and_add(ncmul::NCMul, i, add::NCAdd)
+    if iszero(add.coeff)
+        terms = NCterms(add)
+        newterms = [splice!!(copy(ncmul), i, term) for term in Iterators.drop(terms, 1)]
+        ncmul2 = splice!!(ncmul, i, first(terms))
+    else
+        newterms = [splice!!(copy(ncmul), i, term) for term in NCterms(add)]
+        ncmul2 = splice!!(ncmul, i, add.coeff)
+    end
     return ncmul2, newterms
 end
 function splice!!_and_add(ncmul::T, i, effect) where T<:NCMul
@@ -128,7 +121,7 @@ bubble_sort(a::Number; kwargs...) = a
 function mul_effect end
 
 @testitem "Collecting powers, signed swap" begin
-    import NonCommutativeProducts: bubble_sort, Swap, @nc, NCMul, mul_effect, AddTerms
+    import NonCommutativeProducts: bubble_sort, @nc, NCMul, mul_effect
     NonCommutativeProducts.disable_autosort!()
     struct NCInt
         n::Int
@@ -140,7 +133,7 @@ function mul_effect end
     @nc NCInt
     function mul_effect(a::NCInt, b::NCInt)
         (a.n == b.n && return NCInt(a.n, a.exp + b.exp)) # Collect powers
-        a.n > b.n && return Swap(-1) # swap and multiply by -1
+        a.n > b.n && return -b * a # swap and multiply by -1
         return nothing # Do nothing
     end
 
