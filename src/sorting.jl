@@ -1,3 +1,29 @@
+struct AddTerms{T}
+    terms::T
+    function AddTerms(terms::T) where T
+        Base.depwarn("AddTerms is deprecated. Use normal addition instead, see the readme.", :AddTerms; force=true)
+        new{T}(terms)
+    end
+end
+struct Swap{T}
+    λ::T
+    function Swap(λ::T) where T
+        Base.depwarn("Swap is deprecated. Use normal multiplication instead, see the readme.", :Swap; force=true)
+        new{T}(λ)
+    end
+end
+
+function splice!!(ncmul::NCMul, i, swap::Swap)
+    length(i) == 2 && i[2] == i[1] + 1 || throw(ArgumentError("Invalid index for swap"))
+    a, b = ncmul.factors[i]
+    splice!!(ncmul, i, NCMul(swap.λ, [b, a]))
+end
+function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
+    newterms = [splice!!(copy(ncmul), i, term) for term in Iterators.drop(terms.terms, 1)]
+    ncmul2 = splice!!(ncmul, i, first(terms.terms))
+    return ncmul2, newterms
+end
+
 Base.sort(a::NCMul) = bubble_sort(a)
 Base.sort(a::NCAdd) = bubble_sort(a)
 Base.sort!(a::NCMul) = bubble_sort!(a)
