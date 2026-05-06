@@ -17,7 +17,9 @@ function bubble_sort(ncadd::NCAdd)
     res = add!!(_bubble_sort!(terms), ncadd.coeff)
 end
 function _bubble_sort!(terms::Vector{T}) where {T<:NCMul}
-    sorted_terms = __bubble_sort!(terms)
+    sorted_terms = with(_autosort => false) do
+        __bubble_sort!(terms)
+    end
     if length(sorted_terms) == 0
         return NCAdd(0, Dict{T,Int}())
     end
@@ -58,9 +60,7 @@ function __bubble_sort!(terms::Vector, index, start)
     while no_effect && i < N - 1
         i += 1
         a, b = ncmul.factors[i], ncmul.factors[i+1]
-        effect = with(_autosort => false) do
-            mul_effect(a, b)
-        end
+        effect = mul_effect(a, b)
         isnothing(effect) && continue
 
         no_effect = false

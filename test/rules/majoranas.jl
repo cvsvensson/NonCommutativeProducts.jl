@@ -13,7 +13,7 @@ function mul_effect(a::Majorana, b::Majorana)
     elseif a.label < b.label
         return nothing # a*b => a*b
     elseif a.label > b.label
-        return b * a # a*b => -b*a
+        return -b * a # a*b => -b*a
     else
         throw(ArgumentError("Don't know how to multiply $a * $b"))
     end

@@ -5,7 +5,7 @@ const SUITE = BenchmarkGroup()
 Random.seed!(1)
 
 include("../test/rules/fermions.jl")
-
+NonCommutativeProducts.enable_autosort!()
 SUITE["symbolic_sum"] = @benchmarkable sum(Fermion(n)' * Fermion(n) + Fermion(n) * Fermion(n + 1)' for n in 1:1000)
 SUITE["symbolic_sum_square"] = @benchmarkable sum(Fermion(n)' * Fermion(n) + Fermion(n) * Fermion(n + 1)' for n in 1:10)^3
 

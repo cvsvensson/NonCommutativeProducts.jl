@@ -159,6 +159,26 @@ end
     @test NonCommutativeProducts.bubble_sort(bigprod2') == bigprod2'
 end
 
+@testitem "Autosort local override with ScopedValue" setup = [Majoranas] begin
+    NonCommutativeProducts.enable_autosort!()
+    γ1, γ2 = Majorana.(1:2)
+
+    # Global autosort enabled: product is immediately canonicalized.
+    canonical = γ2 * γ1
+    @test canonical == -γ1 * γ2
+
+    # Local override: multiplication is left unsorted only in this dynamic scope.
+    local_unsorted = Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do
+        @test !NonCommutativeProducts.autosort()
+        γ2 * γ1
+    end
+    @test local_unsorted != canonical
+    @test NonCommutativeProducts.bubble_sort(local_unsorted) == canonical
+
+    # Global setting remains unchanged outside the local override.
+    @test NonCommutativeProducts.autosort()
+end
+
 
 @testitem "Fermions+Bosons" setup = [Fermions, Bosons] begin
     import NonCommutativeProducts: bubble_sort, @nc, add!!
