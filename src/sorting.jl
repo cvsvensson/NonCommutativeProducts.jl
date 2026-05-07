@@ -143,7 +143,25 @@ function splice!!_and_add(ncmul::T, i, effect) where T<:NCMul
     return ncmul2, T[]
 end
 
-bubble_sort(a::Number; kwargs...) = a
+""" 
+    mul_effect(a, b)
+
+When sorting a non-commutative expression, this function defines what a*b should be replaced by. 
+It must have a branch that returns `nothing` in order for the sorting to terminate. 
+
+No methods for `mul_effect` are defined in this package, so you need to define them for your types.
+
+# Example
+```julia
+# Anticommuting Grassmann numbers
+struct θ id::Int end
+NonCommutativeProducts.@nc θ
+NonCommutativeProducts.mul_effect(a::θ, b::θ) = a.id < b.id ? nothing : -b * a * (a.id==b.id ? 0 : 1)
+NonCommutativeProducts.enable_autosort!()
+θ(2)*θ(1) # = -θ(1)*θ(2)
+θ(1)*θ(1) # = 0
+```
+"""
 function mul_effect end
 
 @testitem "Collecting powers, signed swap" begin
