@@ -77,6 +77,7 @@ end
 macro nc_common(T)
     quote
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
+        NonCommutativeProducts.ncmap(f, x::$(esc(T))) = f(x)
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
         Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) + y
