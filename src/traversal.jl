@@ -1,10 +1,11 @@
 """
     ncmap(f, expr)
 
-Map the user-defined leaf function `f` over the noncommutative symbolic
-factors in `expr`.
-
-Scalar coefficients and constant terms are left unchanged.
+Map `f` over the noncommutative factors in `expr`.
+# Example
+If `a` and `b` are of types registered with @nc then 
+```julia
+ncmap(f, 2*a*b + 1) == 2*f(a)*f(b) + 1
 """
 ncmap(f, x::NCMul) = prod(f(factor) for factor in x.factors; init=prefactor(x))
 ncmap(f, x::NCAdd) = sum(ncmap(f, term) for term in NCterms(x); init=additive_coeff(x))
