@@ -102,8 +102,6 @@ function Base.show(io::IO, x::NCAdd; max_terms=3)
     end
     return nothing
 end
-print_num(io::IO, x) = isreal(x) ? print(io, real(x)) : print(io, "(", x, ")")
-
 
 Base.:+(a::Number, b::NCAdd) = iszero(a) ? b : NCAdd(a + additive_coeff(b), b.dict)
 Base.:+(a::UniformScaling, b::NCAdd) = iszero(a) ? b : NCAdd(a.λ + additive_coeff(b), b.dict)
