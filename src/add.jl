@@ -2,7 +2,7 @@ function filter_scalars!(d::AbstractDict{K,V}) where {K<:NCMul,V}
     coeff = zero(V)
     for (k, v) in d
         if isscalar(k)
-            coeff += k.coeff * v
+            coeff += prefactor(k) * v
             delete!(d, k)
         end
     end
@@ -26,32 +26,36 @@ mutable struct NCAdd{C,K,D}
         new{promote_type(C, valtype(D)),keytype(D),D}(coeff, dict)
     end
 end
-Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D} = NCAdd(convert(C, x.coeff), D(x.dict))
+additive_coeff(x::NCAdd) = x.coeff
+add_to_coeff!(a::NCAdd, x::Number) = a.coeff += x
+set_coeff!(a::NCAdd, x::Number) = a.coeff = x
+
+Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D} = NCAdd(convert(C, additive_coeff(x)), D(x.dict))
 
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
     add!!(x, filter_scalars!(x.dict))
 end
 filter_zeros!(x::NCAdd) = (filter_zeros!(x.dict); return x)
-Base.iszero(x::NCAdd) = iszero(x.coeff) && all(iszero, values(x.dict))
-Base.:(==)(a::NCAdd, b::NCAdd) = a.coeff == b.coeff && a.dict == b.dict
-Base.:(==)(a::NCAdd, b::Number) = a.coeff == b && isempty(a.dict)
-Base.:(==)(a::Number, b::NCAdd) = a == b.coeff && isempty(b.dict)
+Base.iszero(x::NCAdd) = iszero(additive_coeff(x)) && all(iszero, values(x.dict))
+Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && a.dict == b.dict
+Base.:(==)(a::NCAdd, b::Number) = additive_coeff(a) == b && isempty(a.dict)
+Base.:(==)(a::Number, b::NCAdd) = a == additive_coeff(b) && isempty(b.dict)
 function Base.hash(a::NCAdd, h::UInt)
     # if it's only a number, hash should equal hash of number
     if isempty(a.dict)
-        return hash(a.coeff, h)
+        return hash(additive_coeff(a), h)
     end
     # if coeff is zero and there is only one term, it should hash equals to the corresponding NCMul
-    if iszero(a.coeff) && length(a.dict) == 1
+    if iszero(additive_coeff(a)) && length(a.dict) == 1
         ncmul, coeff = only(a.dict)
         return hash(NCMul(coeff, ncmul.factors), h)
     end
-    return hash(a.coeff, hash(a.dict, h))
+    return hash(additive_coeff(a), hash(a.dict, h))
 end
 
 isscalar(x::NCAdd) = length(x.dict) == 0 || all(isscalar, keys(x.dict)) || all(iszero(values(x.dict)))
-Base.copy(x::NCAdd) = NCAdd(copy(x.coeff), copy(x.dict))
+Base.copy(x::NCAdd) = NCAdd(copy(additive_coeff(x)), copy(x.dict))
 
 function print_coeff(io, coeff)
     if isreal(coeff)
@@ -62,14 +66,14 @@ function print_coeff(io, coeff)
 end
 function Base.show(io::IO, x::NCAdd; max_terms=3)
     compact = get(io, :compact, false)
-    print_one = !iszero(x.coeff) || length(x.dict) == 0
+    print_one = !iszero(additive_coeff(x)) || length(x.dict) == 0
     compact = length(x.dict) > max_terms
     print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
 
-    compact && println(io, "Sum with ", length(x.dict) + !iszero(x.coeff), " terms: ")
+    compact && println(io, "Sum with ", length(x.dict) + !iszero(additive_coeff(x)), " terms: ")
     N = min(max_terms, length(x.dict))
 
-    print_one && print_coeff(io, x.coeff)
+    print_one && print_coeff(io, additive_coeff(x))
     for (n, (k, v)) in enumerate(pairs(x.dict))
         n > max_terms && break
         should_print_sign = (n > 1 || print_one)
@@ -98,11 +102,9 @@ function Base.show(io::IO, x::NCAdd; max_terms=3)
     end
     return nothing
 end
-print_num(io::IO, x) = isreal(x) ? print(io, real(x)) : print(io, "(", x, ")")
 
-
-Base.:+(a::Number, b::NCAdd) = iszero(a) ? b : NCAdd(a + b.coeff, b.dict)
-Base.:+(a::UniformScaling, b::NCAdd) = iszero(a) ? b : NCAdd(a.λ + b.coeff, b.dict)
+Base.:+(a::Number, b::NCAdd) = iszero(a) ? b : NCAdd(a + additive_coeff(b), b.dict)
+Base.:+(a::UniformScaling, b::NCAdd) = iszero(a) ? b : NCAdd(a.λ + additive_coeff(b), b.dict)
 Base.:+(a::NCAdd, b::B) where B<:Union{Number,UniformScaling} = b + a
 Base.:+(a::NCAdd, b::B) where B<:NCMul = b + a
 Base.:/(a::MulAdd, b::Number) = inv(b) * a
@@ -110,7 +112,7 @@ Base.:-(a::Union{Number,UniformScaling}, b::MulAdd) = a + (-b)
 Base.:-(a::MulAdd, b::Union{Number,MulAdd,UniformScaling}) = a + (-b)
 Base.:-(a::NCAdd) = (-1) * a
 function Base.:+(a::NCAdd, b::NCAdd)
-    coeff = a.coeff + b.coeff
+    coeff = additive_coeff(a) + additive_coeff(b)
     dict = mergewith(+, a.dict, b.dict)
     NCAdd(coeff, dict)
 end
@@ -118,42 +120,44 @@ end
 
 function add!!(a::NCAdd, b::NCMul)
     key = NCMul(1, b.factors)
-    coeff = b.coeff
+    coeff = prefactor(b)
     newdict, ret = modify!!(a.dict, key) do val
         isnothing(val) && return coeff
         return something(val, 0) + coeff
     end
     newdict === a.dict && return a
-    return NCAdd(a.coeff, newdict)
+    return NCAdd(additive_coeff(a), newdict)
 end
 function add!!(a::NCAdd, b::NCAdd)
     newdict = mergewith!!(+, a.dict, b.dict)
-    newdict === a.dict && return add!!(a, b.coeff)
-    return NCAdd(a.coeff + b.coeff, newdict)
+    newdict === a.dict && return add!!(a, additive_coeff(b))
+    ca = additive_coeff(a)
+    cb = additive_coeff(b)
+    return NCAdd(ca + cb, newdict)
 end
 function add!!(a::NCAdd{C}, b::C2) where {C,C2<:Number}
-    promote_type(C, C2) <: C && (a.coeff += b; return a)
+    promote_type(C, C2) <: C && (add_to_coeff!(a, b); return a)
     return a + b
 end
 function add!!(a::NCAdd{C}, b::UniformScaling{C2}) where {C,C2<:Number}
-    promote_type(C, C2) <: C && return (a.coeff += b.λ; return a)
+    promote_type(C, C2) <: C && return (add_to_coeff!(a, b.λ); return a)
     return a + b
 end
+
 
 
 function NCterms(a::NCAdd)
     (v * k for (k, v) in pairs(a.dict))
 end
-additive_coeff(a::NCAdd) = a.coeff
-additive_coeff(a::NCMul) = 0
 
 function Base.:*(x::C, a::NCAdd{C2}) where {C<:Number,C2}
+    acoeff = additive_coeff(a)
     if promote_type(C, C2) <: C2
         dictcopy = copy(a.dict)
         map!(v -> x * v, values(dictcopy))
-        return NCAdd(x * a.coeff, dictcopy)
+        return NCAdd(x * acoeff, dictcopy)
     else
-        return NCAdd(x * a.coeff, Dict(k => v * x for (k, v) in a.dict))
+        return NCAdd(x * acoeff, Dict(k => v * x for (k, v) in a.dict))
     end
 end
 Base.:*(a::NCAdd, x::Number) = x * a
@@ -196,7 +200,7 @@ add!!(c::Number, term) = c + term
 
 function Base.adjoint(x::NCAdd)
     newx = zero(x)
-    newx.coeff = adjoint(x.coeff)
+    set_coeff!(newx, adjoint(additive_coeff(x)))
     for (f, v) in x.dict
         newx = add!!(newx, v' * f')
     end

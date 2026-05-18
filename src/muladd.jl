@@ -1,4 +1,4 @@
-NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(f.coeff) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul: $f"))
+NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul: $f"))
 
 Base.zero(nc::Union{<:NCAdd,<:NCMul}) = zero(typeof(nc))
 function Base.promote_rule(::Type{<:NCAdd{C1,NCMul{Int,S,VS},D1}}, ::Type{<:NCAdd{C2,NCMul{Int,S,VS},D2}}) where {C1,C2,D1,D2,S,VS}
@@ -21,7 +21,7 @@ function Base.promote_rule(::Type{A}, ::Type{M}) where {A<:NCAdd,M<:NCMul}
 end
 
 function Base.:(==)(a::NCAdd, b::NCMul)
-    iszero(a.coeff) || return false
+    iszero(additive_coeff(a)) || return false
     length(a.dict) == 1 || return false
     ncmul, coeff = only(a.dict)
     NCMul(coeff, ncmul.factors) == b
@@ -30,20 +30,20 @@ Base.:(==)(a::NCMul, b::NCAdd) = b == a
 
 function Base.:+(a::NCMul{C1,F1,S}, b::NCMul{C2,F2,S}) where {C1,C2,F1,F2,S}
     if a.factors == b.factors
-        return NCAdd(0, Dict(NCMul(1, a.factors) => a.coeff + b.coeff))
+        return NCAdd(0, Dict(NCMul(1, a.factors) => prefactor(a) + prefactor(b)))
     end
     F = Union{F1,F2}
     C = promote_type(C1, C2)
-    return NCAdd(0, Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => a.coeff, NCMul{Int,F,S}(1, b.factors) => b.coeff))
+    return NCAdd(0, Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
 end
 function Base.:+(a::NCMul{C1,F1,S1}, b::NCMul{C2,F2,S2}) where {C1,C2,F1,F2,S1,S2}
     if a.factors == b.factors
-        return NCAdd(0, Dict(NCMul(1, a.factors) => a.coeff + b.coeff))
+        return NCAdd(0, Dict(NCMul(1, a.factors) => prefactor(a) + prefactor(b)))
     end
     F = promote_type(F1, F2)
     C = promote_type(C1, C2)
     S = promote_type(S1, S2)
-    return NCAdd(0, Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => a.coeff, NCMul{Int,F,S}(1, b.factors) => b.coeff))
+    return NCAdd(0, Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
 end
 
 Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add_dict(b))
@@ -53,11 +53,12 @@ function Base.:+(a::NCMul, b::NCAdd)
     newdict = copy(b.dict)
     for (k, v) in b.dict
         if k.factors == a.factors
-            newdict[k] = v + a.coeff
-            return NCAdd(b.coeff, newdict)
+            newdict[k] = v + prefactor(a)
+            return NCAdd(additive_coeff(b), newdict)
         end
     end
-    nc = NCAdd(b.coeff, setindex!!(newdict, a.coeff, NCMul(1, a.factors)))
+    newdict2 = setindex!!(newdict, prefactor(a), NCMul(1, a.factors))
+    nc = NCAdd(additive_coeff(b), newdict2)
     return nc
 end
 function Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},_D}}, x::NCMul{C2,S,F}) where {C,C2,S,F,_D}
@@ -65,7 +66,7 @@ function Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},_D}}, x::NCMul{C2,S,F}) wher
     NCAdd(zero(C), D(to_add_dict(x)))
 end
 
-to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => a.coeff)
+to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => prefactor(a))
 
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)
@@ -76,6 +77,7 @@ end
 macro nc_common(T)
     quote
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
+        NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
         Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) + y
@@ -89,8 +91,8 @@ macro nc_common(T)
         Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) - y
 
         Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
-        Base.:*(x::$(esc(T)), y::NCMul) = autosort() ? sort!(NCMul(y.coeff, pushfirst!!(copy(y.factors), x))) : NCMul(y.coeff, pushfirst!!(copy(y.factors), x))
-        Base.:*(x::NCMul, y::$(esc(T))) = autosort() ? sort!(NCMul(x.coeff, push!!(copy(x.factors), y))) : NCMul(x.coeff, push!!(copy(x.factors), y))
+        Base.:*(x::$(esc(T)), y::NCMul) = autosort() ? sort!(NCMul(prefactor(y), pushfirst!!(copy(y.factors), x))) : NCMul(prefactor(y), pushfirst!!(copy(y.factors), x))
+        Base.:*(x::NCMul, y::$(esc(T))) = autosort() ? sort!(NCMul(prefactor(x), push!!(copy(x.factors), y))) : NCMul(prefactor(x), push!!(copy(x.factors), y))
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(y)
         Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(x) * y
         Base.:/(x::$(esc(T)), y::Number) = NCMul(x) / y
@@ -125,13 +127,14 @@ macro nc_common(T)
 
     end
 end
-
-
-const _autosort = Ref(false)
-
-autosort() = _autosort[]
-enable_autosort!() = _autosort[] = true
-disable_autosort!() = _autosort[] = false
+const _DEFAULT_AUTOSORT = Ref(false)
+const _autosort = ScopedValue{Bool}()
+function autosort()
+    Base.isassigned(_autosort) && return _autosort[]
+    return _DEFAULT_AUTOSORT[]
+end
+enable_autosort!() = _DEFAULT_AUTOSORT[] = true
+disable_autosort!() = _DEFAULT_AUTOSORT[] = false
 
 
 macro nc(types...)
@@ -172,7 +175,7 @@ macro commutative(types...)
         for (n2, T2) in enumerate(types)
             n1 >= n2 && continue
             push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T1)), y::$(esc(T2))) = nothing))
-            push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T2)), y::$(esc(T1))) = Swap(1)))
+            push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T2)), y::$(esc(T1))) = y * x))
         end
     end
     quote

@@ -1,57 +1,29 @@
 using TestItemRunner
+@run_package_tests verbose = true
 
 @testmodule Fermions begin
     export Fermion
-    using NonCommutativeProducts
-    import NonCommutativeProducts: AddTerms, Swap, @nc
-    struct Fermion{L}
-        label::L
-        creation::Bool
-    end
-    Base.adjoint(x::Fermion) = Fermion(x.label, !x.creation)
-    Fermion(k) = Fermion(k, false)
-    Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
-    @nc Fermion
+    include("rules/fermions.jl")
+end
 
-    function should_swap(a::Fermion, b::Fermion)
-        if a.creation == b.creation
-            return a.label > b.label
-        else
-            a.creation < b.creation
-        end
-    end
-
-    function NonCommutativeProducts.mul_effect(a::Fermion, b::Fermion)
-        a == b && return 0 # a*b => 0
-        if should_swap(a, b)
-            a.label == b.label && xor(a.creation, b.creation) && return AddTerms((Swap(-1), 1)) #  a*b => -b*a + 1
-            return Swap(-1) # a*b => -b*a
-        else
-            return nothing
-        end
-    end
+@testmodule Majoranas begin
+    export Majorana
+    include("rules/majoranas.jl")
 end
 
 @testmodule Bosons begin
     export Boson
-    using NonCommutativeProducts
-    import NonCommutativeProducts: AddTerms, Swap, @nc
-    struct Boson
-        exp::Int
-    end
-    Base.adjoint(x::Boson) = Boson(-x.exp)
-    Boson() = Boson(-1)
-    Base.show(io::IO, x::Boson) = print(io, "b", x.exp > 0 ? "†" : "", abs(x.exp) > 1 ? "^($(x.exp))" : "")
-    @nc Boson
+    include("rules/bosons.jl")
+end
 
-    function NonCommutativeProducts.mul_effect(a::Boson, b::Boson)
-        sign(a.exp) == sign(b.exp) && return Boson(a.exp + b.exp)
-        if a.exp < 0 && b.exp > 0
-            return AddTerms((Swap(1), 1))
-        else
-            return nothing
-        end
-    end
+@testmodule Paulis begin
+    export Pauli
+    include("rules/paulis.jl")
+end
+
+@testmodule SpinOperators begin
+    export SpinOp
+    include("rules/spin.jl")
 end
 
 @testitem "Fermions" setup = [Fermions] begin
@@ -137,30 +109,6 @@ end
 end
 
 
-@testmodule Majoranas begin
-    using NonCommutativeProducts
-    export Majorana
-    import NonCommutativeProducts: AddTerms, Swap, mul_effect, @nc
-    struct Majorana{L}
-        label::L
-    end
-    Base.adjoint(x::Majorana) = Majorana(x.label)
-    Base.show(io::IO, x::Majorana) = print(io, "γ[", x.label, "]")
-
-    @nc Majorana
-    function NonCommutativeProducts.mul_effect(a::Majorana, b::Majorana)
-        if a.label == b.label
-            return 1 # a*b => 1
-        elseif a.label < b.label
-            return nothing # a*b => a*b
-        elseif a.label > b.label
-            return Swap(-1) # a*b => -b*a
-        else
-            throw(ArgumentError("Don't know how to multiply $a * $b"))
-        end
-    end
-end
-
 @testitem "Majoranas" setup = [Majoranas] begin
     using Random: seed!
     seed!(1)
@@ -222,6 +170,26 @@ end
     @test NonCommutativeProducts.bubble_sort(bigprod2') == bigprod2'
 end
 
+@testitem "Autosort local override with ScopedValue" setup = [Majoranas] begin
+    NonCommutativeProducts.enable_autosort!()
+    γ1, γ2 = Majorana.(1:2)
+
+    # Global autosort enabled: product is immediately canonicalized.
+    canonical = γ2 * γ1
+    @test canonical == -γ1 * γ2
+
+    # Local override: multiplication is left unsorted only in this dynamic scope.
+    local_unsorted = Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do
+        @test !NonCommutativeProducts.autosort()
+        γ2 * γ1
+    end
+    @test local_unsorted != canonical
+    @test NonCommutativeProducts.bubble_sort(local_unsorted) == canonical
+
+    # Global setting remains unchanged outside the local override.
+    @test NonCommutativeProducts.autosort()
+end
+
 
 @testitem "Fermions+Bosons" setup = [Fermions, Bosons] begin
     import NonCommutativeProducts: bubble_sort, @nc, add!!
@@ -277,4 +245,131 @@ end
     @test isconcretetype(eltype([f1 * 2, f1 + 1]))
 end
 
-@run_package_tests verbose = true
+@testmodule WrappedRules begin
+    using NonCommutativeProducts
+    export Wrapped, Sym
+    import NonCommutativeProducts: @nc, mul_effect, ncmap
+
+    struct Wrapped{S}
+        sym::S
+    end
+    Base.show(io::IO, x::Wrapped) = print(io, "W(", x.sym, ")")
+    @nc Wrapped
+
+    function NonCommutativeProducts.mul_effect(a::Wrapped, b::Wrapped)
+        effect = mul_effect(a.sym, b.sym)
+        effect isa Union{Number,Nothing} && return effect
+        return ncmap(Wrapped, effect)
+    end
+    Base.adjoint(x::Wrapped) = Wrapped(adjoint(x.sym))
+end
+
+@testitem "Wrapped mul_effect delegation" setup = [WrappedRules, Fermions] begin
+    import NonCommutativeProducts: ncmap
+
+    NonCommutativeProducts.enable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    w1, w2 = Wrapped.((f1, f2))
+
+    @test w1 * w2 == ncmap(Wrapped, f1 * f2)
+    @test w2 * w2 == ncmap(Wrapped, f2 * f2)
+    @test w2 * w1 == ncmap(Wrapped, f2 * f1)
+    @test iszero(w1 * w1)
+    @test w1' * w1 + w1 * w1' == 1
+end
+
+@testitem "Paulis" setup = [Paulis] begin
+    import NonCommutativeProducts: bubble_sort
+    using Symbolics
+
+    @variables a::Real
+    σx = Pauli(1)
+    σy = Pauli(2)
+    σz = Pauli(3)
+
+    ord(op) = bubble_sort(op)
+    ord_equals(x, y) = iszero(ord(x - y))
+
+    # Basic algebraic properties
+    @test ord_equals(σx * σx, 1)
+    @test ord_equals(σy * σy, 1)
+    @test ord_equals(σz * σz, 1)
+
+    # Anti-commutation: σᵢ σⱼ = -σⱼ σᵢ
+    @test ord_equals(σx * σy + σy * σx, 0)
+    @test ord_equals(σy * σz + σz * σy, 0)
+    @test ord_equals(σz * σx + σx * σz, 0)
+
+    # Multi-site operators commute
+    σx1 = Pauli(:A, 1)
+    σy1 = Pauli(:A, 2)
+    σx2 = Pauli(:B, 1)
+    σy2 = Pauli(:B, 2)
+
+    @test ord_equals(σx1 * σx2, σx2 * σx1)
+    @test ord_equals(σx1 * σy2, σy2 * σx1)
+    @test ord_equals(σx1 * σy1 + σy1 * σx1, 0)
+
+    # Display tests
+    @test_nowarn display(σx)
+    @test_nowarn display(σx1)
+    @test_nowarn display(2 * σx)
+    @test_nowarn display(σx * σy)
+
+    # Coefficient handling
+    @test 1 * σx == σx
+    @test 1 * σx + 0 == σx
+    @test hash(σx) == hash(1 * σx)
+
+    # Products
+    @test ord_equals((2 * σx) * (2 * σx), 4)
+    @test ord_equals(σx * σy * σx, -σy)
+    @test ord_equals(σx * σy * σz, σz * σx * σy)
+
+    # Addition
+    @test ord_equals(σx + σx, 2 * σx)
+    @test iszero(σx - σx)
+
+    # Addition and subtraction between NCMul and Pauli
+    @test (σx + σy * σz) isa NonCommutativeProducts.NCAdd
+    @test (σx - σy * σz) isa NonCommutativeProducts.NCAdd
+    @test (σy * σz + σx) isa NonCommutativeProducts.NCAdd
+    @test (σy * σz - σx) isa NonCommutativeProducts.NCAdd
+end
+
+
+@testitem "SpinOperators" setup = [SpinOperators] begin
+    import NonCommutativeProducts: bubble_sort
+    using Symbolics
+
+    Sz = SpinOp(0, :z)
+    Sp = SpinOp(0, :+)
+    Sm = SpinOp(0, :-)
+
+    ord(op) = bubble_sort(op)
+    ord_equals(x, y) = iszero(ord(x - y))
+
+    # Commutation relations
+    # [Sz, S+] = S+
+    @test ord_equals(Sz * Sp - Sp * Sz, Sp)
+    # [Sz, S-] = -S-
+    @test ord_equals(Sz * Sm - Sm * Sz, -Sm)
+    # [S+, S-] = 2Sz
+    @test ord_equals(Sp * Sm - Sm * Sp, 2 * Sz)
+
+    # Multi-site operators commute
+    Sz1 = SpinOp(:A, :z)
+    Sp1 = SpinOp(:A, :+)
+    Sz2 = SpinOp(:B, :z)
+    Sp2 = SpinOp(:B, :+)
+
+    @test ord_equals(Sz1 * Sz2, Sz2 * Sz1)
+    @test ord_equals(Sz1 * Sp2, Sp2 * Sz1)
+
+    # Basic properties
+    @test 1 * Sz == Sz
+    @test iszero(Sz - Sz)
+    @test ord_equals(Sz + Sz, 2 * Sz)
+end
+
