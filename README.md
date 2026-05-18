@@ -72,14 +72,14 @@ Fermion(1)'*Fermion(1) |> sort
 Fermion(1)*Fermion(1)' |> sort
 #1I - c†[1]*c[1]
 ```
-In order automatically sort them on each multiplication, we can call `enable_autosort!`:
+In order to automatically sort them on each multiplication, we can call `enable_autosort!`:
 ```julia
 NonCommutativeProducts.enable_autosort!()
 prod(Fermion(n) + Fermion(n)' for n in 1:4) 
 #=Sum with 16 terms: 
  -c†[1]*c†[2]*c†[4]*c[3] + c†[1]*c[2]*c[3]*c[4] + c†[1]*c†[3]*c†[4]*c[2] + ...=#
 ```
-`enable_autosort!` sets the global default. You can override it locally in a scope with `Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do ... end`. This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort = false is always disabled to avoid infinite recursion.
+`enable_autosort!` sets the global default. You can override it locally in a scope with `Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do ... end`. This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort is always locally disabled to avoid infinite recursion.
 
 ## Remarks
 
