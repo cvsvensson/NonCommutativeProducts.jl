@@ -81,7 +81,7 @@ prod(Fermion(n) + Fermion(n)' for n in 1:4)
 ```
 `enable_autosort!` sets the global default. You can override it locally in a scope with `Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do ... end`. This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort is always locally disabled to avoid infinite recursion.
 
-## Remarks
+## Performance tips
 
 This package is flexible, but not very efficient. Sorting is done via bubble sort, which is convenient for this use case since it is based on repeatedly swapping adjacent elements where commutation relations can be used. But it does not scale well with the length of the list, so it won't perform well for products of many elements.
 
@@ -107,4 +107,24 @@ for n in 1:100
 end
 # Example timing: 36.200 μs (1708 allocations: 109.61 KiB)
 op == op2 #true
+```
+
+Mixing different symbolic types together is slower than using a single type.
+
+Disable autosort to improve performance if you don't want automatic sorting.
+
+Finally, instead of using ordinary addition and multiplication in mul_effect, 
+you can use `Swap` and `AddTerms` which are more efficient. 
+Their behaviour is:
+* `Swap(λ::Number)`: Replaces `a*b` by `λ*b*a`. 
+* `AddTerms(terms)`: `a*b` should be replaced by a sum of terms. `terms` should be an iterable such as a vector or a tuple, and the elements can be of the other allowed return types.
+
+For example, the `mul_effect` for fermions can be implemented as
+```julia
+function mul_effect(a::Fermion, b::Fermion)
+    (a.dagger, a.label) == (b.dagger, b.label) && return 0 
+    (!a.dagger, a.label) < (!b.dagger, b.label) && return nothing
+    (!a.dagger, a.label) == (b.dagger, b.label) && return AddTerms((Swap(-1), 1))
+    return Swap(-1)
+end
 ```
