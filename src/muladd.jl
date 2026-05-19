@@ -136,25 +136,7 @@ end
 const _DEFAULT_AUTOSORT = Ref(false)
 const _autosort = ScopedValue{Bool}()
 
-# function _get_boool(dict::Base.PersistentDict{<:Base.ScopedValues.ScopedValue,<:Any}, key::Base.ScopedValues.ScopedValue{Bool})
-#     trie = dict.trie
-#     if Base.HAMT.islevel_empty(trie)
-#         return nothing
-#     end
-#     h = Base.HAMT.HashState(key)
-#     found, present, trie, i, _, _, _ = Base.HAMT.path(trie, key, h)
-#     if found && present
-#         leaf = @inbounds trie.data[i]
-#         return leaf.val::Bool
-#     end
-#     return nothing
-# end
 function autosort()
-    # scope = Core.current_scope()
-    # val::Union{Bool,Nothing} = _get_boool(scope.values, _autosort)
-    # # @inline val = ScopedValues.get(_autosort)
-    # isnothing(val) && return _DEFAULT_AUTOSORT[]
-    # return val
     Base.isassigned(_autosort) && return _autosort[]
     return _DEFAULT_AUTOSORT[]
 end

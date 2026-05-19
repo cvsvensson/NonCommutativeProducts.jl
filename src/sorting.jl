@@ -96,7 +96,7 @@ function __bubble_sort!(terms, index, start)
         newncmul, newterms = splice!!_and_add(ncmul, i, effect)
 
         terms_with_newterms = _add_newterms!!(terms, newterms)
-        if iszero(prefactor(newncmul))
+        if iszero(newncmul)
             deleteat!(terms_with_newterms, index)
             return terms_with_newterms, false, 1
         end
