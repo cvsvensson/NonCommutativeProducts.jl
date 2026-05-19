@@ -15,7 +15,7 @@ Base.copy(x::NCMul) = NCMul(copy(prefactor(x)), copy(x.factors))
 isscalar(x::NCMul) = length(x.factors) == 0
 additive_coeff(::NCMul{C}) where C = zero(C)
 additive_coeff(::NCMul{Any}) = 0
-prefactor(x::NCMul) = getfield(x, :coeff)
+prefactor(x::NCMul) = x.coeff
 
 function Base.show(io::IO, x::NCMul)
     print_coeff = !isone(prefactor(x)) || isscalar(x)
@@ -43,7 +43,14 @@ Base.iszero(x::NCMul) = iszero(prefactor(x))
 
 Base.:(==)(a::NCMul, b::Number) = (isscalar(a) && prefactor(a) == b) || iszero(a) && iszero(b)
 Base.:(==)(a::NCMul, b::NCMul) = prefactor(a) == prefactor(b) && a.factors == b.factors
-Base.hash(a::NCMul, h::UInt) = isone(prefactor(a)) && length(a.factors) == 1 ? hash(only(a.factors), h) : hash(prefactor(a), hash(a.factors, h))
+function Base.hash(a::NCMul, h::UInt)
+    single_term = isone(prefactor(a)) && length(a.factors) == 1
+    if single_term
+        hash(only(a.factors), h)::UInt
+    else
+        hash(prefactor(a), hash(a.factors, h))::UInt
+    end
+end
 NCMul(f::NCMul) = f
 
 NCterms(a::NCMul) = (a,)
@@ -54,7 +61,7 @@ Base.:*(m::NCMul, x::Number) = x * m
 function Base.:*(a::NCMul, b::NCMul)
     ncmul = catenate(a, b)
     if autosort()
-        return bubble_sort!(ncmul)
+        return sort!(ncmul)
     end
     return ncmul
 end
@@ -64,7 +71,7 @@ function Base.adjoint(x::NCMul)
     length(x.factors) == 0 && return NCMul(adjoint(prefactor(x)), x.factors)
     ncmul = NCMul(adjoint(prefactor(x)), collect(Iterators.reverse(Iterators.map(adjoint, x.factors))))
     if autosort()
-        return bubble_sort!(ncmul)
+        return sort!(ncmul)
     end
     return ncmul
 end
