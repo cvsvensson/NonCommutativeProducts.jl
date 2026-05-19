@@ -70,7 +70,7 @@ to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => prefactor(a))
 
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)
-    autosort() && return bubble_sort(ret)
+    autosort() && return sort!(ret)
     return ret
 end
 
@@ -91,8 +91,14 @@ macro nc_common(T)
         Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) - y
 
         Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
-        Base.:*(x::$(esc(T)), y::NCMul) = autosort() ? sort!(NCMul(prefactor(y), pushfirst!!(copy(y.factors), x))) : NCMul(prefactor(y), pushfirst!!(copy(y.factors), x))
-        Base.:*(x::NCMul, y::$(esc(T))) = autosort() ? sort!(NCMul(prefactor(x), push!!(copy(x.factors), y))) : NCMul(prefactor(x), push!!(copy(x.factors), y))
+        function Base.:*(x::$(esc(T)), y::NCMul)
+            ncmul = NCMul(prefactor(y), pushfirst!!(copy(y.factors), x))
+            autosort() ? sort!(ncmul) : ncmul
+        end
+        function Base.:*(x::NCMul, y::$(esc(T)))
+            ncmul = NCMul(prefactor(x), push!!(copy(x.factors), y))
+            autosort() ? sort!(ncmul) : ncmul
+        end
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(y)
         Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(x) * y
         Base.:/(x::$(esc(T)), y::Number) = NCMul(x) / y
@@ -129,6 +135,7 @@ macro nc_common(T)
 end
 const _DEFAULT_AUTOSORT = Ref(false)
 const _autosort = ScopedValue{Bool}()
+
 function autosort()
     Base.isassigned(_autosort) && return _autosort[]
     return _DEFAULT_AUTOSORT[]
@@ -150,7 +157,7 @@ macro nc_pairs(types...)
     for T1 in types
         for T2 in types
             T1 == T2 && continue
-            push!(mul_pairs, :(Base.:*(x::$(esc(T1)), y::$(esc(T2))) = autosort() ? bubble_sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])))
+            push!(mul_pairs, :(Base.:*(x::$(esc(T1)), y::$(esc(T2))) = autosort() ? sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])))
         end
     end
 

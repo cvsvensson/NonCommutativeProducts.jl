@@ -191,7 +191,7 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
         end
     end
     if autosort()
-        c = bubble_sort(c)
+        return sort!(c)
     end
     return c
 end
