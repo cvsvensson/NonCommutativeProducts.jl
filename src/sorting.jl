@@ -25,8 +25,9 @@ function splice!!(ncmul::NCMul, i::Integer, swap::Swap)
     return NCMul(coeff, factors)
 end
 function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
-    newterms = [splice!!(copy(ncmul), i, term) for term in Iterators.drop(terms.terms, 1)]
-    ncmul2 = splice!!(ncmul, i, first(terms.terms))
+    firstterm, state = iterate(terms.terms)
+    newterms = map(term -> splice!!(copy(ncmul), i, term), Base.rest(terms.terms, state))
+    ncmul2 = splice!!(ncmul, i, firstterm)
     return ncmul2, newterms
 end
 
@@ -205,10 +206,11 @@ end
 function splice!!_and_add(ncmul::NCMul, i, add::NCAdd)
     if iszero(additive_coeff(add))
         terms = NCterms(add)
-        newterms = [splice!!(copy(ncmul), i, term) for term in Iterators.drop(terms, 1)]
-        ncmul2 = splice!!(ncmul, i, first(terms))
+        firstterm, state = iterate(terms)
+        newterms = map(term -> splice!!(copy(ncmul), i, term), Base.rest(terms, state))
+        ncmul2 = splice!!(ncmul, i, firstterm)
     else
-        newterms = [splice!!(copy(ncmul), i, term) for term in NCterms(add)]
+        newterms = map(term -> splice!!(copy(ncmul), i, term), NCterms(add))
         ncmul2 = splice!!(ncmul, i, additive_coeff(add))
     end
     return ncmul2, newterms
