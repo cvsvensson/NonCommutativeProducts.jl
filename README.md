@@ -121,6 +121,7 @@ Their behaviour is:
 
 For example, the `mul_effect` for fermions can be implemented as
 ```julia
+import NonCommutativeProducts: Swap, AddTerms
 function mul_effect(a::Fermion, b::Fermion)
     (a.dagger, a.label) == (b.dagger, b.label) && return 0 
     (!a.dagger, a.label) < (!b.dagger, b.label) && return nothing
