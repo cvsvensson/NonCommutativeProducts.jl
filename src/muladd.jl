@@ -1,6 +1,7 @@
 NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul: $f"))
 
 Base.zero(nc::Union{<:NCAdd,<:NCMul}) = zero(typeof(nc))
+Base.one(nc::Union{<:NCAdd,<:NCMul}) = one(typeof(nc))
 function Base.promote_rule(::Type{<:NCAdd{C1,NCMul{Int,S,VS},D1}}, ::Type{<:NCAdd{C2,NCMul{Int,S,VS},D2}}) where {C1,C2,D1,D2,S,VS}
     C = promote_type(C1, C2)
     D = promote_type(D1, D2)
@@ -21,6 +22,9 @@ function Base.promote_rule(::Type{A}, ::Type{M}) where {A<:NCAdd,M<:NCMul}
 end
 
 function Base.:(==)(a::NCAdd, b::NCMul)
+    if isscalar(b)
+        additive_coeff(a) == prefactor(b) && length(a.dict) == 0 && return true
+    end
     iszero(additive_coeff(a)) || return false
     length(a.dict) == 1 || return false
     ncmul, coeff = only(a.dict)
@@ -67,7 +71,8 @@ function Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},_D}}, x::NCMul{C2,S,F}) wher
 end
 
 to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => prefactor(a))
-
+to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{Int,S,F}
+to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)
     autosort() && return sort!(ret)
@@ -111,10 +116,15 @@ macro nc_common(T)
 
         Base.zero(a::$(esc(T))) = zero($(esc(T)))
         function Base.zero(::Type{W}) where W<:$(esc(T))
-            C = Int
-            F = Vector{W}
-            D = Dict{NCMul{C,W,F},C}
-            NCAdd(zero(C), D())
+            NCMul(0, W[])
+        end
+        Base.one(a::$(esc(T))) = one($(esc(T)))
+        function Base.one(::Type{W}) where W<:$(esc(T))
+            NCMul(1, W[])
+        end
+        Base.oneunit(a::$(esc(T))) = oneunit($(esc(T)))
+        function Base.oneunit(::Type{W}) where W<:$(esc(T))
+            NCMul(1, W[])
         end
 
         Base.promote_rule(::Type{W}, ::Type{W}) where W<:$(esc(T)) = return W

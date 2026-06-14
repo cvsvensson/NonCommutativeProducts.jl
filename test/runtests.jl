@@ -229,6 +229,10 @@ end
     @test zero(f1) == zero(f1mul) == zero(f1add) == 0
     @test zero(typeof(f1)) == zero(typeof(f1mul)) == zero(typeof(f1add)) == 0
 
+    @test one(f1) == one(f1mul) == one(f1add) == 1
+    @test oneunit(f1) == oneunit(f1mul) == oneunit(f1add) == 1
+    @test one(typeof(f1)) == one(typeof(f1mul)) == one(typeof(f1add)) == 1
+
     @test promote_rule(typeof(f1), typeof(f1)) == typeof(f1)
     @test promote_rule(typeof(f1), typeof(1 * f1)) == typeof(1 * f1)
     @test promote_rule(typeof(f1), typeof(f1 + 0)) == typeof(f1 + 0)

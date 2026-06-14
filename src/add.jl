@@ -26,11 +26,14 @@ mutable struct NCAdd{C,K,D}
         new{promote_type(C, valtype(D)),keytype(D),D}(coeff, dict)
     end
 end
+NCAdd{C,K,D}(ncadd::NCAdd{C,K,D}) where {C,K,D} = ncadd
+
 additive_coeff(x::NCAdd) = x.coeff
 add_to_coeff!(a::NCAdd, x::Number) = a.coeff += x
 set_coeff!(a::NCAdd, x::Number) = a.coeff = x
 
 Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D} = NCAdd(convert(C, additive_coeff(x)), D(x.dict))
+Base.convert(::Type{NCAdd{C,K,D}}, x::Number) where {C,K,D} = NCAdd(x, D())
 
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
@@ -208,6 +211,7 @@ function Base.adjoint(x::NCAdd)
 end
 
 Base.zero(::Type{NCAdd{C,K,D}}) where {C,K,D} = NCAdd(zero(C), D())
+Base.one(::Type{NCAdd{C,K,D}}) where {C,K,D} = NCAdd(one(C), D())
 
 @testitem "Consistency between + and add!!" setup = [Fermions] begin
     import NonCommutativeProducts: add!!
