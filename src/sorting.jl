@@ -54,7 +54,7 @@ function _bubble_sort!(terms::Vector{T}) where {T<:NCMul}
         __bubble_sort!(terms)
     end
     if length(sorted_terms) == 0
-        return NCAdd(0, Dict{T,Int}())
+        return NCAdd(0, Dict{to_add_dict_type(T),Int}())
     end
     newadd = NCAdd(0, to_add_dict(first(sorted_terms)))
     for term in Iterators.drop(sorted_terms, 1)
