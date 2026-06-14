@@ -411,51 +411,54 @@ end
     @test VectorInterface.add!(a, x, 2, 3) === a
     @test a == 3 * y + 2 * x
     @test VectorInterface.add!!(copy(y), x, 2, 3) == 3 * y + 2 * x
-
-    # Basis {I, f1, f2} is orthonormal in this extension's inner product.
-    @test VectorInterface.inner(x, x) == 14
-    @test VectorInterface.inner(x, y) == 2
 end
 
-@testitem "KrylovKit works with extension" setup = [Fermions] begin
-    using KrylovKit
+@testitem "KrylovKit compatibility" setup = [Fermions] begin
+    using LinearAlgebra, KrylovKit
     using VectorInterface
 
-    struct State{L}
-        occ::Bool
-        label::L
-    end
-    function NonCommutativeProducts.mul_effect(f::Fermion, s::State)
-        f.label == s.label || return nothing
-        s.occ == f.creation && return 0
-        return State(xor(s.occ, f.creation), s.label)
-    end
-    function NonCommutativeProducts.mul_effect(s1::State, s2::State)
-        s1.label == s2.label && throw(ArgumentError("Cannot multiply two states with the same label"))
-        s1.label < s2.label && return nothing
-        return NonCommutativeProducts.Swap(1)
-    end
-    NonCommutativeProducts.@nc State Fermion
-
-    # NonCommutativeProducts.disable_autosort!()
+    NonCommutativeProducts.enable_autosort!()
     f1 = Fermion(:a)
-    f2 = Fermion(:b)
-    s1 = State(false, :a)
-    s2 = State(false, :b)
+    s1 = Fermions.State(false, f1)
+
+    @test inner(s1, s1) == 1
+    @test inner(s2, s2) == 1
+    @test_throws ArgumentError inner(s1, s2)
+    @test inner(f1' * s1, f1' * s1) == 1
+    @test inner(s1, f1' * s1) == 0
+
+    ham = f1' * f1 + f1 + f1'
+    basis = [s1, f1' * s1]
+    hammat = [inner(b, ham * a) for b in basis, a in basis]
+    numvals, numvecs = eigen(hammat)
+    diagbasis = numvecs' * basis
+    diaghammat = [inner(b, ham * a) for b in diagbasis, a in diagbasis]
+    @test diaghammat ≈ Diagonal(numvals)
+
+    _vals, _vecs, _ = KrylovKit.eigsolve(v -> ham * v, s1 + f1' * s1, 2; ishermitian=true)
+    perm = sortperm(_vals)
+    vals = _vals[perm]
+    vecs = _vecs[perm]
+    @test vals ≈ numvals
+    @test map(abs ∘ inner, diagbasis, vecs) ≈ [1, 1]
+
+    numlinsol = hammat \ [1, 0]
+    sol, _ = KrylovKit.linsolve(v -> ham * v, basis[1])
+    @test map(b -> inner(b, sol), basis) ≈ numlinsol
 
 
-    e1 = f1 + 0
-    e2 = f2 + 0
+    sol2, _ = KrylovKit.lssolve((v -> ham * v, v -> ham' * v), basis[1])
+    @test inner(sol, sol2) ≈ inner(sol, sol)
 
-    A(v) = 2 * VectorInterface.inner(e1, v) * e1 + 3 * VectorInterface.inner(e2, v) * e2
+    svals, svecsl, svecsr, _ = KrylovKit.svdsolve((v -> ham * v, v -> ham' * v), 0 + basis[1])
+    svecsl2, svals2, svecsr2 = svd(hammat)
+    @test svals ≈ svals2
+    @test abs(dot(map(b -> inner(b, svecsl[1]), basis), svecsl2[:, 1])) ≈ 1
+    @test abs(dot(map(b -> inner(b, svecsl[2]), basis), svecsl2[:, 2])) ≈ 1
+    @test abs(dot(map(b -> inner(b, svecsr[1]), basis), svecsr2[:, 1])) ≈ 1
+    @test abs(dot(map(b -> inner(b, svecsr[2]), basis), svecsr2[:, 2])) ≈ 1
 
-    vals, vecs, _ = KrylovKit.eigsolve(A, e1 + e2, 1, :LM)
-    @test length(vals) == 1
-    @test isapprox(vals[1], 3; atol=1e-8)
+    ## try exponentiate
 
-    λ = vals[1]
-    v = vecs[1]
-    r = A(v) - λ * v
-    @test VectorInterface.inner(r, r) < 1e-10
 end
 

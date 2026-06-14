@@ -18,6 +18,8 @@ Base.oneunit(::T) where {T<:NCMul} = oneunit(T)
 Base.oneunit(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{C,S,F}(one(C), S[])
 Base.copy(x::NCMul) = NCMul(copy(prefactor(x)), copy(x.factors))
 isscalar(x::NCMul) = length(x.factors) == 0
+scalar(x::NCMul) = isscalar(x) ? prefactor(x) : throw(ArgumentError("NCMul is not a scalar"))
+scalar(x::Number) = x
 additive_coeff(::NCMul{C}) where C = zero(C)
 additive_coeff(::NCMul{Any}) = 0
 prefactor(x::NCMul) = x.coeff

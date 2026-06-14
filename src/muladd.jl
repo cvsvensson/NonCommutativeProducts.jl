@@ -134,13 +134,23 @@ macro nc_common(T)
         function Base.promote_rule(::Type{W}, ::Type{<:NCMul{C,W,VS}}) where {C,VS,W<:$(esc(T))}
             return NCMul{C,W,VS}
         end
-        function Base.promote_rule(::Type{NC}, ::Type{W}) where {NC<:Union{NCAdd,NCMul},W<:$(esc(T))}
+        function Base.promote_rule(::Type{NC}, ::Type{W}) where {NC<:MulAdd,W<:$(esc(T))}
             return promote_rule(W, NC)
         end
 
         Base.convert(::Type{NCMul{C,W,V}}, x::W) where {C,V,W<:$(esc(T))} = one(C) * x
         Base.convert(::Type{NCAdd{C,NCMul{Int,W,V},D}}, x::W) where {C,V,D,W<:$(esc(T))} = NCAdd(zero(C), D(NCMul(1, [x]) => one(C)))
 
+        VectorInterface.inner(x::MulAdd, y::$(esc(T))) = _inner(x, y)
+        VectorInterface.inner(x::$(esc(T)), y::MulAdd) = _inner(x, y)
+        VectorInterface.inner(x::$(esc(T)), y::$(esc(T))) = _inner(x, y)
+        LinearAlgebra.norm(x::$(esc(T))) = sqrt(VectorInterface.inner(x, x))
+
+        VectorInterface.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, y + 0, α, β)
+        VectorInterface.scale(x::$(esc(T)), α::Number) = α * x
+        VectorInterface.scale!!(x::$(esc(T)), α::Number) = α * x
+        VectorInterface.scale!!(a::NCAdd, x::$(esc(T)), α::Number) = α * x
+        VectorInterface.zerovector(x::$(esc(T)), ::Type{S}) where {S<:Number} = VectorInterface.zerovector(NCMul(x), S)
     end
 end
 const _DEFAULT_AUTOSORT = Ref(false)

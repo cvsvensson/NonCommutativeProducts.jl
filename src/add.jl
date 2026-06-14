@@ -30,8 +30,17 @@ NCAdd{C,K,D}(ncadd::NCAdd{C,K,D}) where {C,K,D} = ncadd
 
 additive_coeff(x::NCAdd) = x.coeff
 add_to_coeff!(a::NCAdd, x::Number) = a.coeff += x
-set_coeff!(a::NCAdd, x::Number) = a.coeff = x
-
+function set_coeff!(a::NCAdd, x::Number)
+    a.coeff = x
+    return a
+end
+function set_coeff!!(a::NCAdd, x::Number)
+    try
+        set_coeff!(a, x)
+    catch e
+        NCAdd(x, a.dict)
+    end
+end
 Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D} = NCAdd(convert(C, additive_coeff(x)), D(x.dict))
 Base.convert(::Type{NCAdd{C,K,D}}, x::Number) where {C,K,D} = NCAdd(x, D())
 
@@ -58,6 +67,7 @@ function Base.hash(a::NCAdd, h::UInt)
 end
 
 isscalar(x::NCAdd) = length(x.dict) == 0 || all(isscalar, keys(x.dict)) || all(iszero, values(x.dict))
+scalar(x::NCAdd) = isscalar(x) ? additive_coeff(x) : throw(ArgumentError("NCAdd is not a scalar"))
 Base.copy(x::NCAdd) = NCAdd(copy(additive_coeff(x)), copy(x.dict))
 
 function print_coeff(io, coeff)
@@ -119,49 +129,70 @@ function Base.:+(a::NCAdd, b::NCAdd)
     dict = mergewith(+, a.dict, b.dict)
     NCAdd(coeff, dict)
 end
+add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
-
-function add!!(a::NCAdd, b::NCMul)
+function add!!(_a::NCAdd, b::NCMul, α::Number=One(), β::Number=One())
+    # compute β * a + α * b
+    a = scale!!(_a, β)
     key = NCMul(1, b.factors)
-    coeff = prefactor(b)
+    coeff = α * prefactor(b)
     newdict, ret = modify!!(a.dict, key) do val
         isnothing(val) && return coeff
         return something(val, 0) + coeff
     end
-    newdict === a.dict && return a
-    return NCAdd(additive_coeff(a), newdict)
+    newcoeff = additive_coeff(a) * β
+    if newdict === a.dict
+        return set_coeff!!(a, newcoeff)
+    end
+    return NCAdd(newcoeff, newdict)
 end
-function add!!(a::NCAdd, b::NCAdd)
-    newdict = mergewith!!(+, a.dict, b.dict)
-    newdict === a.dict && return add!!(a, additive_coeff(b))
-    ca = additive_coeff(a)
-    cb = additive_coeff(b)
-    return NCAdd(ca + cb, newdict)
+function add!!(a::NCAdd, b::NCAdd, α::Number=One(), β::Number=One())
+    newdict = a.dict
+    for (k, v) in b.dict
+        coeff = α * v
+        newdict, ret = modify!!(a.dict, k) do val
+            isnothing(val) && return coeff
+            return something(val, 0) * β + coeff
+        end
+    end
+    newcoeff = additive_coeff(a) * β + additive_coeff(b) * α
+    if newdict === a.dict
+        return set_coeff!!(a, newcoeff)
+    end
+    return NCAdd(newcoeff, newdict)
 end
-function add!!(a::NCAdd{C}, b::C2) where {C,C2<:Number}
-    promote_type(C, C2) <: C && (add_to_coeff!(a, b); return a)
-    return a + b
+function add!!(_a::NCAdd, b::Number, α::Number=One(), β::Number=One())
+    a = scale!!(_a, β)
+    set_coeff!!(a, additive_coeff(a) * β + α * b)
 end
-function add!!(a::NCAdd{C}, b::UniformScaling{C2}) where {C,C2<:Number}
-    promote_type(C, C2) <: C && return (add_to_coeff!(a, b.λ); return a)
-    return a + b
+function add!!(_a::NCAdd, b::UniformScaling, α::Number=One(), β::Number=One())
+    a = scale!!(_a, β)
+    set_coeff!!(a, additive_coeff(a) * β + α * b.λ)
 end
 
-
+function scale!(x::NCAdd, α::Number)
+    x.coeff *= α
+    for (k, v) in x.dict
+        x.dict[k] = v * α
+    end
+    return x
+end
+function scale!!(x::NCAdd, α::Number)
+    x = try
+        scale!(x, α)
+    catch e
+        scale(x, α)
+    end
+end
+scale(x::NCAdd, α::Number) = α * x
 
 function NCterms(a::NCAdd)
     (v * k for (k, v) in pairs(a.dict))
 end
 
-function Base.:*(x::C, a::NCAdd{C2}) where {C<:Number,C2}
+function Base.:*(x::Number, a::NCAdd)
     acoeff = additive_coeff(a)
-    if promote_type(C, C2) <: C2
-        dictcopy = copy(a.dict)
-        map!(v -> x * v, values(dictcopy))
-        return NCAdd(x * acoeff, dictcopy)
-    else
-        return NCAdd(x * acoeff, Dict(k => v * x for (k, v) in a.dict))
-    end
+    return NCAdd(x * acoeff, Dict(k => v * x for (k, v) in a.dict))
 end
 Base.:*(a::NCAdd, x::Number) = x * a
 
@@ -181,10 +212,10 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     acoeff = additive_coeff(a)
     bcoeff = additive_coeff(b)
     if !iszero(acoeff)
-        c = add!!(c, acoeff * b)
+        c = add!!(c, b, acoeff, One())
     end
     if !iszero(bcoeff)
-        c = add!!(c, a * bcoeff)
+        c = add!!(c, a, bcoeff, One())
         c = add!!(c, -acoeff * bcoeff) # We've double counted this term so subtract it
     end
     for bterm in NCterms(b)
