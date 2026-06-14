@@ -57,7 +57,7 @@ function Base.hash(a::NCAdd, h::UInt)
     return hash(additive_coeff(a), hash(a.dict, h))
 end
 
-isscalar(x::NCAdd) = length(x.dict) == 0 || all(isscalar, keys(x.dict)) || all(iszero(values(x.dict)))
+isscalar(x::NCAdd) = length(x.dict) == 0 || all(isscalar, keys(x.dict)) || all(iszero, values(x.dict))
 Base.copy(x::NCAdd) = NCAdd(copy(additive_coeff(x)), copy(x.dict))
 
 function print_coeff(io, coeff)
