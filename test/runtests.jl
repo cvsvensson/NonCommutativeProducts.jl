@@ -419,8 +419,9 @@ end
 
     NonCommutativeProducts.enable_autosort!()
     f1 = Fermion(:a)
+    f2 = Fermion(:b)
     s1 = Fermions.State(false, f1)
-
+    s2 = Fermions.State(false, f2)
     @test inner(s1, s1) == 1
     @test inner(s2, s2) == 1
     @test_throws ArgumentError inner(s1, s2)
