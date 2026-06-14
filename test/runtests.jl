@@ -377,3 +377,85 @@ end
     @test ord_equals(Sz + Sz, 2 * Sz)
 end
 
+@testitem "VectorInterface extension" setup = [Fermions] begin
+    using VectorInterface
+
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+
+    x = 1 + 2 * f1 + 3 * f2
+    y = 4 - f1
+
+    @test VectorInterface.scalartype(typeof(x)) == Int
+
+    z = VectorInterface.zerovector(x)
+    @test z == 0
+
+    z2 = copy(x)
+    @test VectorInterface.zerovector!(z2) === z2
+    @test z2 == 0
+
+    z3 = copy(x)
+    @test VectorInterface.zerovector!!(z3) === z3
+    @test z3 == 0
+
+    @test VectorInterface.scale(x, 2) == 2 * x
+    s = copy(x)
+    @test VectorInterface.scale!(s, 2) === s
+    @test s == 2 * x
+    @test VectorInterface.scale!!(copy(x), 2) == 2 * x
+
+    @test VectorInterface.add(y, x, 2, 3) == 3 * y + 2 * x
+    a = copy(y)
+    @test VectorInterface.add!(a, x, 2, 3) === a
+    @test a == 3 * y + 2 * x
+    @test VectorInterface.add!!(copy(y), x, 2, 3) == 3 * y + 2 * x
+
+    # Basis {I, f1, f2} is orthonormal in this extension's inner product.
+    @test VectorInterface.inner(x, x) == 14
+    @test VectorInterface.inner(x, y) == 2
+end
+
+@testitem "KrylovKit works with extension" setup = [Fermions] begin
+    using KrylovKit
+    using VectorInterface
+
+    struct State{L}
+        occ::Bool
+        label::L
+    end
+    function NonCommutativeProducts.mul_effect(f::Fermion, s::State)
+        f.label == s.label || return nothing
+        s.occ == f.creation && return 0
+        return State(xor(s.occ, f.creation), s.label)
+    end
+    function NonCommutativeProducts.mul_effect(s1::State, s2::State)
+        s1.label == s2.label && throw(ArgumentError("Cannot multiply two states with the same label"))
+        s1.label < s2.label && return nothing
+        return NonCommutativeProducts.Swap(1)
+    end
+    NonCommutativeProducts.@nc State Fermion
+
+    # NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    s1 = State(false, :a)
+    s2 = State(false, :b)
+
+
+    e1 = f1 + 0
+    e2 = f2 + 0
+
+    A(v) = 2 * VectorInterface.inner(e1, v) * e1 + 3 * VectorInterface.inner(e2, v) * e2
+
+    vals, vecs, _ = KrylovKit.eigsolve(A, e1 + e2, 1, :LM)
+    @test length(vals) == 1
+    @test isapprox(vals[1], 3; atol=1e-8)
+
+    λ = vals[1]
+    v = vecs[1]
+    r = A(v) - λ * v
+    @test VectorInterface.inner(r, r) < 1e-10
+end
+
