@@ -77,7 +77,10 @@ function VectorInterface.add!(y::NCAdd, x::NCAdd, α::Number, β::Number)
     return _set_ncadd!(y, VectorInterface.add(y, x, α, β))
 end
 
-function VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number)
+function VectorInterface.add!!(y::MulAdd, x, α::Number, β::Number)
+    return add!!(y, x, α, β)
+end
+function VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number)
     return add!!(y, x, α, β)
 end
 

@@ -131,14 +131,13 @@ function Base.:+(a::NCAdd, b::NCAdd)
 end
 add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
-function add!!(_a::NCAdd, b::NCMul, α::Number=One(), β::Number=One())
+function add!!(a::NCAdd, b::NCMul, α::Number=One(), β::Number=One())
     # compute β * a + α * b
-    a = scale!!(_a, β)
     key = NCMul(1, b.factors)
     coeff = α * prefactor(b)
     newdict, ret = modify!!(a.dict, key) do val
         isnothing(val) && return coeff
-        return something(val, 0) + coeff
+        return something(val, 0) * β + coeff
     end
     newcoeff = additive_coeff(a) * β
     if newdict === a.dict
@@ -163,11 +162,11 @@ function add!!(a::NCAdd, b::NCAdd, α::Number=One(), β::Number=One())
 end
 function add!!(_a::NCAdd, b::Number, α::Number=One(), β::Number=One())
     a = scale!!(_a, β)
-    set_coeff!!(a, additive_coeff(a) * β + α * b)
+    set_coeff!!(a, additive_coeff(a) + α * b)
 end
 function add!!(_a::NCAdd, b::UniformScaling, α::Number=One(), β::Number=One())
     a = scale!!(_a, β)
-    set_coeff!!(a, additive_coeff(a) * β + α * b.λ)
+    set_coeff!!(a, additive_coeff(a) + α * b.λ)
 end
 
 function scale!(x::NCAdd, α::Number)
@@ -258,4 +257,13 @@ Base.one(::Type{NCAdd{C,K,D}}) where {C,K,D} = NCAdd(one(C), D())
         @test a2 !== anew
     end
     @test a == 1.0 * f[2] * f[1] + 1 + f[1]
+
+    NonCommutativeProducts.disable_autosort!()
+    @test add!!(f[1] + 1, 1) == f[1] + 2
+    @test add!!(f[1] + 1, f[1]) == 2f[1] + 1
+    @test add!!(f[1] + 1, 5 * f[1]) == 6f[1] + 1
+    @test add!!(f[1] + 1, 1, 2, 5) == 5f[1] + 7
+    @test add!!(f[1] + 1, f[1], 2, 5) == 7f[1] + 5
+    @test add!!(f[1] + 1, 5 * f[1], 2, 5) == 15f[1] + 5
+
 end

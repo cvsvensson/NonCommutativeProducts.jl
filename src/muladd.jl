@@ -146,7 +146,10 @@ macro nc_common(T)
         VectorInterface.inner(x::$(esc(T)), y::$(esc(T))) = _inner(x, y)
         LinearAlgebra.norm(x::$(esc(T))) = sqrt(VectorInterface.inner(x, x))
 
-        VectorInterface.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, y + 0, α, β)
+        NonCommutativeProducts.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, NCMul(y), α, β)
+        NonCommutativeProducts.add!!(x::$(esc(T)), y::$(esc(T)), α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
+        NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
+
         VectorInterface.scale(x::$(esc(T)), α::Number) = α * x
         VectorInterface.scale!!(x::$(esc(T)), α::Number) = α * x
         VectorInterface.scale!!(a::NCAdd, x::$(esc(T)), α::Number) = α * x
