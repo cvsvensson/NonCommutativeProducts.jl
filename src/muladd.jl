@@ -72,6 +72,8 @@ end
 
 to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => prefactor(a))
 to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{Int,S,F}
+to_add_dict_type(::Type{NCMul{C,S}}) where {C,S} = NCMul{Int,S}
+to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)
@@ -82,6 +84,7 @@ end
 macro nc_common(T)
     quote
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
+        NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(0, Dict(NCMul(1, [f]) => 1))
         NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
@@ -154,6 +157,8 @@ macro nc_common(T)
         VectorInterface.scale!!(x::$(esc(T)), α::Number) = α * x
         VectorInterface.scale!!(a::NCAdd, x::$(esc(T)), α::Number) = add!!(a, NCMul(x), α, VectorInterface.Zero())
         VectorInterface.zerovector(x::$(esc(T)), ::Type{S}) where {S<:Number} = VectorInterface.zerovector(NCMul(x), S)
+
+        NonCommutativeProducts.anyadd(x::$(esc(T))) = anyadd(NCAdd(x))
     end
 end
 const _DEFAULT_AUTOSORT = Ref(false)

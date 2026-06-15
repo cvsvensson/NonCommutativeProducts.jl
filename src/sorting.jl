@@ -46,6 +46,7 @@ function bubble_sort!(a::NCMul)
     return res
 end
 function bubble_sort(ncadd::NCAdd)
+    length(ncadd.dict) == 0 && return ncadd
     terms = collect(NCMul(v, copy(k.factors)) for (k, v) in pairs(ncadd.dict))
     res = add!!(_bubble_sort!(terms), additive_coeff(ncadd))
 end

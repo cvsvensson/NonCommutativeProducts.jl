@@ -27,6 +27,7 @@ mutable struct NCAdd{C,K,D}
     end
 end
 NCAdd{C,K,D}(ncadd::NCAdd{C,K,D}) where {C,K,D} = ncadd
+NCAdd(ncmul::NCMul{C}) where C = NCAdd(zero(C), to_add_dict(ncmul))
 
 additive_coeff(x::NCAdd) = x.coeff
 add_to_coeff!(a::NCAdd, x::Number) = a.coeff += x
@@ -43,6 +44,12 @@ function set_coeff!!(a::NCAdd, x::Number)
 end
 Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D} = NCAdd(convert(C, additive_coeff(x)), D(x.dict))
 Base.convert(::Type{NCAdd{C,K,D}}, x::Number) where {C,K,D} = NCAdd(x, D())
+
+# anyadd converts an NCAdd with any key type to an NCAdd with NCMul{Int} keys, which is useful for KrylovKit compatibility
+function anyadd(x::NCAdd{C,K,Dict{K,V}}) where {C,K,V}
+    NCAdd(x.coeff, Dict{NCMul{Int},V}(x.dict))
+end
+anyadd(x::NCMul) = anyadd(NCAdd(x))
 
 const MulAdd = Union{NCMul,NCAdd}
 function filter_scalars!(x::NCAdd)
