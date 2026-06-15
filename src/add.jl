@@ -47,7 +47,11 @@ Base.convert(::Type{NCAdd{C,K,D}}, x::Number) where {C,K,D} = NCAdd(x, D())
 
 # anyadd converts an NCAdd with any key type to an NCAdd with NCMul{Int} keys, which is useful for KrylovKit compatibility
 function anyadd(x::NCAdd{C,K,Dict{K,V}}) where {C,K,V}
-    NCAdd(x.coeff, Dict{NCMul{Int},V}(x.dict))
+    d = Dict{NCMul{Int},V}()
+    for (k, v) in x.dict
+        d[NCMul(1, Vector{Any}(k.factors))] = v
+    end
+    NCAdd(x.coeff, d)
 end
 anyadd(x::NCMul) = anyadd(NCAdd(x))
 
