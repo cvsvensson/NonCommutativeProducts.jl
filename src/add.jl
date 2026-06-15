@@ -131,30 +131,32 @@ function Base.:+(a::NCAdd, b::NCAdd)
 end
 add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
-function add!!(a::NCAdd, b::NCMul, α::Number=One(), β::Number=One())
+function add!!(_a::NCAdd, b::NCMul, α::Number=One(), β::Number=One())
     # compute β * a + α * b
+    a = scale!!(_a, β)
     key = NCMul(1, b.factors)
     coeff = α * prefactor(b)
     newdict, ret = modify!!(a.dict, key) do val
         isnothing(val) && return coeff
-        return something(val, 0) * β + coeff
+        return something(val, 0) + coeff
     end
-    newcoeff = additive_coeff(a) * β
+    newcoeff = additive_coeff(a)
     if newdict === a.dict
         return set_coeff!!(a, newcoeff)
     end
     return NCAdd(newcoeff, newdict)
 end
-function add!!(a::NCAdd, b::NCAdd, α::Number=One(), β::Number=One())
+function add!!(_a::NCAdd, b::NCAdd, α::Number=One(), β::Number=One())
+    a = scale!!(_a, β)
     newdict = a.dict
     for (k, v) in b.dict
         coeff = α * v
-        newdict, ret = modify!!(a.dict, k) do val
+        newdict, ret = modify!!(newdict, k) do val
             isnothing(val) && return coeff
-            return something(val, 0) * β + coeff
+            return something(val, 0) + coeff
         end
     end
-    newcoeff = additive_coeff(a) * β + additive_coeff(b) * α
+    newcoeff = additive_coeff(a) + additive_coeff(b) * α
     if newdict === a.dict
         return set_coeff!!(a, newcoeff)
     end
@@ -170,18 +172,26 @@ function add!!(_a::NCAdd, b::UniformScaling, α::Number=One(), β::Number=One())
 end
 
 function scale!(x::NCAdd, α::Number)
-    x.coeff *= α
-    for (k, v) in x.dict
-        x.dict[k] = v * α
-    end
+    map!(v -> v * α, values(x.dict))
+    set_coeff!(x, additive_coeff(x) * α)
     return x
 end
-function scale!!(x::NCAdd, α::Number)
-    x = try
-        scale!(x, α)
-    catch e
+
+termvaltype(::Type{NCAdd{C,K,D}}) where {C,K,D} = valtype(D)
+function scale!!(x::NCAdd{CS}, α::C) where {CS,C<:Number}
+    CD = termvaltype(typeof(x))
+    if promote_type(C, CD) <: CD && promote_type(C, CS) <: CS
+        try
+            scale!(x, α)
+        catch
+            scale(x, α)
+        end
+    else
         scale(x, α)
     end
+end
+function scale!!(y::NCAdd, x::MulAdd, α::C) where C<:Number
+    return add!!(y, x, α, VectorInterface.Zero())
 end
 scale(x::NCAdd, α::Number) = α * x
 
@@ -265,5 +275,4 @@ Base.one(::Type{NCAdd{C,K,D}}) where {C,K,D} = NCAdd(one(C), D())
     @test add!!(f[1] + 1, 1, 2, 5) == 5f[1] + 7
     @test add!!(f[1] + 1, f[1], 2, 5) == 7f[1] + 5
     @test add!!(f[1] + 1, 5 * f[1], 2, 5) == 15f[1] + 5
-
 end

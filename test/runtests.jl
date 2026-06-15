@@ -463,3 +463,50 @@ end
 
 end
 
+@testitem "KrylovKit apply extension" setup = [Fermions] begin
+    using KrylovKit
+    import NonCommutativeProducts: add!!
+
+    NonCommutativeProducts.enable_autosort!()
+    f = Fermion(:a)
+    s = Fermions.State(false, f)
+    x = s + f' * s
+    op = f' * f + f + f'
+
+    @test KrylovKit.apply(op, x) == op * x
+    @test KrylovKit.apply(op, x, 2, 3) == add!!(op * x, x, 2, 3)
+end
+
+@testitem "Regression: add!! and mul!! weighted accumulation" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, scale!, mul!!
+
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+
+    # scale! should scale both term coefficients and additive coefficient.
+    a0 = f1 + 1
+    a1 = copy(a0)
+    @test scale!(a1, 5) == 5 * a0
+
+    # add!!(a, b::NCMul, α, β) should scale every term in a by β, not just overlapping keys.
+    a2 = f1 + f2 + 1
+    got_mul = add!!(copy(a2), f1, 2, 5)
+    expected_mul = 5 * a2 + 2 * f1
+    @test got_mul == expected_mul
+
+    # add!!(a, b::NCAdd, α, β) should also scale all terms in a by β.
+    a3 = f1 + f2 + 1
+    b3 = f1 + 2
+    got_add = add!!(copy(a3), b3, 2, 5)
+    expected_add = 5 * a3 + 2 * b3
+    @test got_add == expected_add
+
+    # mul!! relies on weighted add!! in accumulation and should match distributive expansion.
+    a4 = f1 + 1
+    b4 = f2 + 3
+    got_prod = mul!!(zero(a4), a4, b4)
+    expected_prod = a4 * b4
+    @test got_prod == expected_prod
+end
+

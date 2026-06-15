@@ -152,7 +152,7 @@ macro nc_common(T)
 
         VectorInterface.scale(x::$(esc(T)), α::Number) = α * x
         VectorInterface.scale!!(x::$(esc(T)), α::Number) = α * x
-        VectorInterface.scale!!(a::NCAdd, x::$(esc(T)), α::Number) = α * x
+        VectorInterface.scale!!(a::NCAdd, x::$(esc(T)), α::Number) = add!!(a, NCMul(x), α, VectorInterface.Zero())
         VectorInterface.zerovector(x::$(esc(T)), ::Type{S}) where {S<:Number} = VectorInterface.zerovector(NCMul(x), S)
     end
 end

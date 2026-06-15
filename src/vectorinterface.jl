@@ -59,11 +59,7 @@ function VectorInterface.scale!!(y::NCMul, x::MulAdd, α::Number)
     return VectorInterface.scale(x, α)
 end
 function VectorInterface.scale!!(y::NCAdd, x::MulAdd, α::Number)
-    try
-        return VectorInterface.scale!(y, x, α)
-    catch
-        return VectorInterface.scale(x, α)
-    end
+    scale!!(y, x, α)
 end
 
 function VectorInterface.add(y::MulAdd, x::MulAdd, α::Number, β::Number)
@@ -77,12 +73,9 @@ function VectorInterface.add!(y::NCAdd, x::NCAdd, α::Number, β::Number)
     return _set_ncadd!(y, VectorInterface.add(y, x, α, β))
 end
 
-function VectorInterface.add!!(y::MulAdd, x, α::Number, β::Number)
-    return add!!(y, x, α, β)
-end
-function VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number)
-    return add!!(y, x, α, β)
-end
+VectorInterface.add!!(y::MulAdd, x, α::Number, β::Number) = add!!(y, x, α, β)
+VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β)
+VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β)
 
 VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
 _inner(x, y) = scalar(x' * y)
