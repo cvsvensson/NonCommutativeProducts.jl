@@ -33,21 +33,23 @@ end
 Base.:(==)(a::NCMul, b::NCAdd) = b == a
 
 function Base.:+(a::NCMul{C1,F1,S}, b::NCMul{C2,F2,S}) where {C1,C2,F1,F2,S}
+    C = promote_type(C1, C2)
     if a.factors == b.factors
-        return NCAdd(0, Dict(NCMul(1, a.factors) => prefactor(a) + prefactor(b)))
+        return NCAdd(zero(C), Dict(NCMul(1, a.factors) => prefactor(a) + prefactor(b)))
     end
     F = Union{F1,F2}
     C = promote_type(C1, C2)
-    return NCAdd(0, Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
+    return NCAdd(zero(C), Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
 end
 function Base.:+(a::NCMul{C1,F1,S1}, b::NCMul{C2,F2,S2}) where {C1,C2,F1,F2,S1,S2}
+    C = promote_type(C1, C2)
     if a.factors == b.factors
-        return NCAdd(0, Dict(NCMul(1, a.factors) => prefactor(a) + prefactor(b)))
+        return NCAdd(zero(C), Dict(NCMul(1, a.factors) => prefactor(a) + prefactor(b)))
     end
     F = promote_type(F1, F2)
     C = promote_type(C1, C2)
     S = promote_type(S1, S2)
-    return NCAdd(0, Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
+    return NCAdd(zero(C), Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
 end
 
 Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add_dict(b))
