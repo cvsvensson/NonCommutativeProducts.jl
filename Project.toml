@@ -5,13 +5,19 @@ authors = ["Viktor Svensson", "William Samuelson"]
 
 [deps]
 BangBang = "198e06fe-97b7-11e9-32a5-e1d131e6ad66"
-KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 VectorInterface = "409d34a3-91d5-4945-b6ec-7529ddf182d8"
 
+[weakdeps]
+KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
+
+[extensions]
+NonCommutativeProductsKrylovKitExt = "KrylovKit"
+
 [compat]
 BangBang = "0.4"
+KrylovKit = "0.10"
 LinearAlgebra = "1"
 Test = "1"
 TestItems = "1"

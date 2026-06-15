@@ -2,7 +2,7 @@ using TestItemRunner
 @run_package_tests verbose = true
 
 @testmodule Fermions begin
-    export Fermion
+    export Fermion, State
     include("rules/fermions.jl")
 end
 
@@ -12,7 +12,7 @@ end
 end
 
 @testmodule Bosons begin
-    export Boson
+    export Boson, State
     include("rules/bosons.jl")
 end
 
@@ -416,12 +416,13 @@ end
 @testitem "KrylovKit compatibility" setup = [Fermions] begin
     using LinearAlgebra, KrylovKit
     using VectorInterface
+    using NonCommutativeProducts: anyadd
 
     NonCommutativeProducts.enable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
-    s1 = Fermions.State(false, f1)
-    s2 = Fermions.State(false, f2)
+    s1 = State(false, f1)
+    s2 = State(false, f2)
     @test inner(s1, s1) == 1
     @test inner(s2, s2) == 1
     @test_throws ArgumentError inner(s1, s2)
@@ -436,7 +437,7 @@ end
     diaghammat = [inner(b, ham * a) for b in diagbasis, a in diagbasis]
     @test diaghammat ≈ Diagonal(numvals)
 
-    _vals, _vecs, _ = KrylovKit.eigsolve(v -> ham * v, s1 + f1' * s1, 2; ishermitian=true)
+    _vals, _vecs, _ = KrylovKit.eigsolve(ham, s1 + f1' * s1, 2; ishermitian=true)
     perm = sortperm(_vals)
     vals = _vals[perm]
     vecs = _vecs[perm]
@@ -444,14 +445,13 @@ end
     @test map(abs ∘ inner, diagbasis, vecs) ≈ [1, 1]
 
     numlinsol = hammat \ [1, 0]
-    sol, _ = KrylovKit.linsolve(v -> ham * v, basis[1])
+    sol, _ = KrylovKit.linsolve(ham, basis[1])
     @test map(b -> inner(b, sol), basis) ≈ numlinsol
 
-
-    sol2, _ = KrylovKit.lssolve((v -> ham * v, v -> ham' * v), basis[1])
+    sol2, _ = KrylovKit.lssolve(ham, basis[1])
     @test inner(sol, sol2) ≈ inner(sol, sol)
 
-    svals, svecsl, svecsr, _ = KrylovKit.svdsolve((v -> ham * v, v -> ham' * v), 0 + basis[1])
+    svals, svecsl, svecsr, _ = KrylovKit.svdsolve(ham, anyadd(basis[1]))
     svecsl2, svals2, svecsr2 = svd(hammat)
     @test svals ≈ svals2
     @test abs(dot(map(b -> inner(b, svecsl[1]), basis), svecsl2[:, 1])) ≈ 1
@@ -460,21 +460,9 @@ end
     @test abs(dot(map(b -> inner(b, svecsr[2]), basis), svecsr2[:, 2])) ≈ 1
 
     ## try exponentiate
-
-end
-
-@testitem "KrylovKit apply extension" setup = [Fermions] begin
-    using KrylovKit
-    import NonCommutativeProducts: add!!
-
-    NonCommutativeProducts.enable_autosort!()
-    f = Fermion(:a)
-    s = Fermions.State(false, f)
-    x = s + f' * s
-    op = f' * f + f + f'
-
-    @test KrylovKit.apply(op, x) == op * x
-    @test KrylovKit.apply(op, x, 2, 3) == add!!(op * x, x, 2, 3)
+    expsol, info = exponentiate(ham, 2.0, anyadd(basis[1]))
+    numsol = exp(2.0 * hammat) * [1, 0]
+    @test map(b -> inner(b, expsol), basis) ≈ numsol
 end
 
 @testitem "Regression: add!! and mul!! weighted accumulation" setup = [Fermions] begin
