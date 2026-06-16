@@ -2,7 +2,7 @@ using TestItemRunner
 @run_package_tests verbose = true
 
 @testmodule Fermions begin
-    export Fermion
+    export Fermion, State
     include("rules/fermions.jl")
 end
 
@@ -12,7 +12,7 @@ end
 end
 
 @testmodule Bosons begin
-    export Boson
+    export Boson, State
     include("rules/bosons.jl")
 end
 
@@ -229,6 +229,10 @@ end
     @test zero(f1) == zero(f1mul) == zero(f1add) == 0
     @test zero(typeof(f1)) == zero(typeof(f1mul)) == zero(typeof(f1add)) == 0
 
+    @test one(f1) == one(f1mul) == one(f1add) == 1
+    @test oneunit(f1) == oneunit(f1mul) == oneunit(f1add) == 1
+    @test one(typeof(f1)) == one(typeof(f1mul)) == one(typeof(f1add)) == 1
+
     @test promote_rule(typeof(f1), typeof(f1)) == typeof(f1)
     @test promote_rule(typeof(f1), typeof(1 * f1)) == typeof(1 * f1)
     @test promote_rule(typeof(f1), typeof(f1 + 0)) == typeof(f1 + 0)
@@ -371,5 +375,126 @@ end
     @test 1 * Sz == Sz
     @test iszero(Sz - Sz)
     @test ord_equals(Sz + Sz, 2 * Sz)
+end
+
+@testitem "VectorInterface extension" setup = [Fermions] begin
+    using VectorInterface
+
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+
+    x = 1 + 2 * f1 + 3 * f2
+    y = 4 - f1
+
+    @test VectorInterface.scalartype(typeof(x)) == Int
+
+    z = VectorInterface.zerovector(x)
+    @test z == 0
+
+    z2 = copy(x)
+    @test VectorInterface.zerovector!(z2) === z2
+    @test z2 == 0
+
+    z3 = copy(x)
+    @test VectorInterface.zerovector!!(z3) === z3
+    @test z3 == 0
+
+    @test VectorInterface.scale(x, 2) == 2 * x
+    s = copy(x)
+    @test VectorInterface.scale!(s, 2) === s
+    @test s == 2 * x
+    @test VectorInterface.scale!!(copy(x), 2) == 2 * x
+
+    @test VectorInterface.add(y, x, 2, 3) == 3 * y + 2 * x
+    a = copy(y)
+    @test VectorInterface.add!(a, x, 2, 3) === a
+    @test a == 3 * y + 2 * x
+    @test VectorInterface.add!!(copy(y), x, 2, 3) == 3 * y + 2 * x
+end
+
+@testitem "KrylovKit compatibility" setup = [Fermions] begin
+    using LinearAlgebra, KrylovKit
+    using VectorInterface
+    using NonCommutativeProducts: anyadd
+
+    NonCommutativeProducts.enable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    s1 = State(false, f1)
+    s2 = State(false, f2)
+    @test inner(s1, s1) == 1
+    @test inner(s2, s2) == 1
+    @test_throws ArgumentError inner(s1, s2)
+    @test inner(f1' * s1, f1' * s1) == 1
+    @test inner(s1, f1' * s1) == 0
+
+    ham = f1' * f1 + f1 + f1'
+    basis = [s1, f1' * s1]
+    hammat = [inner(b, ham * a) for b in basis, a in basis]
+    numvals, numvecs = eigen(hammat)
+    diagbasis = numvecs' * basis
+    diaghammat = [inner(b, ham * a) for b in diagbasis, a in diagbasis]
+    @test diaghammat ≈ Diagonal(numvals)
+
+    _vals, _vecs, _ = KrylovKit.eigsolve(ham, s1 + f1' * s1, 2; ishermitian=true)
+    perm = sortperm(_vals)
+    vals = _vals[perm]
+    vecs = _vecs[perm]
+    @test vals ≈ numvals
+    @test map(abs ∘ inner, diagbasis, vecs) ≈ [1, 1]
+
+    numlinsol = hammat \ [1, 0]
+    sol, _ = KrylovKit.linsolve(ham, basis[1])
+    @test map(b -> inner(b, sol), basis) ≈ numlinsol
+
+    sol2, _ = KrylovKit.lssolve(ham, basis[1])
+    @test inner(sol, sol2) ≈ inner(sol, sol)
+
+    svals, svecsl, svecsr, _ = KrylovKit.svdsolve(ham, anyadd(basis[1]))
+    svecsl2, svals2, svecsr2 = svd(hammat)
+    @test svals ≈ svals2
+    @test abs(dot(map(b -> inner(b, svecsl[1]), basis), svecsl2[:, 1])) ≈ 1
+    @test abs(dot(map(b -> inner(b, svecsl[2]), basis), svecsl2[:, 2])) ≈ 1
+    @test abs(dot(map(b -> inner(b, svecsr[1]), basis), svecsr2[:, 1])) ≈ 1
+    @test abs(dot(map(b -> inner(b, svecsr[2]), basis), svecsr2[:, 2])) ≈ 1
+
+    ## try exponentiate
+    expsol, info = exponentiate(ham, 2.0, anyadd(basis[1]))
+    numsol = exp(2.0 * hammat) * [1, 0]
+    @test map(b -> inner(b, expsol), basis) ≈ numsol
+end
+
+@testitem "Regression: add!! and mul!! weighted accumulation" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, scale!, mul!!
+
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+
+    # scale! should scale both term coefficients and additive coefficient.
+    a0 = f1 + 1
+    a1 = copy(a0)
+    @test scale!(a1, 5) == 5 * a0
+
+    # add!!(a, b::NCMul, α, β) should scale every term in a by β, not just overlapping keys.
+    a2 = f1 + f2 + 1
+    got_mul = add!!(copy(a2), f1, 2, 5)
+    expected_mul = 5 * a2 + 2 * f1
+    @test got_mul == expected_mul
+
+    # add!!(a, b::NCAdd, α, β) should also scale all terms in a by β.
+    a3 = f1 + f2 + 1
+    b3 = f1 + 2
+    got_add = add!!(copy(a3), b3, 2, 5)
+    expected_add = 5 * a3 + 2 * b3
+    @test got_add == expected_add
+
+    # mul!! relies on weighted add!! in accumulation and should match distributive expansion.
+    a4 = f1 + 1
+    b4 = f2 + 3
+    got_prod = mul!!(zero(a4), a4, b4)
+    expected_prod = a4 * b4
+    @test got_prod == expected_prod
 end
 

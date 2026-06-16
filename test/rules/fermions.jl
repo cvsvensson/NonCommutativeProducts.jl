@@ -26,3 +26,35 @@ function NonCommutativeProducts.mul_effect(a::Fermion, b::Fermion)
         return nothing
     end
 end
+
+struct FState{S}
+    occ::Bool
+    label::S
+    adj::Bool
+end
+State(occ, f::Fermion) = FState(occ, f.label, false)
+Base.adjoint(s::FState) = FState(s.occ, s.label, !s.adj)
+function NonCommutativeProducts.mul_effect(f::Fermion, s::FState)
+    f.label == s.label || throw(ArgumentError("Cannot multiply Fermion by FState with different space"))
+    s.adj && throw(ArgumentError("Cannot multiply Fermion by adjoint FState"))
+    s.occ == f.creation && return 0
+    return FState(!s.occ, s.label, s.adj)
+end
+function NonCommutativeProducts.mul_effect(s::FState, f::Fermion)
+    f.label == s.label || throw(ArgumentError("Cannot multiply FState by Fermion with different space"))
+    !s.adj && throw(ArgumentError("Cannot multiply Ket by fermion from the right"))
+    s.occ == !f.creation && return 0
+    return FState(!s.occ, s.label, s.adj)
+end
+function NonCommutativeProducts.mul_effect(s1::FState, s2::FState)
+    if s1.label == s2.label
+        s1.adj && !s2.adj && return (s1.occ == s2.occ)
+        throw(ArgumentError("Cannot multiply two FStates with the same space and same adj"))
+    end
+    s1.adj < s2.adj && return NonCommutativeProducts.Swap(1)
+    s2.adj < s1.adj && return nothing
+    s1.label < s2.label && return nothing
+    return NonCommutativeProducts.Swap(1)
+end
+NonCommutativeProducts.@nc FState Fermion
+

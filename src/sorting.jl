@@ -38,29 +38,29 @@ Base.sort!(a::NCAdd) = bubble_sort(a)
 function bubble_sort(a::NCMul)
     return bubble_sort!(copy(a))
 end
-function bubble_sort!(a::NCMul)
+function bubble_sort!(a::NCMul{C}) where C
     if length(a.factors) <= 1
         return a
     end
-    res = _bubble_sort!([a])
-    return res
+    return _bubble_sort!([a], C)
 end
-function bubble_sort(ncadd::NCAdd)
+function bubble_sort(ncadd::NCAdd{C}) where C
+    length(ncadd.dict) == 0 && return ncadd
     terms = collect(NCMul(v, copy(k.factors)) for (k, v) in pairs(ncadd.dict))
-    res = add!!(_bubble_sort!(terms), additive_coeff(ncadd))
+    add!!(_bubble_sort!(terms, C), additive_coeff(ncadd))
 end
-function _bubble_sort!(terms::Vector{T}) where {T<:NCMul}
+function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
     sorted_terms = with(_autosort => false) do
         __bubble_sort!(terms)
     end
     if length(sorted_terms) == 0
-        return NCAdd(0, Dict{T,Int}())
+        return NCAdd(zero(C), Dict{to_add_dict_type(T),Int}())
     end
-    newadd = NCAdd(0, to_add_dict(first(sorted_terms)))
+    newadd = NCAdd(zero(C), to_add_dict(first(sorted_terms)))
     for term in Iterators.drop(sorted_terms, 1)
         newadd = add!!(newadd, term)
     end
-    return filter_scalars!(filter_zeros!(newadd))
+    return filter_ncadd!!(newadd; filter_zeros=true, filter_scalars=true)
 end
 
 function __bubble_sort!(terms::Vector{T}) where {T<:NCMul}
