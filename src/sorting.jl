@@ -60,7 +60,7 @@ function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
     for term in Iterators.drop(sorted_terms, 1)
         newadd = add!!(newadd, term)
     end
-    return filter_scalars!(filter_zeros!(newadd))
+    return filter_ncadd!!(newadd; filter_zeros=true, filter_scalars=true)
 end
 
 function __bubble_sort!(terms::Vector{T}) where {T<:NCMul}

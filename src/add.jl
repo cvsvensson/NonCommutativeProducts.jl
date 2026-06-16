@@ -1,29 +1,26 @@
-function filter_scalars!(d::AbstractDict{K,V}) where {K<:NCMul,V}
+function filter_ncadd_dict!(d::AbstractDict{K,V}; filter_zeros=true, filter_scalars=true) where {K<:NCMul,V}
+    !filter_zeros && !filter_scalars && return d
     coeff = zero(V)
     for (k, v) in d
-        if isscalar(k)
+        if filter_zeros && iszero(v)
+            delete!(d, k)
+            continue
+        end
+        if filter_scalars && isscalar(k)
+            delete!(d, k)
             coeff += prefactor(k) * v
-            delete!(d, k)
         end
     end
-    return coeff
-end
-function filter_zeros!(d::AbstractDict{K,V}) where {K<:NCMul,V}
-    for (k, v) in d
-        if iszero(v)
-            delete!(d, k)
-        end
-    end
-    return d
+    return d, coeff
 end
 
 mutable struct NCAdd{C,K,D}
     coeff::C
     dict::D
-    function NCAdd(coeff::C, dict::D; keep_zeros=false) where {C,D<:AbstractDict}
-        keep_zeros || filter_zeros!(dict)
-        coeff += filter_scalars!(dict)
-        new{promote_type(C, valtype(D)),keytype(D),D}(coeff, dict)
+    function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict}
+        newdict, addcoeff = filter_ncadd_dict!(dict; kwargs...)
+        newcoeff = coeff + addcoeff
+        new{promote_type(typeof(newcoeff), valtype(D)),keytype(D),D}(newcoeff, newdict)
     end
 end
 NCAdd{C,K,D}(ncadd::NCAdd{C,K,D}) where {C,K,D} = ncadd
@@ -56,10 +53,10 @@ end
 anyadd(x::NCMul) = anyadd(NCAdd(x))
 
 const MulAdd = Union{NCMul,NCAdd}
-function filter_scalars!(x::NCAdd)
-    add!!(x, filter_scalars!(x.dict))
+function filter_ncadd!!(x::NCAdd; kwargs...)
+    dict, coeff = filter_ncadd_dict!(x.dict; kwargs...)
+    add!!(x, coeff)
 end
-filter_zeros!(x::NCAdd) = (filter_zeros!(x.dict); return x)
 Base.iszero(x::NCAdd) = iszero(additive_coeff(x)) && all(iszero, values(x.dict))
 Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && a.dict == b.dict
 Base.:(==)(a::NCAdd, b::Number) = additive_coeff(a) == b && isempty(a.dict)
@@ -177,6 +174,11 @@ function add!!(_a::NCAdd, b::Number, α::Number=One(), β::Number=One())
     a = scale!!(_a, β)
     set_coeff!!(a, additive_coeff(a) + α * b)
 end
+function add!(a::NCAdd, b::Number, α::Number=One(), β::Number=One())
+    scale!(a, β)
+    set_coeff!(a, additive_coeff(a) + α * b)
+    return a
+end
 function add!!(_a::NCAdd, b::UniformScaling, α::Number=One(), β::Number=One())
     a = scale!!(_a, β)
     set_coeff!!(a, additive_coeff(a) + α * b.λ)
@@ -218,15 +220,15 @@ Base.:*(a::NCAdd, x::Number) = x * a
 
 function Base.:*(a::NCAdd, b::NCMul)
     c = zero(a)
-    filter_scalars!(filter_zeros!(mul!!(c, a, b)))
+    filter_ncadd!!(mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
 end
 function Base.:*(a::NCMul, b::NCAdd)
     c = zero(b)
-    filter_scalars!(filter_zeros!(mul!!(c, a, b)))
+    filter_ncadd!!(mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
 end
 function Base.:*(a::NCAdd, b::NCAdd)
     c = zero(a)
-    filter_scalars!(filter_zeros!(mul!!(c, a, b)))
+    filter_ncadd!!(mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
 end
 function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     acoeff = additive_coeff(a)
