@@ -1,5 +1,5 @@
 using NonCommutativeProducts
-import NonCommutativeProducts: @nc
+import NonCommutativeProducts: @nc, AddTerms, Swap
 struct Boson
     exp::Int
 end
@@ -11,7 +11,7 @@ Base.show(io::IO, x::Boson) = print(io, "b", x.exp > 0 ? "†" : "", abs(x.exp) 
 function NonCommutativeProducts.mul_effect(a::Boson, b::Boson)
     sign(a.exp) == sign(b.exp) && return Boson(a.exp + b.exp)
     if a.exp < 0 && b.exp > 0
-        return b * a + 1
+        return AddTerms((Swap(1), 1))
     else
         return nothing
     end
