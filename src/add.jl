@@ -14,13 +14,14 @@ function filter_ncadd_dict!(d::AbstractDict{K,V}; filter_zeros=true, filter_scal
     return d, coeff
 end
 
-mutable struct NCAdd{C,K,D}
+mutable struct NCAdd{C,K,D<:AbstractDict{K}}
     coeff::C
     dict::D
     function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict}
-        newdict, addcoeff = filter_ncadd_dict!(dict; kwargs...)
+        _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
         newcoeff = coeff + addcoeff
-        new{promote_type(typeof(newcoeff), valtype(D)),keytype(D),D}(newcoeff, newdict)
+        T = promote_type(typeof(newcoeff), valtype(D))
+        new{T,keytype(D),D}(newcoeff, dict)
     end
 end
 NCAdd{C,K,D}(ncadd::NCAdd{C,K,D}) where {C,K,D} = ncadd
@@ -212,9 +213,15 @@ function NCterms(a::NCAdd)
     (v * k for (k, v) in pairs(a.dict))
 end
 
-function Base.:*(x::Number, a::NCAdd)
+function Base.:*(x::C, a::NCAdd{C2}) where {C<:Number,C2}
     acoeff = additive_coeff(a)
-    return NCAdd(x * acoeff, Dict(k => v * x for (k, v) in a.dict))
+    if promote_type(C, C2) <: C2
+        dictcopy = copy(a.dict)
+        map!(v -> x * v, values(dictcopy))
+        return NCAdd(x * acoeff, dictcopy)
+    else
+        return NCAdd(x * acoeff, Dict(k => v * x for (k, v) in a.dict))
+    end
 end
 Base.:*(a::NCAdd, x::Number) = x * a
 
