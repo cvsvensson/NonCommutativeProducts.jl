@@ -52,8 +52,8 @@ function Base.:+(a::NCMul{C1,F1,S1}, b::NCMul{C2,F2,S2}) where {C1,C2,F1,F2,S1,S
     return NCAdd(zero(C), Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
 end
 
-Base.:+(a::Number, b::NCMul) = NCAdd(a, to_add_dict(b))
-Base.:+(a::UniformScaling, b::NCMul) = NCAdd(a.λ, to_add_dict(b))
+Base.:+(a::A, b::NCMul{C}) where {A<:Number,C} = NCAdd(a, to_add_dict(promote_type(A, C), b))
+Base.:+(a::UniformScaling, b::NCMul) = a.λ + b
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 function Base.:+(a::NCMul, b::NCAdd)
     newdict = copy(b.dict)
@@ -72,7 +72,8 @@ function Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},_D}}, x::NCMul{C2,S,F}) wher
     NCAdd(zero(C), D(to_add_dict(x)))
 end
 
-to_add_dict(a::NCMul) = Dict(NCMul(1, a.factors) => prefactor(a))
+to_add_dict(a::NCMul{C}) where C = to_add_dict(C, a)
+to_add_dict(::Type{T}, a::NCMul{C,S,F}) where {T<:Number,C,S,F} = Dict{NCMul{Int,S,F},T}(NCMul(1, a.factors) => convert(T, prefactor(a)))
 to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{Int,S,F}
 to_add_dict_type(::Type{NCMul{C,S}}) where {C,S} = NCMul{Int,S}
 to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
@@ -218,5 +219,21 @@ macro commutative(types...)
     quote
         $(mul_effect...)
         @nc_pairs $(esc.(types)...)
+    end
+end
+
+@testitem "Addition and multiplication with different number types" setup = [Fermions] begin
+    # This tests that addition and multiplication with different number types does not throw errors due to promotion issues and in place operations
+    f1 = Fermion(1)
+    f2 = Fermion(2)
+    nums = (1, 1/2, 1//3, 0.1+1im, big(4))
+    for x in nums
+        @test x + f1 == f1 + x
+        for y in nums
+            @test x + y*f1 == y*f1 + x
+            for z in nums
+                @test z*(x+y*f1) isa NonCommutativeProducts.NCAdd #throws error on v0.4.4
+            end
+        end
     end
 end
