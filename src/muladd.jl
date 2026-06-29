@@ -73,7 +73,7 @@ function Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},_D}}, x::NCMul{C2,S,F}) wher
 end
 
 to_add_dict(a::NCMul{C}) where C = to_add_dict(C, a)
-to_add_dict(::Type{T}, a::NCMul{C,S,F}) where {T<:Number,C,S,F} = Dict{NCMul{Int,S,F},T}(NCMul(1, a.factors) => convert(T, prefactor(a)))
+to_add_dict(::Type{T}, a::NCMul) where {T<:Number} = Dict(NCMul(1, a.factors) => convert(T, prefactor(a)))
 to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{Int,S,F}
 to_add_dict_type(::Type{NCMul{C,S}}) where {C,S} = NCMul{Int,S}
 to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
