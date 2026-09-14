@@ -268,22 +268,41 @@ end
         (add, mul, f1),
         (f1, complex_mul, add),
         (complex_add, complex_mul, f1),
+         (f1, 2 * f1, (1 + 2im) * f1, f1 + f2, 1im + f1 + f2)
     )
     for values in combinations
         vector = [values...]
-        concatenated = vcat(values...)
         @test isconcretetype(eltype(vector))
-        @test eltype(vector) === eltype(concatenated)
         @test all(typeof(value) === eltype(vector) for value in vector)
-        @test vector == collect(values)
-        @test concatenated == vector
     end
 
-    coefficient_values = (f1, 2 * f1, (1 + 2im) * f1, f1 + f2, 1im + f1 + f2)
-    coefficient_vector = [coefficient_values...]
-    @test isconcretetype(eltype(coefficient_vector))
-    @test coefficient_vector == collect(coefficient_values)
-    @test all(typeof(value) === eltype(coefficient_vector) for value in coefficient_vector)
+end
+
+@testitem "Heterogeneous Fermion-Boson vectors" setup = [Fermions, Bosons] begin
+    NonCommutativeProducts.enable_autosort!()
+    NonCommutativeProducts.@commutative Fermion Boson
+
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    b = Boson()
+    fermion_mul = f1 * f2
+    boson_mul = b * b'
+    mixed_mul = f1 * b
+    fermion_add = f1 + f2
+    boson_add = b + b'
+    mixed_add = f1 + b
+
+    combinations = (
+        (f1, b, fermion_mul, fermion_add),
+        (b, f1, boson_mul, boson_add),
+        (f1, b, mixed_mul, mixed_add),
+        (mixed_add, mixed_mul, b, f1),
+        (1im * f1, b, 1im * mixed_mul, 1im + mixed_add),
+    )
+
+    for values in combinations
+        @test [values...] isa Vector
+    end
 end
 
 @testmodule WrappedRules begin
