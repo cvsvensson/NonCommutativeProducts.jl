@@ -40,7 +40,11 @@ function set_coeff!!(a::NCAdd, x::Number)
         NCAdd(x, a.dict)
     end
 end
-Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D} = NCAdd(convert(C, additive_coeff(x)), D(x.dict))
+Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd{C,K,D}) where {C,K,D} = x
+function Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D}
+    dict = D(convert(K, k) => convert(valtype(D), v) for (k, v) in pairs(x.dict))
+    NCAdd(convert(C, additive_coeff(x)), dict)
+end
 Base.convert(::Type{NCAdd{C,K,D}}, x::Number) where {C,K,D} = NCAdd(x, D())
 
 # anyadd converts an NCAdd with any key type to an NCAdd with NCMul{Int} keys, which is useful for KrylovKit compatibility

@@ -249,6 +249,62 @@ end
     @test isconcretetype(eltype([f1 * 2, f1 + 1]))
 end
 
+@testitem "Heterogeneous operator vectors" setup = [Fermions] begin
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    mul = f1 * f2
+    complex_mul = (1 + 2im) * f1
+    add = f1 + f2
+    complex_add = 1im + f1 + f2
+
+    # Array literals and vcat should accept every ordering of symbols, products,
+    # and sums, while preserving the values and choosing one concrete eltype.
+    combinations = (
+        (f1, mul, add),
+        (f1, add, mul),
+        (mul, f1, add),
+        (mul, add, f1),
+        (add, f1, mul),
+        (add, mul, f1),
+        (f1, complex_mul, add),
+        (complex_add, complex_mul, f1),
+         (f1, 2 * f1, (1 + 2im) * f1, f1 + f2, 1im + f1 + f2)
+    )
+    for values in combinations
+        vector = [values...]
+        @test isconcretetype(eltype(vector))
+        @test all(typeof(value) === eltype(vector) for value in vector)
+    end
+
+end
+
+@testitem "Heterogeneous Fermion-Boson vectors" setup = [Fermions, Bosons] begin
+    NonCommutativeProducts.enable_autosort!()
+    NonCommutativeProducts.@commutative Fermion Boson
+
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    b = Boson()
+    fermion_mul = f1 * f2
+    boson_mul = b * b'
+    mixed_mul = f1 * b
+    fermion_add = f1 + f2
+    boson_add = b + b'
+    mixed_add = f1 + b
+
+    combinations = (
+        (f1, b, fermion_mul, fermion_add),
+        (b, f1, boson_mul, boson_add),
+        (f1, b, mixed_mul, mixed_add),
+        (mixed_add, mixed_mul, b, f1),
+        (1im * f1, b, 1im * mixed_mul, 1im + mixed_add),
+    )
+
+    for values in combinations
+        @test [values...] isa Vector
+    end
+end
+
 @testmodule WrappedRules begin
     using NonCommutativeProducts
     export Wrapped, Sym
@@ -383,6 +439,8 @@ end
     NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
+
+    @test_nowarn [f1+1, 1im*f2] isa Vector # this exercises a conversion path which failed
 
     x = 1 + 2 * f1 + 3 * f2
     y = 4 - f1
