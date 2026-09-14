@@ -249,6 +249,43 @@ end
     @test isconcretetype(eltype([f1 * 2, f1 + 1]))
 end
 
+@testitem "Heterogeneous operator vectors" setup = [Fermions] begin
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    mul = f1 * f2
+    complex_mul = (1 + 2im) * f1
+    add = f1 + f2
+    complex_add = 1im + f1 + f2
+
+    # Array literals and vcat should accept every ordering of symbols, products,
+    # and sums, while preserving the values and choosing one concrete eltype.
+    combinations = (
+        (f1, mul, add),
+        (f1, add, mul),
+        (mul, f1, add),
+        (mul, add, f1),
+        (add, f1, mul),
+        (add, mul, f1),
+        (f1, complex_mul, add),
+        (complex_add, complex_mul, f1),
+    )
+    for values in combinations
+        vector = [values...]
+        concatenated = vcat(values...)
+        @test isconcretetype(eltype(vector))
+        @test eltype(vector) === eltype(concatenated)
+        @test all(typeof(value) === eltype(vector) for value in vector)
+        @test vector == collect(values)
+        @test concatenated == vector
+    end
+
+    coefficient_values = (f1, 2 * f1, (1 + 2im) * f1, f1 + f2, 1im + f1 + f2)
+    coefficient_vector = [coefficient_values...]
+    @test isconcretetype(eltype(coefficient_vector))
+    @test coefficient_vector == collect(coefficient_values)
+    @test all(typeof(value) === eltype(coefficient_vector) for value in coefficient_vector)
+end
+
 @testmodule WrappedRules begin
     using NonCommutativeProducts
     export Wrapped, Sym
@@ -383,6 +420,8 @@ end
     NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
+
+    @test_nowarn [f1+1, 1im*f2] isa Vector # this exercises a conversion path which failed
 
     x = 1 + 2 * f1 + 3 * f2
     y = 4 - f1

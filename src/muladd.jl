@@ -4,8 +4,9 @@ Base.zero(nc::Union{<:NCAdd,<:NCMul}) = zero(typeof(nc))
 Base.one(nc::Union{<:NCAdd,<:NCMul}) = one(typeof(nc))
 function Base.promote_rule(::Type{<:NCAdd{C1,NCMul{Int,S,VS},D1}}, ::Type{<:NCAdd{C2,NCMul{Int,S,VS},D2}}) where {C1,C2,D1,D2,S,VS}
     C = promote_type(C1, C2)
-    D = promote_type(D1, D2)
     NCMUL = NCMul{Int,S,VS}
+    # Dict has no promote_rule of its own, so promote_type(D1, D2) would typejoin to an unparameterized Dict; build it explicitly instead.
+    D = Dict{NCMUL,promote_type(valtype(D1), valtype(D2))}
     return NCAdd{C,NCMUL,D}
 end
 Base.promote_rule(::Type{<:NCMul{C1,S1,VS1}}, ::Type{<:NCMul{C2,S2,VS2}}) where {C1,C2,S1,S2,VS1,VS2} = NCMul{promote_type(C1, C2),promote_type(S1, S2),promote_type(VS1, VS2)}
@@ -14,7 +15,7 @@ function Base.promote_rule(::Type{<:NCMul{C1,S,VS1}}, ::Type{<:NCAdd{C2,NCMul{In
     C = promote_type(C1, C2)
     VS = promote_type(VS1, VS2)
     NCMUL = NCMul{Int,S,VS}
-    DD = promote_type(Dict{NCMUL,C}, D)
+    DD = Dict{NCMUL,promote_type(C, valtype(D))}
     return NCAdd{C,NCMUL,DD}
 end
 function Base.promote_rule(::Type{A}, ::Type{M}) where {A<:NCAdd,M<:NCMul}
@@ -68,8 +69,8 @@ function Base.:+(a::NCMul, b::NCAdd)
     return nc
 end
 function Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},_D}}, x::NCMul{C2,S,F}) where {C,C2,S,F,_D}
-    D = Dict{NCMul{Int,S,F},C2}
-    NCAdd(zero(C), D(to_add_dict(x)))
+    key = NCMul(1, x.factors)
+    NCAdd(zero(C), _D(key => convert(valtype(_D), prefactor(x))))
 end
 
 to_add_dict(a::NCMul{C}) where C = to_add_dict(C, a)
