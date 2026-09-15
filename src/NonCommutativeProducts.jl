@@ -1,12 +1,11 @@
 module NonCommutativeProducts
 
 using Base.ScopedValues
-using LinearAlgebra
-using TestItems
-using BangBang: push!!, pushfirst!!, setindex!!, append!!, mergewith!!
+using LinearAlgebra: LinearAlgebra, UniformScaling
+using TestItems: @testitem
+using BangBang: push!!, pushfirst!!, setindex!!, append!!
 using BangBang.Extras: modify!!
-import VectorInterface
-using VectorInterface: One
+using VectorInterface: VectorInterface, One
 
 include("mul.jl")
 include("add.jl")
