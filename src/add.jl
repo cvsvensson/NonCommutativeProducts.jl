@@ -2,7 +2,7 @@ function filter_ncadd_dict!(d::AbstractDict{K,V}; filter_zeros=true, filter_scal
     !filter_zeros && !filter_scalars && return d
     coeff = zero(V)
     for (k, v) in d
-        if filter_zeros && iszero(v)
+        if filter_zeros && iszero(v) && isfilterable(k)
             delete!(d, k)
             continue
         end
