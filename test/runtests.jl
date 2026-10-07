@@ -305,6 +305,26 @@ end
     end
 end
 
+@testitem "isfilterable preserves zero terms" begin
+    import NonCommutativeProducts as NC
+    struct FilterableFactor end
+    struct UnfilterableFactor end
+
+    NC.mul_effect(a::FilterableFactor, b::FilterableFactor) = 0
+    NC.isfilterable(::UnfilterableFactor) = false
+
+    factor = FilterableFactor()
+    guard = UnfilterableFactor()
+
+    filtered = NC.bubble_sort(NC.NCMul(1, [factor, factor]))
+    @test isempty(filtered.dict)
+
+    retained = NC.bubble_sort(NC.NCMul(1, Any[factor, factor, guard]))
+    @test length(retained.dict) == 1
+    @test only(keys(retained.dict)).factors == [guard]
+    @test only(values(retained.dict)) == 0
+end
+
 @testmodule WrappedRules begin
     using NonCommutativeProducts
     export Wrapped, Sym

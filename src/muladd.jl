@@ -165,6 +165,8 @@ macro nc_common(T)
         NonCommutativeProducts.anyadd(x::$(esc(T))) = anyadd(NCAdd(x))
     end
 end
+
+isfilterable(x) = true
 const _DEFAULT_AUTOSORT = Ref(false)
 const _autosort = ScopedValue{Bool}()
 

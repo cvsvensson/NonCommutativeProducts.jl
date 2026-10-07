@@ -82,3 +82,5 @@ function Base.adjoint(x::NCMul)
     end
     return ncmul
 end
+
+isfilterable(x::NCMul) = all(isfilterable, x.factors)
