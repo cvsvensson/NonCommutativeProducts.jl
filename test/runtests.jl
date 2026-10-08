@@ -233,16 +233,16 @@ end
     @test oneunit(f1) == oneunit(f1mul) == oneunit(f1add) == 1
     @test one(typeof(f1)) == one(typeof(f1mul)) == one(typeof(f1add)) == 1
 
-    @test promote_rule(typeof(f1), typeof(f1)) == typeof(f1)
-    @test promote_rule(typeof(f1), typeof(1 * f1)) == typeof(1 * f1)
-    @test promote_rule(typeof(f1), typeof(f1 + 0)) == typeof(f1 + 0)
+    @test promote_type(typeof(f1), typeof(f1)) == typeof(f1)
+    @test promote_type(typeof(f1), typeof(1 * f1)) == typeof(1 * f1)
+    @test promote_type(typeof(f1), typeof(f1 + 0)) == typeof(f1 + 0)
 
-    @test promote_rule(typeof(f1mul), typeof(f1mul)) == typeof(f1mul)
-    @test promote_rule(typeof(f1mul), typeof(1im * f1mul)) == typeof(1im * f1mul)
+    @test promote_type(typeof(f1mul), typeof(f1mul)) == typeof(f1mul)
+    @test promote_type(typeof(f1mul), typeof(1im * f1mul)) == typeof(1im * f1mul)
 
-    @test promote_rule(typeof(f1mul), typeof(f1add)) == typeof(f1add)
-    @test promote_rule(typeof(f1add), typeof(f1mul)) == typeof(f1add)
-    @test promote_rule(typeof(f1add), typeof(f1add)) == typeof(f1add)
+    @test promote_type(typeof(f1mul), typeof(f1add)) == typeof(f1add)
+    @test promote_type(typeof(f1add), typeof(f1mul)) == typeof(f1add)
+    @test promote_type(typeof(f1add), typeof(f1add)) == typeof(f1add)
 
     @test isconcretetype(eltype([f1, f1 * 1]))
     @test isconcretetype(eltype([f1, f1 + 1]))
@@ -268,7 +268,7 @@ end
         (add, mul, f1),
         (f1, complex_mul, add),
         (complex_add, complex_mul, f1),
-         (f1, 2 * f1, (1 + 2im) * f1, f1 + f2, 1im + f1 + f2)
+        (f1, 2 * f1, (1 + 2im) * f1, f1 + f2, 1im + f1 + f2)
     )
     for values in combinations
         vector = [values...]
@@ -302,6 +302,84 @@ end
 
     for values in combinations
         @test [values...] isa Vector
+    end
+
+    # Mixing species must give a concrete factors container (Vector{Any}, not the abstract Vector)
+    factorstype(::Type{T}) where {T<:NonCommutativeProducts.NCMul} = fieldtype(T, :factors)
+    factorstype(::Type{T}) where {T<:NonCommutativeProducts.NCAdd} = factorstype(keytype(T.parameters[3]))
+    for x in (fermion_mul + boson_mul, (1.0 * fermion_mul) + boson_mul, mixed_mul, mixed_add, fermion_mul + mixed_mul, f1 * f2 + b * b)
+        @test isconcretetype(factorstype(typeof(x)))
+    end
+    fmul = NonCommutativeProducts.NCMul(1, [f1, f2])
+    bmul = NonCommutativeProducts.NCMul(1.0, [b, b])
+    @test factorstype(promote_type(typeof(fmul), typeof(bmul))) == Vector{Any}
+    @test factorstype(typeof(fmul + bmul)) == Vector{Any}
+end
+
+@testitem "Promotion and conversion robustness" setup = [Fermions, Bosons] begin
+    import NonCommutativeProducts: add!!, NCMul
+    using VectorInterface
+    NonCommutativeProducts.@commutative Fermion Boson
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    fi = Fermion(1)
+    b = Boson()
+
+    for sorted in (false, true)
+        sorted ? NonCommutativeProducts.enable_autosort!() : NonCommutativeProducts.disable_autosort!()
+
+        # Widening the additive coefficient widens the term coefficients too
+        x = 1.0 + (f1 + f2)
+        half = 0.5 + 0.5 * f1 + 0.5 * f2
+        @test valtype(x.dict) == Float64
+        @test 0.5 * x == half
+        @test x / 2 == half
+        @test VectorInterface.scale!(copy(x), 0.5) == half
+        @test VectorInterface.scale!!(copy(x), 0.5) == half
+        @test VectorInterface.add(x, f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
+        @test VectorInterface.add!!(copy(x), f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
+        @test (f1 + f2) + 0.5 * f1 == 1.5 * f1 + f2 == 0.5 * f1 + (f1 + f2)
+        @test add!!(f1 + f2, 0.5 * f1) == 1.5 * f1 + f2
+
+        # Adding a number gives a new sum that does not share storage with the old one
+        y = f1 + f2
+        add!!(1 + y, f1)
+        add!!(y + 1, f2)
+        add!!(0 + y, f1)
+        @test y == f1 + f2
+
+        # convert returns exactly the requested type, or throws
+        T = typeof(f1 + f2)
+        @test convert(T, 3) isa T
+        @test convert(T, 3) == 3
+        @test_throws InexactError convert(T, 3.5)
+        @test_throws InexactError push!([1.5 * f1 + 0], 1im)
+
+        # Atoms, products and sums convert into containers of any compatible type
+        for (container, value) in ((f1 * b, f1), (f1 + b, f1), (f1 + b, f1 * f2), (f1 * b, f1 * f2))
+            v = push!([container], value)
+            @test v[2] == value
+        end
+
+        # Heterogeneous vectors get one concrete element type
+        fm, bm, mm = f1 * f2, b * b', f1 * b
+        fa, ba, ma = f1 + f2, b + b', f1 + b
+        combinations = ((fa, ba), (fa, ma), (fm, ma), (mm, fa), (f1, mm), (f1, ma), (fi, fa), (1 * fi, fa), (fm, f1, b, bm, fa, ma), (1im * f1, b, 1im * mm, 1im + ma))
+        for values in combinations
+            v = [values...]
+            @test isconcretetype(eltype(v))
+            @test all(x -> typeof(x) === eltype(v), v)
+            @test all(splat(==), zip(v, values))
+        end
+        types = unique(typeof.((f1, fi, b, fm, bm, mm, fa, ba, ma, 1.0 * fm, 1im + fa)))
+        for A in types, B in types
+            @test promote_type(A, B) == promote_type(B, A)
+        end
+
+        # The result type of + does not depend on the order of the terms
+        anyf1 = NCMul(1, Any[f1])
+        @test typeof(anyf1 + 1.0 * f1) == typeof(1.0 * f1 + anyf1)
+        @test typeof(fm + mm) == typeof(mm + fm)
     end
 end
 

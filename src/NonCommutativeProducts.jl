@@ -10,6 +10,7 @@ using VectorInterface: VectorInterface, One
 include("mul.jl")
 include("add.jl")
 include("muladd.jl")
+include("promotion.jl")
 include("sorting.jl")
 include("traversal.jl")
 include("vectorinterface.jl")

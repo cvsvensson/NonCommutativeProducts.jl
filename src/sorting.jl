@@ -53,6 +53,10 @@ function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
     sorted_terms = with(_autosort => false) do
         __bubble_sort!(terms)
     end
+    # function barrier: the element type of sorted_terms is only known at runtime
+    return _sum_sorted_terms(sorted_terms, C)
+end
+function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C}
     if length(sorted_terms) == 0
         return NCAdd(zero(C), Dict{to_add_dict_type(T),Int}())
     end
@@ -63,20 +67,22 @@ function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
     return filter_ncadd!!(newadd; filter_zeros=true, filter_scalars=true)
 end
 
-function __bubble_sort!(terms::Vector{T}) where {T<:NCMul}
-    n = 1
+function __bubble_sort!(terms::Vector{T}, n::Int=1, start::Int=1, done::Bool=false) where {T<:NCMul}
     while n <= length(terms)
-        done = false
-        start = 1
         while !done && n <= length(terms)
-            terms, done, start = __bubble_sort!(terms, n, start)
+            newterms, done, start = __bubble_sort_step!(terms, n, start)
+            # new terms can widen the vector's element type; continue in a call specialized on the new type
+            newterms isa Vector{T} || return __bubble_sort!(newterms, n, start, done)
+            terms = newterms
         end
         n += 1
+        done = false
+        start = 1
     end
     return terms
 end
 
-function __bubble_sort!(terms, index, start)
+function __bubble_sort_step!(terms, index, start)
     no_effect = true
     ncmul = terms[index]
     factors = ncmul.factors
@@ -122,7 +128,7 @@ function mysplice!!(v::V, i::UnitRange, replacement::W) where {V,W}
         _mysplice!(v, i, replacement)
         return v
     else
-        return Vector{T}(vcat(v[1:first(i)-1], replacement, v[last(i)+1:end]))
+        return Vector{T}(vcat(v[1:(first(i)-1)], replacement, v[(last(i)+1):end]))
     end
 end
 function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
@@ -131,7 +137,7 @@ function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
         _mysplice!(v, i, replacement)
         return v
     else
-        return Vector{T}(vcat(v[1:i-1], replacement, v[i+2:end]))
+        return Vector{T}(vcat(v[1:(i-1)], replacement, v[(i+2):end]))
     end
 end
 
@@ -200,7 +206,7 @@ function splice!!(ncmul::NCMul, i::UnitRange, coeff::Number)
     return NCMul(coeff * prefactor(ncmul), ncmul.factors)
 end
 function splice!!(ncmul::NCMul, i::Integer, coeff::Number)
-    deleteat!(ncmul.factors, i:i+1)
+    deleteat!(ncmul.factors, i:(i+1))
     return NCMul(coeff * prefactor(ncmul), ncmul.factors)
 end
 function splice!!_and_add(ncmul::NCMul, i, add::NCAdd)

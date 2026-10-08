@@ -21,7 +21,9 @@ mutable struct NCAdd{C,K,D<:AbstractDict{K}}
         _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
         newcoeff = coeff + addcoeff
         T = promote_type(typeof(newcoeff), valtype(D))
-        new{T,keytype(D),D}(newcoeff, dict)
+        # the terms share the coefficient type of the sum, so that C is the scalar type of the whole expression
+        newdict = valtype(D) === T ? dict : Dict{keytype(D),T}(dict)
+        new{T,keytype(D),typeof(newdict)}(newcoeff, newdict)
     end
 end
 NCAdd{C,K,D}(ncadd::NCAdd{C,K,D}) where {C,K,D} = ncadd
@@ -40,16 +42,10 @@ function set_coeff!!(a::NCAdd, x::Number)
         NCAdd(x, a.dict)
     end
 end
-Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd{C,K,D}) where {C,K,D} = x
-function Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D}
-    dict = D(convert(K, k) => convert(valtype(D), v) for (k, v) in pairs(x.dict))
-    NCAdd(convert(C, additive_coeff(x)), dict)
-end
-Base.convert(::Type{NCAdd{C,K,D}}, x::Number) where {C,K,D} = NCAdd(x, D())
-
-# anyadd converts an NCAdd with any key type to an NCAdd with NCMul{Int} keys, which is useful for KrylovKit compatibility
+# anyadd converts an NCAdd with any key type to an NCAdd whose keys hold their factors in a Vector{Any}.
+# Every key type promotes to that one, so it is a closed type for KrylovKit.
 function anyadd(x::NCAdd{C,K,Dict{K,V}}) where {C,K,V}
-    d = Dict{NCMul{Int},V}()
+    d = Dict{NCMul{Int,Any,Vector{Any}},V}()
     for (k, v) in x.dict
         d[NCMul(1, Vector{Any}(k.factors))] = v
     end
@@ -129,8 +125,8 @@ function Base.show(io::IO, x::NCAdd; max_terms=3)
     return nothing
 end
 
-Base.:+(a::Number, b::NCAdd) = iszero(a) ? b : NCAdd(a + additive_coeff(b), b.dict)
-Base.:+(a::UniformScaling, b::NCAdd) = iszero(a) ? b : NCAdd(a.λ + additive_coeff(b), b.dict)
+Base.:+(a::Number, b::NCAdd) = NCAdd(a + additive_coeff(b), copy(b.dict))
+Base.:+(a::UniformScaling, b::NCAdd) = a.λ + b
 Base.:+(a::NCAdd, b::B) where B<:Union{Number,UniformScaling} = b + a
 Base.:+(a::NCAdd, b::B) where B<:NCMul = b + a
 Base.:/(a::MulAdd, b::Number) = inv(b) * a
@@ -195,10 +191,8 @@ function scale!(x::NCAdd, α::Number)
     return x
 end
 
-termvaltype(::Type{NCAdd{C,K,D}}) where {C,K,D} = valtype(D)
 function scale!!(x::NCAdd{CS}, α::C) where {CS,C<:Number}
-    CD = termvaltype(typeof(x))
-    if promote_type(C, CD) <: CD && promote_type(C, CS) <: CS
+    if promote_type(C, CS) <: CS
         try
             scale!(x, α)
         catch
@@ -217,15 +211,10 @@ function NCterms(a::NCAdd)
     (v * k for (k, v) in pairs(a.dict))
 end
 
-function Base.:*(x::C, a::NCAdd{C2}) where {C<:Number,C2}
-    acoeff = additive_coeff(a)
-    if promote_type(C, C2) <: C2
-        dictcopy = copy(a.dict)
-        map!(v -> x * v, values(dictcopy))
-        return NCAdd(x * acoeff, dictcopy)
-    else
-        return NCAdd(x * acoeff, Dict(k => v * x for (k, v) in a.dict))
-    end
+function Base.:*(x::Number, a::NCAdd{C,K}) where {C,K}
+    dict = copy_dict(a, K, promote_type(typeof(x), C))
+    map!(v -> x * v, values(dict))
+    return NCAdd(x * additive_coeff(a), dict)
 end
 Base.:*(a::NCAdd, x::Number) = x * a
 
@@ -266,6 +255,13 @@ add!!(c::NCMul, term) = c + term
 add!!(c::Number, term) = c + term
 
 function Base.adjoint(x::NCAdd)
+    # adjoint the terms unsorted, so each term stays an NCMul, then sort the sum once
+    newx = with(_autosort => false) do
+        _adjoint_terms(x)
+    end
+    autosort() ? sort!(newx) : newx
+end
+function _adjoint_terms(x::NCAdd)
     newx = zero(x)
     set_coeff!(newx, adjoint(additive_coeff(x)))
     for (f, v) in x.dict

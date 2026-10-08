@@ -8,9 +8,6 @@ NCMul{C,S,F}(ncmul::NCMul{C,S,F}) where {C,S,F} = ncmul
 function NCMul(coeff::C, factors::F) where {C,F}
     NCMul{C,eltype(factors),F}(coeff, factors)
 end
-Base.convert(::Type{NCMul{C,S,F}}, x::NCMul{<:Any,S,F}) where {C,S,F} = NCMul{C,S,F}(convert(C, prefactor(x)), x.factors)
-Base.convert(::Type{NCMul{C,S,F}}, x::NCMul) where {C,S,F} = NCMul{C,S,F}(convert(C, prefactor(x)), F(x.factors))
-Base.promote_rule(::Type{NCMul{C,S,F}}, x::Type{NCMul{C2,S2,F2}}) where {C,S,F,C2,S2,F2} = NCMul{promote_type(C, C2),promote_type(S, S2),promote_type(F, F2)}
 
 Base.zero(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{C,S,F}(zero(C), S[])
 Base.one(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{C,S,F}(one(C), S[])
@@ -76,11 +73,14 @@ catenate(x::NCMul, others...) = NCMul(prefactor(x) * prod(y -> prefactor(y), oth
 
 function Base.adjoint(x::NCMul)
     length(x.factors) == 0 && return NCMul(adjoint(prefactor(x)), x.factors)
-    ncmul = NCMul(adjoint(prefactor(x)), collect(Iterators.reverse(Iterators.map(adjoint, x.factors))))
+    ncmul = NCMul(adjoint(prefactor(x)), adjoint_factors(x.factors))
     if autosort()
         return sort!(ncmul)
     end
     return ncmul
 end
+adjoint_factors(factors) = collect(Iterators.reverse(Iterators.map(adjoint, factors)))
+# keep mixed-type products on Vector{Any} instead of narrowing to the eltype of this particular product
+adjoint_factors(factors::Vector{Any}) = Any[adjoint(f) for f in Iterators.reverse(factors)]
 
 isfilterable(x::NCMul) = all(isfilterable, x.factors)
