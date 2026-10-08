@@ -20,6 +20,8 @@ end
 convert_factors(::Type{F}, factors) where {F} = convert(F, factors)
 convert_factors(::Type{F}, factors::Tuple) where {F<:AbstractVector} = convert(F, collect(factors))
 
+# Dict is the canonical container of NCAdd: promoting two different sum types gives a Dict-backed sum, even when
+# both use another AbstractDict
 ncadd_type(::Type{C}, ::Type{K}) where {C,K} = NCAdd{C,K,Dict{K,C}}
 
 function Base.promote_rule(::Type{NCMul{C1,S1,F1}}, ::Type{NCMul{C2,S2,F2}}) where {C1,S1,F1,C2,S2,F2}

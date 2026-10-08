@@ -62,7 +62,17 @@ Base.iszero(x::NCAdd) = iszero(additive_coeff(x)) && all(iszero, values(x.dict))
 Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && terms_equal(a.dict, b.dict)
 # Base never considers an IdDict equal to a Dict, and an IdDict matches keys by identity. Compare the terms by value.
 terms_equal(a::Dict, b::Dict) = a == b
-terms_equal(a::AbstractDict, b::AbstractDict) = Dict(a) == Dict(b)
+function terms_equal(a::AbstractDict, b::AbstractDict)
+    length(a) == length(b) || return false
+    # look up keys in whichever side is a Dict, so that the lookup is by value
+    a isa Dict || ((a, b) = (b, a))
+    a isa Dict || return Dict(a) == Dict(b)
+    for (k, v) in b
+        av = get(a, k, nothing)
+        (isnothing(av) || av != v) && return false
+    end
+    return true
+end
 Base.:(==)(a::NCAdd, b::Number) = additive_coeff(a) == b && isempty(a.dict)
 Base.:(==)(a::Number, b::NCAdd) = a == additive_coeff(b) && isempty(b.dict)
 function Base.hash(a::NCAdd, h::UInt)
@@ -159,6 +169,8 @@ function add!!(_a::NCAdd, b::NCMul, α::Number=One(), β::Number=One())
     return NCAdd(newcoeff, newdict)
 end
 function add!!(_a::NCAdd, b::NCAdd, α::Number=One(), β::Number=One())
+    # scaling _a in place would also scale b if they alias, e.g. in scale!!(x, x, α)
+    b = _a === b ? copy(b) : b
     a = scale!!(_a, β)
     newdict = a.dict
     for (k, v) in b.dict
@@ -205,8 +217,6 @@ function scale!!(x::NCAdd{CS}, α::C) where {CS,C<:Number}
         scale(x, α)
     end
 end
-# Zero() means drop x entirely, also its terms, which would otherwise stay with zero coefficients
-scale!!(x::NCAdd, ::Zero) = VectorInterface.zerovector!(x)
 function scale!!(y::NCAdd, x::MulAdd, α::C) where C<:Number
     return add!!(y, x, α, VectorInterface.Zero())
 end

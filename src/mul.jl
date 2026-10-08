@@ -46,13 +46,20 @@ end
 Base.iszero(x::NCMul) = iszero(prefactor(x))
 
 Base.:(==)(a::NCMul, b::Number) = (isscalar(a) && prefactor(a) == b) || iszero(a) && iszero(b)
-Base.:(==)(a::NCMul, b::NCMul) = prefactor(a) == prefactor(b) && a.factors == b.factors
+Base.:(==)(a::NCMul, b::NCMul) = prefactor(a) == prefactor(b) && factors_equal(a.factors, b.factors)
+# Equality and hashing ignore the factors container, so that Tuple-backed and Vector-backed products
+# can be used interchangeably as keys of the same Dict
+factors_equal(a, b) = a == b
+factors_equal(a, b::Tuple) = length(a) == length(b) && all(splat(==), zip(a, b))
+factors_equal(a::Tuple, b) = factors_equal(b, a)
+factors_equal(a::Tuple, b::Tuple) = a == b
+hash_factors(factors, h::UInt) = foldl((h, f) -> hash(f, h), factors; init=hash(length(factors), h))
 function Base.hash(a::NCMul, h::UInt)
     single_term = isone(prefactor(a)) && length(a.factors) == 1
     if single_term
         hash(only(a.factors), h)::UInt
     else
-        hash(prefactor(a), hash(a.factors, h))::UInt
+        hash(prefactor(a), hash_factors(a.factors, h))::UInt
     end
 end
 NCMul(f::NCMul) = f

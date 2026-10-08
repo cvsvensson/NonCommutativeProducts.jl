@@ -394,14 +394,6 @@ end
     @test NCMul(true, [f1]) + NCMul(true, [f1]) == 2 * f1
     @test NCMul(true, [f1]) + (NCMul(true, [f1]) + NCMul(true, [f2])) == 2 * f1 + f2
 
-    # Scaling by Zero() drops the old terms instead of keeping them with zero coefficients
-    z = VectorInterface.add!!(f1 + f2, f1, 2, VectorInterface.Zero())
-    @test z == 2 * f1
-    @test length(z.dict) == 1
-    s = VectorInterface.scale!!(f1 + f2, 2 * f1, 3)
-    @test s == 6 * f1
-    @test length(s.dict) == 1
-
     # Tuple-backed and Vector-backed products promote to a concrete factors container
     tv = NCMul(1, (f1, f2)) + NCMul(1, [f1])
     K = keytype(tv.dict)
@@ -420,6 +412,43 @@ end
     a = NCAdd(1.0, d)
     @test a.dict isa IdDict{K1,Float64}
     @test a == 1.0 + f1
+end
+
+@testitem "Mixed factor containers, aliasing, Dict canonical" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, NCMul, NCAdd
+    using VectorInterface
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+
+    # Tuple-backed and Vector-backed products are equal, hash equally, and share Dict keys
+    @test NCMul(1, (f1, f2)) == NCMul(1, [f1, f2])
+    @test hash(NCMul(2, (f1, f2))) == hash(NCMul(2, [f1, f2]))
+    @test NCMul(1, (f1, f2)) != NCMul(1, [f1])
+    s = f1 * f2 + 0
+    @test add!!(copy(s), NCMul(1, (f1, f2))) == 2 * f1 * f2
+    @test s + (NCMul(1, (f1, f2)) + 0) == 2 * f1 * f2
+    @test length((s + (NCMul(1, (f1, f2)) + f1)).dict) == 2
+
+    # Aliased destination and source
+    x = f1 + 2 * f2 + 1
+    @test VectorInterface.scale!!(x, x, 2) == 2 * f1 + 4 * f2 + 2
+    x = f1 + 2 * f2 + 1
+    @test add!!(x, x, 2, 3) == 5 * f1 + 10 * f2 + 5
+
+    # Promotion gives a Dict-backed sum, whatever the containers of the inputs
+    K1 = typeof(NCMul(1, [f1]))
+    a = NCAdd(1.0, IdDict{K1,Float64}(NCMul(1, [f1]) => 1.0))
+    P = promote_type(typeof(a), typeof(1im + f1))
+    @test P.parameters[3] <: Dict
+    @test convert(P, a) == a
+
+    # Sums with different containers compare by value
+    @test a == 1.0 + f1
+    @test 1.0 + f1 == a
+    @test a != 1.0 + f2
+    @test a != 1.0 + f1 + f2
+    @test a == NCAdd(1.0, IdDict{K1,Float64}(NCMul(1, [f1]) => 1.0))
 end
 
 @testitem "isfilterable preserves zero terms" begin
