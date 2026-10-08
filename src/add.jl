@@ -21,8 +21,9 @@ mutable struct NCAdd{C,K,D<:AbstractDict{K}}
         _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
         newcoeff = coeff + addcoeff
         T = promote_type(typeof(newcoeff), valtype(D))
-        # the terms share the coefficient type of the sum, so that C is the scalar type of the whole expression
-        newdict = valtype(D) === T ? dict : merge!(empty(dict, keytype(D), T), dict)
+        # the terms share the coefficient type of the sum, so that C is the scalar type of the whole expression.
+        # Dict is the only container: equality and key lookup assume keys are compared by value.
+        newdict = dict isa Dict{keytype(D),T} ? dict : Dict{keytype(D),T}(dict)
         new{T,keytype(D),typeof(newdict)}(newcoeff, newdict)
     end
 end
@@ -59,20 +60,7 @@ function filter_ncadd!!(x::NCAdd; kwargs...)
     add!!(x, coeff)
 end
 Base.iszero(x::NCAdd) = iszero(additive_coeff(x)) && all(iszero, values(x.dict))
-Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && terms_equal(a.dict, b.dict)
-# Base never considers an IdDict equal to a Dict, and an IdDict matches keys by identity. Compare the terms by value.
-terms_equal(a::Dict, b::Dict) = a == b
-function terms_equal(a::AbstractDict, b::AbstractDict)
-    length(a) == length(b) || return false
-    # look up keys in whichever side is a Dict, so that the lookup is by value
-    a isa Dict || ((a, b) = (b, a))
-    a isa Dict || return Dict(a) == Dict(b)
-    for (k, v) in b
-        av = get(a, k, nothing)
-        (isnothing(av) || av != v) && return false
-    end
-    return true
-end
+Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && a.dict == b.dict
 Base.:(==)(a::NCAdd, b::Number) = additive_coeff(a) == b && isempty(a.dict)
 Base.:(==)(a::Number, b::NCAdd) = a == additive_coeff(b) && isempty(b.dict)
 function Base.hash(a::NCAdd, h::UInt)
@@ -156,7 +144,7 @@ add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b,
 function add!!(_a::NCAdd, b::NCMul, α::Number=One(), β::Number=One())
     # compute β * a + α * b
     a = scale!!(_a, β)
-    key = NCMul(1, b.factors)
+    key = term_key(b)
     coeff = α * prefactor(b)
     newdict, ret = modify!!(a.dict, key) do val
         isnothing(val) && return coeff
@@ -191,8 +179,10 @@ function add!!(_a::NCAdd, b::Number, α::Number=One(), β::Number=One())
     set_coeff!!(a, additive_coeff(a) + α * b)
 end
 function add!(a::NCAdd, b::Number, α::Number=One(), β::Number=One())
-    scale!(a, β)
-    set_coeff!(a, additive_coeff(a) + α * b)
+    # convert the new coefficient before touching the terms, so that a failure leaves `a` unchanged
+    newcoeff = convert(typeof(additive_coeff(a)), additive_coeff(a) * β + α * b)
+    scale_terms!(a, β)
+    set_coeff!(a, newcoeff)
     return a
 end
 function add!!(_a::NCAdd, b::UniformScaling, α::Number=One(), β::Number=One())
@@ -200,19 +190,31 @@ function add!!(_a::NCAdd, b::UniformScaling, α::Number=One(), β::Number=One())
     set_coeff!!(a, additive_coeff(a) + α * b.λ)
 end
 
+# scale! either scales all of `x` or, if a scaled coefficient doesn't fit in the coefficient type, throws and
+# leaves `x` unchanged
 function scale!(x::NCAdd, α::Number)
-    map!(v -> v * α, values(x.dict))
-    set_coeff!(x, additive_coeff(x) * α)
+    newcoeff = convert(typeof(additive_coeff(x)), additive_coeff(x) * α)
+    scale_terms!(x, α)
+    set_coeff!(x, newcoeff)
+    return x
+end
+function scale_terms!(x::NCAdd{C}, α::Number) where {C}
+    if promote_type(typeof(α), C) <: C
+        map!(v -> v * α, values(x.dict))
+    else
+        # convert every scaled term before storing any of them
+        newvalues = [convert(C, v * α) for v in values(x.dict)]
+        for (k, v) in zip(keys(x.dict), newvalues)
+            x.dict[k] = v
+        end
+    end
     return x
 end
 
 function scale!!(x::NCAdd{CS}, α::C) where {CS,C<:Number}
+    # decide up front, so that scale! is only used where it can't fail
     if promote_type(C, CS) <: CS
-        try
-            scale!(x, α)
-        catch
-            scale(x, α)
-        end
+        scale!(x, α)
     else
         scale(x, α)
     end

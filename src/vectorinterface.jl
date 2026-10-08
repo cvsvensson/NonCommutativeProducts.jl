@@ -37,13 +37,7 @@ VectorInterface.scale(x::MulAdd, α::Number) = α * x
 function VectorInterface.scale!(x::NCMul, α::Number)
     throw(ArgumentError("NCMul is immutable; use scale or scale!!"))
 end
-function VectorInterface.scale!(x::NCAdd, α::Number)
-    x.coeff *= α
-    for (k, v) in x.dict
-        x.dict[k] = v * α
-    end
-    return x
-end
+VectorInterface.scale!(x::NCAdd, α::Number) = scale!(x, α)
 function VectorInterface.scale!(y::NCMul, x::NCMul, α::Number)
     throw(ArgumentError("NCMul is immutable; use scale or scale!!"))
 end

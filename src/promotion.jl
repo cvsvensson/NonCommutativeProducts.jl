@@ -16,12 +16,12 @@ function promote_factors_type(::Type{S}, ::Type{F1}, ::Type{F2}) where {S,F1,F2}
     return isconcretetype(F) && eltype(F) == S ? F : Vector{S}
 end
 
-# convert has no method from a Tuple to a Vector
+# convert has no method between Tuples and Vectors
 convert_factors(::Type{F}, factors) where {F} = convert(F, factors)
 convert_factors(::Type{F}, factors::Tuple) where {F<:AbstractVector} = convert(F, collect(factors))
+convert_factors(::Type{F}, factors::AbstractVector) where {F<:Tuple} = convert(F, Tuple(factors))
 
-# Dict is the canonical container of NCAdd: promoting two different sum types gives a Dict-backed sum, even when
-# both use another AbstractDict
+# Dict is the canonical container of NCAdd: promoting two different sum types gives a Dict-backed sum
 ncadd_type(::Type{C}, ::Type{K}) where {C,K} = NCAdd{C,K,Dict{K,C}}
 
 function Base.promote_rule(::Type{NCMul{C1,S1,F1}}, ::Type{NCMul{C2,S2,F2}}) where {C1,S1,F1,C2,S2,F2}
@@ -35,6 +35,7 @@ function Base.promote_rule(::Type{NCMul{C1,S1,F1}}, ::Type{NCAdd{C2,K2,D2}}) whe
     return ncadd_type(promote_type(C1, C2), promote_type(NCMul{Int,S1,F1}, K2))
 end
 
+Base.convert(::Type{NCMul{C,S,F}}, x::NCMul{C,S,F}) where {C,S,F} = x
 Base.convert(::Type{NCMul{C,S,F}}, x::NCMul) where {C,S,F} = NCMul{C,S,F}(convert(C, prefactor(x)), convert_factors(F, x.factors))
 
 Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd{C,K,D}) where {C,K,D} = x
@@ -43,7 +44,7 @@ function Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D}
     NCAdd(convert(C, additive_coeff(x)), dict)
 end
 function Base.convert(::Type{NCAdd{C,K,D}}, x::NCMul) where {C,K,D}
-    NCAdd(zero(C), D(convert(K, NCMul(1, x.factors)) => convert(valtype(D), prefactor(x))))
+    NCAdd(zero(C), D(term_key(K, x) => convert(valtype(D), prefactor(x))))
 end
 Base.convert(::Type{NCAdd{C,K,D}}, x::Number) where {C,K,D} = NCAdd(convert(C, x), D())
 

@@ -405,13 +405,6 @@ end
     # Adding a multi-term sum into an atom
     @test add!!(f1, f2 + 3, 1, 1) == f1 + f2 + 3
     @test add!!(f1, f2 + 3, 2, 5) == 5 * f1 + 2 * f2 + 6
-
-    # The NCAdd constructor keeps a non-Dict container when it widens the coefficients
-    K1 = typeof(NCMul(1, [f1]))
-    d = IdDict{K1,Int}(NCMul(1, [f1]) => 1)
-    a = NCAdd(1.0, d)
-    @test a.dict isa IdDict{K1,Float64}
-    @test a == 1.0 + f1
 end
 
 @testitem "Mixed factor containers, aliasing, Dict canonical" setup = [Fermions] begin
@@ -435,20 +428,79 @@ end
     @test VectorInterface.scale!!(x, x, 2) == 2 * f1 + 4 * f2 + 2
     x = f1 + 2 * f2 + 1
     @test add!!(x, x, 2, 3) == 5 * f1 + 10 * f2 + 5
+end
 
-    # Promotion gives a Dict-backed sum, whatever the containers of the inputs
+@testitem "Sum keys own their factors, Tuple targets, scale!!" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, NCMul, NCAdd
+    using VectorInterface
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    f3 = Fermion(:c)
+    f4 = Fermion(:d)
+
+    # Sorting a product must not change the keys of sums built from it
+    for build in (x -> x + f3 * f4, x -> x + (f3 * f4 + 1), x -> f3 * f4 + 1 + x, x -> add!!(f3 * f4 + 1, x), x -> NCAdd(x),
+        x -> x + 1, x -> convert(typeof(1.0 + f1), x))
+        x = f2 * f1
+        s = build(x)
+        s_ref = build(f2 * f1)
+        sort!(x)
+        @test s == s_ref
+        @test all(k -> haskey(s.dict, k), keys(s_ref.dict))
+    end
+    # nor products that share its factors, nor the product itself
+    for share in (x -> 2 * x, x -> -x, x -> NCMul(x + 0), x -> convert(NCMul{Float64,eltype(x.factors),typeof(x.factors)}, x))
+        x = f2 * f1
+        y = share(x)
+        y_ref = share(f2 * f1)
+        @test sort!(y) == sort(y_ref)
+        @test y == y_ref
+        @test x == f2 * f1
+        s = x + 0
+        sort!(NCMul(s))
+        @test haskey(s.dict, f2 * f1)
+    end
+
+    # Sums only hold Dicts, so that terms compare and are looked up by value
     K1 = typeof(NCMul(1, [f1]))
     a = NCAdd(1.0, IdDict{K1,Float64}(NCMul(1, [f1]) => 1.0))
-    P = promote_type(typeof(a), typeof(1im + f1))
-    @test P.parameters[3] <: Dict
-    @test convert(P, a) == a
-
-    # Sums with different containers compare by value
+    @test a.dict isa Dict{K1,Float64}
     @test a == 1.0 + f1
-    @test 1.0 + f1 == a
-    @test a != 1.0 + f2
-    @test a != 1.0 + f1 + f2
-    @test a == NCAdd(1.0, IdDict{K1,Float64}(NCMul(1, [f1]) => 1.0))
+    @test add!!(a, f1) == 1.0 + 2 * f1
+    @test length(a.dict) == 1
+
+    # In-place scaling either scales everything or throws and leaves the sum unchanged
+    x = 2 + f1 + 2 * f2
+    @test_throws InexactError VectorInterface.scale!(x, 0.5)
+    @test x == 2 + f1 + 2 * f2
+    @test_throws InexactError NonCommutativeProducts.add!(x, 1, 1, 0.5)
+    @test x == 2 + f1 + 2 * f2
+    @test VectorInterface.scale!(x, 2.0) === x
+    @test x == 4 + 2 * f1 + 4 * f2
+    @test NonCommutativeProducts.add!(x, 1, 1, 0.5) == 3 + f1 + 2 * f2
+
+    # Atoms and Vector-backed products convert to Tuple-backed product and sum types
+    F = typeof(f1)
+    T1 = NCMul{Int,F,Tuple{F}}
+    @test convert(T1, f1) == NCMul(1, (f1,))
+    @test convert(T1, f1).factors isa Tuple{F}
+    @test convert(NCMul{Int,F,Tuple{F,F}}, f1 * f2) == f1 * f2
+    S1 = NCAdd{Int,T1,Dict{T1,Int}}
+    @test convert(S1, f1) == f1 + 0
+    @test keytype(convert(S1, f1).dict) == T1
+
+    # scale!! scales in place when the coefficients can hold the result, and never scales twice
+    x = f1 + 2 * f2 + 1
+    @test VectorInterface.scale!!(x, 3) === x
+    @test x == 3 * f1 + 6 * f2 + 3
+    x = f1 + 2 * f2 + 1
+    y = VectorInterface.scale!!(x, 1.5)
+    @test y == 1.5 * f1 + 3 * f2 + 1.5
+    @test x == f1 + 2 * f2 + 1
+    x = f1 + 2 * f2 + 1
+    @test VectorInterface.scale!!(x, VectorInterface.One()) == f1 + 2 * f2 + 1
+    @test iszero(VectorInterface.scale!!(f1 + 2 * f2 + 1, VectorInterface.Zero()))
 end
 
 @testitem "isfilterable preserves zero terms" begin

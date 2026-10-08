@@ -1,4 +1,6 @@
 
+# The factors of an NCMul may be shared with other products and with the keys of sums, e.g. by `2 * x` or `x + y`.
+# They must therefore never be mutated, except by bubble_sort! on a product whose factors were just created.
 struct NCMul{C,S,F}
     coeff::C
     factors::F
@@ -72,7 +74,7 @@ Base.:*(m::NCMul, x::Number) = x * m
 function Base.:*(a::NCMul, b::NCMul)
     ncmul = catenate(a, b)
     if autosort()
-        return sort!(ncmul)
+        return bubble_sort!(ncmul)
     end
     return ncmul
 end
@@ -82,7 +84,7 @@ function Base.adjoint(x::NCMul)
     length(x.factors) == 0 && return NCMul(adjoint(prefactor(x)), x.factors)
     ncmul = NCMul(adjoint(prefactor(x)), adjoint_factors(x.factors))
     if autosort()
-        return sort!(ncmul)
+        return bubble_sort!(ncmul)
     end
     return ncmul
 end

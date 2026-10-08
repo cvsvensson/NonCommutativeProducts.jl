@@ -17,8 +17,8 @@ function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), to_add_dict_type(typeof(b)))
     # convert the keys up front: a Tuple-backed key is not isequal to its Vector-backed conversion
-    dict = Dict{K,C}(convert(K, NCMul(1, a.factors)) => prefactor(a))
-    bkey = convert(K, NCMul(1, b.factors))
+    dict = Dict{K,C}(term_key(K, a) => prefactor(a))
+    bkey = term_key(K, b)
     # setindex!! widens the coefficients if the sum needs it (Bool + Bool isa Int)
     dict = setindex!!(dict, get(dict, bkey, zero(C)) + prefactor(b), bkey)
     return NCAdd(zero(C), dict)
@@ -31,20 +31,24 @@ function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), K2)
     newdict = copy_dict(b, K, C)
-    key = convert(K, NCMul(1, a.factors))
+    key = term_key(K, a)
     newdict = setindex!!(newdict, get(newdict, key, zero(C)) + prefactor(a), key)
     return NCAdd(additive_coeff(b), newdict)
 end
 
 to_add_dict(a::NCMul{C}) where C = to_add_dict(C, a)
-to_add_dict(::Type{T}, a::NCMul) where {T<:Number} = Dict(NCMul(1, a.factors) => convert(T, prefactor(a)))
+to_add_dict(::Type{T}, a::NCMul) where {T<:Number} = Dict(term_key(a) => convert(T, prefactor(a)))
+# The key of the term `a` in a sum. It may share its factors with `a`, since factors are never mutated once they
+# are part of an NCMul that escapes the package (see the comment on NCMul).
+term_key(a::NCMul) = NCMul(1, a.factors)
+term_key(::Type{K}, a::NCMul) where {K} = convert(K, term_key(a))
 to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{Int,S,F}
 to_add_dict_type(::Type{NCMul{C,S}}) where {C,S} = NCMul{Int,S}
 to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)
-    autosort() && return sort!(ret)
+    autosort() && return bubble_sort!(ret)
     return ret
 end
 
@@ -65,14 +69,14 @@ macro nc_common(T)
         Base.:-(x::Union{Number,UniformScaling,NCMul,NCAdd}, y::$(esc(T))) = x - NCMul(y)
         Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) - y
 
-        Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
+        Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? bubble_sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
         function Base.:*(x::$(esc(T)), y::NCMul)
             ncmul = NCMul(prefactor(y), pushfirst!!(copy(y.factors), x))
-            autosort() ? sort!(ncmul) : ncmul
+            autosort() ? bubble_sort!(ncmul) : ncmul
         end
         function Base.:*(x::NCMul, y::$(esc(T)))
             ncmul = NCMul(prefactor(x), push!!(copy(x.factors), y))
-            autosort() ? sort!(ncmul) : ncmul
+            autosort() ? bubble_sort!(ncmul) : ncmul
         end
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(y)
         Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(x) * y
@@ -143,7 +147,7 @@ macro nc_pairs(types...)
     for T1 in types
         for T2 in types
             T1 == T2 && continue
-            push!(mul_pairs, :(Base.:*(x::$(esc(T1)), y::$(esc(T2))) = autosort() ? sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])))
+            push!(mul_pairs, :(Base.:*(x::$(esc(T1)), y::$(esc(T2))) = autosort() ? bubble_sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])))
         end
     end
 

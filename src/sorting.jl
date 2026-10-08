@@ -33,11 +33,14 @@ end
 
 Base.sort(a::NCMul) = bubble_sort(a)
 Base.sort(a::NCAdd) = bubble_sort(a)
-Base.sort!(a::NCMul) = bubble_sort!(a)
+# sort! doesn't sort the factors in place, since they may be shared with other products and sums (see NCMul)
+Base.sort!(a::NCMul) = bubble_sort(a)
 Base.sort!(a::NCAdd) = bubble_sort(a)
+bubble_sort!(a::NCAdd) = bubble_sort(a)
 function bubble_sort(a::NCMul)
     return bubble_sort!(copy(a))
 end
+# Sorts the factors of `a` in place. Only for products whose factors were just created and aren't shared.
 function bubble_sort!(a::NCMul{C}) where C
     if length(a.factors) <= 1
         return a
