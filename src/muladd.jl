@@ -16,9 +16,11 @@ Base.:(==)(a::NCMul, b::NCAdd) = b == a
 function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), to_add_dict_type(typeof(b)))
-    dict = Dict{K,C}(NCMul(1, a.factors) => prefactor(a))
-    bkey = NCMul(1, b.factors)
-    dict[bkey] = get(dict, bkey, zero(C)) + prefactor(b)
+    # convert the keys up front: a Tuple-backed key is not isequal to its Vector-backed conversion
+    dict = Dict{K,C}(convert(K, NCMul(1, a.factors)) => prefactor(a))
+    bkey = convert(K, NCMul(1, b.factors))
+    # setindex!! widens the coefficients if the sum needs it (Bool + Bool isa Int)
+    dict = setindex!!(dict, get(dict, bkey, zero(C)) + prefactor(b), bkey)
     return NCAdd(zero(C), dict)
 end
 
@@ -27,9 +29,10 @@ Base.:+(a::UniformScaling, b::NCMul) = a.λ + b
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
     C = promote_type(C1, C2)
-    newdict = copy_dict(b, promote_type(to_add_dict_type(typeof(a)), K2), C)
-    key = NCMul(1, a.factors)
-    newdict[key] = get(newdict, key, zero(C)) + prefactor(a)
+    K = promote_type(to_add_dict_type(typeof(a)), K2)
+    newdict = copy_dict(b, K, C)
+    key = convert(K, NCMul(1, a.factors))
+    newdict = setindex!!(newdict, get(newdict, key, zero(C)) + prefactor(a), key)
     return NCAdd(additive_coeff(b), newdict)
 end
 
@@ -104,7 +107,7 @@ macro nc_common(T)
 
         NonCommutativeProducts.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, NCMul(y), α, β)
         NonCommutativeProducts.add!!(x::$(esc(T)), y::$(esc(T)), α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
-        NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
+        NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), y, α, β)
 
         VectorInterface.scale(x::$(esc(T)), α::Number) = α * x
         VectorInterface.scale!!(x::$(esc(T)), α::Number) = α * x

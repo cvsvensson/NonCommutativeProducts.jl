@@ -22,7 +22,7 @@ mutable struct NCAdd{C,K,D<:AbstractDict{K}}
         newcoeff = coeff + addcoeff
         T = promote_type(typeof(newcoeff), valtype(D))
         # the terms share the coefficient type of the sum, so that C is the scalar type of the whole expression
-        newdict = valtype(D) === T ? dict : Dict{keytype(D),T}(dict)
+        newdict = valtype(D) === T ? dict : merge!(empty(dict, keytype(D), T), dict)
         new{T,keytype(D),typeof(newdict)}(newcoeff, newdict)
     end
 end
@@ -59,7 +59,10 @@ function filter_ncadd!!(x::NCAdd; kwargs...)
     add!!(x, coeff)
 end
 Base.iszero(x::NCAdd) = iszero(additive_coeff(x)) && all(iszero, values(x.dict))
-Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && a.dict == b.dict
+Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && terms_equal(a.dict, b.dict)
+# Base never considers an IdDict equal to a Dict, and an IdDict matches keys by identity. Compare the terms by value.
+terms_equal(a::Dict, b::Dict) = a == b
+terms_equal(a::AbstractDict, b::AbstractDict) = Dict(a) == Dict(b)
 Base.:(==)(a::NCAdd, b::Number) = additive_coeff(a) == b && isempty(a.dict)
 Base.:(==)(a::Number, b::NCAdd) = a == additive_coeff(b) && isempty(b.dict)
 function Base.hash(a::NCAdd, h::UInt)
@@ -202,6 +205,8 @@ function scale!!(x::NCAdd{CS}, α::C) where {CS,C<:Number}
         scale(x, α)
     end
 end
+# Zero() means drop x entirely, also its terms, which would otherwise stay with zero coefficients
+scale!!(x::NCAdd, ::Zero) = VectorInterface.zerovector!(x)
 function scale!!(y::NCAdd, x::MulAdd, α::C) where C<:Number
     return add!!(y, x, α, VectorInterface.Zero())
 end

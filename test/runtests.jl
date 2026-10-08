@@ -383,6 +383,45 @@ end
     end
 end
 
+@testitem "Coefficient widening, Zero scaling, container types" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, NCMul, NCAdd
+    using VectorInterface
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+
+    # Summing coefficients may widen beyond the promoted coefficient type (Bool + Bool isa Int)
+    @test NCMul(true, [f1]) + NCMul(true, [f1]) == 2 * f1
+    @test NCMul(true, [f1]) + (NCMul(true, [f1]) + NCMul(true, [f2])) == 2 * f1 + f2
+
+    # Scaling by Zero() drops the old terms instead of keeping them with zero coefficients
+    z = VectorInterface.add!!(f1 + f2, f1, 2, VectorInterface.Zero())
+    @test z == 2 * f1
+    @test length(z.dict) == 1
+    s = VectorInterface.scale!!(f1 + f2, 2 * f1, 3)
+    @test s == 6 * f1
+    @test length(s.dict) == 1
+
+    # Tuple-backed and Vector-backed products promote to a concrete factors container
+    tv = NCMul(1, (f1, f2)) + NCMul(1, [f1])
+    K = keytype(tv.dict)
+    @test isconcretetype(K)
+    @test isconcretetype(fieldtype(K, :factors))
+    @test eltype(fieldtype(K, :factors)) == K.parameters[2]
+    @test tv == f1 * f2 + f1
+
+    # Adding a multi-term sum into an atom
+    @test add!!(f1, f2 + 3, 1, 1) == f1 + f2 + 3
+    @test add!!(f1, f2 + 3, 2, 5) == 5 * f1 + 2 * f2 + 6
+
+    # The NCAdd constructor keeps a non-Dict container when it widens the coefficients
+    K1 = typeof(NCMul(1, [f1]))
+    d = IdDict{K1,Int}(NCMul(1, [f1]) => 1)
+    a = NCAdd(1.0, d)
+    @test a.dict isa IdDict{K1,Float64}
+    @test a == 1.0 + f1
+end
+
 @testitem "isfilterable preserves zero terms" begin
     import NonCommutativeProducts as NC
     struct FilterableFactor end
