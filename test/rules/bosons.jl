@@ -5,6 +5,8 @@ struct Boson
 end
 Base.adjoint(x::Boson) = Boson(-x.exp)
 Boson() = Boson(-1)
+# A session-independent hash, see the comment on the hash of Fermion
+Base.hash(x::Boson, h::UInt) = hash(x.exp, hash(0x2e8d4b7a1c9f3e05, h))
 Base.show(io::IO, x::Boson) = print(io, "b", x.exp > 0 ? "†" : "", abs(x.exp) > 1 ? "^($(x.exp))" : "")
 @nc Boson
 
