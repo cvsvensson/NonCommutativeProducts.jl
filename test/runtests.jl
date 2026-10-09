@@ -418,6 +418,15 @@ end
     @test NCMul(1, (f1, f2)) == NCMul(1, [f1, f2])
     @test hash(NCMul(2, (f1, f2))) == hash(NCMul(2, [f1, f2]))
     @test NCMul(1, (f1, f2)) != NCMul(1, [f1])
+
+    # Scalar and zero products equal numbers, so they must hash like them
+    for (x, n) in ((NCMul(2, typeof(f1)[]), 2), (NCMul(2, ()), 2), (NCMul(0, [f1]), 0),
+        (NCMul(0, (f1, f2)), 0), (NCMul(0.0, [f1]), 0), (NCMul(0, typeof(f1)[]), 0))
+        @test x == n
+        @test hash(x) == hash(n)
+        @test n in Set([x])
+        @test x in Set([n])
+    end
     s = f1 * f2 + 0
     @test add!!(copy(s), NCMul(1, (f1, f2))) == 2 * f1 * f2
     @test s + (NCMul(1, (f1, f2)) + 0) == 2 * f1 * f2
