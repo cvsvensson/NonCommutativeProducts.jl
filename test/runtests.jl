@@ -306,7 +306,7 @@ end
 
     # Mixing species must give a concrete factors container (Vector{Any}, not the abstract Vector)
     factorstype(::Type{T}) where {T<:NonCommutativeProducts.NCMul} = fieldtype(T, :factors)
-    factorstype(::Type{T}) where {T<:NonCommutativeProducts.NCAdd} = factorstype(keytype(T.parameters[3]))
+    factorstype(::Type{T}) where {T<:NonCommutativeProducts.NCAdd} = factorstype(T.parameters[2])
     for x in (fermion_mul + boson_mul, (1.0 * fermion_mul) + boson_mul, mixed_mul, mixed_add, fermion_mul + mixed_mul, f1 * f2 + b * b)
         @test isconcretetype(factorstype(typeof(x)))
     end
@@ -486,7 +486,7 @@ end
     @test convert(T1, f1) == NCMul(1, (f1,))
     @test convert(T1, f1).factors isa Tuple{F}
     @test convert(NCMul{Int,F,Tuple{F,F}}, f1 * f2) == f1 * f2
-    S1 = NCAdd{Int,T1,Dict{T1,Int}}
+    S1 = NCAdd{Int,T1}
     @test convert(S1, f1) == f1 + 0
     @test keytype(convert(S1, f1).dict) == T1
 

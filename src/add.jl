@@ -20,20 +20,20 @@ end
 dropzero(k, v) = iszero(v) && isfilterable(k)
 filter_zeros!(d::AbstractDict) = filter!(kv -> !dropzero(first(kv), last(kv)), d)
 
-# D is always Dict{K,C}: the terms share the coefficient type of the sum, and Dict is the only container, since
-# equality and key lookup assume keys are compared by value. D is kept as a parameter for backwards compatibility.
-mutable struct NCAdd{C,K,D<:Dict{K,C}}
+# The terms are always a Dict{K,C}: they share the coefficient type of the sum, and Dict is the only container,
+# since equality and key lookup assume keys are compared by value.
+mutable struct NCAdd{C,K}
     coeff::C
-    dict::D
+    dict::Dict{K,C}
     function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict}
         _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
         newcoeff = coeff + addcoeff
         T = promote_type(typeof(newcoeff), valtype(D))
         newdict = dict isa Dict{keytype(D),T} ? dict : Dict{keytype(D),T}(dict)
-        new{T,keytype(D),typeof(newdict)}(newcoeff, newdict)
+        new{T,keytype(D)}(newcoeff, newdict)
     end
 end
-NCAdd{C,K,D}(ncadd::NCAdd{C,K,D}) where {C,K,D} = ncadd
+NCAdd{C,K}(ncadd::NCAdd{C,K}) where {C,K} = ncadd
 NCAdd(ncmul::NCMul{C}) where C = NCAdd(zero(C), to_add_dict(ncmul))
 
 additive_coeff(x::NCAdd) = x.coeff
@@ -296,8 +296,8 @@ function _adjoint_terms(x::NCAdd)
     newx
 end
 
-Base.zero(::Type{NCAdd{C,K,D}}) where {C,K,D} = NCAdd(zero(C), D())
-Base.one(::Type{NCAdd{C,K,D}}) where {C,K,D} = NCAdd(one(C), D())
+Base.zero(::Type{NCAdd{C,K}}) where {C,K} = NCAdd(zero(C), Dict{K,C}())
+Base.one(::Type{NCAdd{C,K}}) where {C,K} = NCAdd(one(C), Dict{K,C}())
 
 @testitem "Consistency between + and add!!" setup = [Fermions] begin
     import NonCommutativeProducts: add!!

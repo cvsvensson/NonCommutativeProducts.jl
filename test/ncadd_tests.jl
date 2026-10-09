@@ -57,9 +57,8 @@ end
     @test length(x.dict) == 1
     @test only(values(x.dict)) == 0
     @test NC.NCAdd(0, Dict(k => 0)) == 0
-    # D is always a Dict with the coefficient type as value type
+    # the terms are always a Dict with the coefficient type as value type
     @test typeof(x.dict) == Dict{typeof(k),Int}
-    @test_throws TypeError NC.NCAdd{Int,typeof(k),Dict{typeof(k),Float64}}
 end
 
 @testitem "NCAdd: zero terms are filtered on all paths" setup = [Fermions, Bosons] begin

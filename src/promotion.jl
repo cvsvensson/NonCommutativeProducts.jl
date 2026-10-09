@@ -2,7 +2,7 @@
 #
 # The rules rely on two invariants:
 #   NCMul{C,S,F}: S == eltype(F)
-#   NCAdd{C,K,D}: the keys K are NCMul{Int,S,F}, and D == Dict{K,C} (enforced by the type parameter bound)
+#   NCAdd{C,K}: the keys K are NCMul{Int,S,F}, and the terms are a Dict{K,C}
 #
 # Coefficient types and factor types are promoted independently. A product promotes with a sum as the sum
 # with the product's factors as a key, and an atom of type W promotes as the product NCMul{Int,W,Vector{W}}
@@ -22,31 +22,31 @@ convert_factors(::Type{F}, factors::Tuple) where {F<:AbstractVector} = convert(F
 convert_factors(::Type{F}, factors::AbstractVector) where {F<:Tuple} = convert(F, Tuple(factors))
 
 # Dict is the canonical container of NCAdd: promoting two different sum types gives a Dict-backed sum
-ncadd_type(::Type{C}, ::Type{K}) where {C,K} = NCAdd{C,K,Dict{K,C}}
+ncadd_type(::Type{C}, ::Type{K}) where {C,K} = NCAdd{C,K}
 
 function Base.promote_rule(::Type{NCMul{C1,S1,F1}}, ::Type{NCMul{C2,S2,F2}}) where {C1,S1,F1,C2,S2,F2}
     S = promote_type(S1, S2)
     return NCMul{promote_type(C1, C2),S,promote_factors_type(S, F1, F2)}
 end
-function Base.promote_rule(::Type{NCAdd{C1,K1,D1}}, ::Type{NCAdd{C2,K2,D2}}) where {C1,K1,D1,C2,K2,D2}
+function Base.promote_rule(::Type{NCAdd{C1,K1}}, ::Type{NCAdd{C2,K2}}) where {C1,K1,C2,K2}
     return ncadd_type(promote_type(C1, C2), promote_type(K1, K2))
 end
-function Base.promote_rule(::Type{NCMul{C1,S1,F1}}, ::Type{NCAdd{C2,K2,D2}}) where {C1,S1,F1,C2,K2,D2}
+function Base.promote_rule(::Type{NCMul{C1,S1,F1}}, ::Type{NCAdd{C2,K2}}) where {C1,S1,F1,C2,K2}
     return ncadd_type(promote_type(C1, C2), promote_type(NCMul{Int,S1,F1}, K2))
 end
 
 Base.convert(::Type{NCMul{C,S,F}}, x::NCMul{C,S,F}) where {C,S,F} = x
 Base.convert(::Type{NCMul{C,S,F}}, x::NCMul) where {C,S,F} = NCMul{C,S,F}(convert(C, prefactor(x)), convert_factors(F, x.factors))
 
-Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd{C,K,D}) where {C,K,D} = x
-function Base.convert(::Type{NCAdd{C,K,D}}, x::NCAdd) where {C,K,D}
-    dict = D(convert(K, k) => convert(valtype(D), v) for (k, v) in pairs(x.dict))
+Base.convert(::Type{NCAdd{C,K}}, x::NCAdd{C,K}) where {C,K} = x
+function Base.convert(::Type{NCAdd{C,K}}, x::NCAdd) where {C,K}
+    dict = Dict{K,C}(convert(K, k) => convert(C, v) for (k, v) in pairs(x.dict))
     NCAdd(convert(C, additive_coeff(x)), dict)
 end
-function Base.convert(::Type{NCAdd{C,K,D}}, x::NCMul) where {C,K,D}
-    NCAdd(zero(C), D(term_key(K, x) => convert(valtype(D), prefactor(x))))
+function Base.convert(::Type{NCAdd{C,K}}, x::NCMul) where {C,K}
+    NCAdd(zero(C), Dict{K,C}(term_key(K, x) => convert(C, prefactor(x))))
 end
-Base.convert(::Type{NCAdd{C,K,D}}, x::Number) where {C,K,D} = NCAdd(convert(C, x), D())
+Base.convert(::Type{NCAdd{C,K}}, x::Number) where {C,K} = NCAdd(convert(C, x), Dict{K,C}())
 
 # A copy of the terms of `x` that can hold keys of type K and coefficients of type C
 function copy_dict(x::NCAdd, ::Type{K}, ::Type{C}) where {K,C}
