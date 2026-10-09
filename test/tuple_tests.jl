@@ -126,3 +126,31 @@ end
     @test VectorInterface.scale!(zerovector(t), f1 * f2 + 0, 2) == 2 * f1 * f2
     @test vectorkeyed(zero(promote_type(typeof(t), typeof(f1 * f2 + 0))))
 end
+
+@testitem "unsupported mul_effect values error early" begin
+    import NonCommutativeProducts as NC
+    struct Gamma
+        id::Int
+    end
+    struct Unregistered end
+    NC.@nc Gamma
+    effect = Ref{Any}(nothing)
+    NC.mul_effect(a::Gamma, b::Gamma) = a.id > b.id ? effect[] : nothing
+
+    NC.disable_autosort!()
+    for x in (NC.NCMul(1, [Gamma(2), Gamma(1)]), NC.NCMul(1, Any[Gamma(2), Gamma(1)]), NC.NCMul(1, (Gamma(2), Gamma(1))))
+        # an NCAdd, AddTerms or nothing is only allowed as the whole effect, not nested inside AddTerms
+        effect[] = NC.AddTerms((NC.Swap(1), NC.NCMul(Gamma(0)) + 1))
+        @test_throws ArgumentError NC.bubble_sort(x)
+        effect[] = NC.AddTerms((NC.Swap(1), NC.AddTerms((NC.Swap(1),))))
+        @test_throws ArgumentError NC.bubble_sort(x)
+        effect[] = NC.AddTerms((NC.Swap(1), nothing))
+        @test_throws ArgumentError NC.bubble_sort(x)
+        # supported effects still work
+        effect[] = NC.AddTerms((NC.Swap(1), 1))
+        @test NC.bubble_sort(x) == NC.NCMul(1, [Gamma(1), Gamma(2)]) + 1
+    end
+    # an atom of a type not registered with @nc can't be spliced in as a factor
+    effect[] = Unregistered()
+    @test_throws MethodError NC.bubble_sort(NC.NCMul(1, [Gamma(2), Gamma(1)]))
+end

@@ -214,10 +214,21 @@ function splice!!(ncmul::NCMul, i, term::NCMul)
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
     return NCMul(coeff, newfactors)
 end
-# a single atom, which may be of a different type than the factors of ncmul
-function splice!!(ncmul::NCMul{C}, i, term) where {C}
+# a single atom of the element type of the factors. For mixed products (S == Any) this matches any value, so values that
+# can't be a factor are rejected explicitly.
+function splice!!(ncmul::NCMul{C,S}, i, term::S) where {C,S}
+    _check_atom_effect(term)
     splice!!(ncmul, i, NCMul(one(C), (term,)))
 end
+# a single atom of another type than the factors, e.g. when mul_effect fuses two atoms into an atom of a new type.
+# NCMul(term) is defined by @nc, so only registered atoms are accepted.
+function splice!!(ncmul::NCMul, i, term)
+    _check_atom_effect(term)
+    splice!!(ncmul, i, NCMul(term)::NCMul)
+end
+_check_atom_effect(term) = nothing
+_check_atom_effect(term::Union{NCAdd,AddTerms}) = throw(ArgumentError("unsupported mul_effect value: an $(nameof(typeof(term))) can only be returned as the whole result of mul_effect, not nested inside AddTerms. Got $term."))
+_check_atom_effect(::Nothing) = throw(ArgumentError("unsupported mul_effect value: `nothing` can only be returned as the whole result of mul_effect, not nested inside AddTerms."))
 function splice!!(ncmul::NCMul, i::UnitRange, coeff::Number)
     deleteat!(ncmul.factors, i)
     return NCMul(coeff * prefactor(ncmul), ncmul.factors)
