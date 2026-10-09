@@ -27,7 +27,8 @@ mutable struct NCAdd{C,K}
     dict::Dict{K,C}
     function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict}
         _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
-        newcoeff = coeff + addcoeff
+        # only add when scalar terms were absorbed, since e.g. false + false isa Int would widen Bool sums
+        newcoeff = iszero(addcoeff) ? coeff : coeff + addcoeff
         T = promote_type(typeof(newcoeff), valtype(D))
         newdict = dict isa Dict{keytype(D),T} ? dict : Dict{keytype(D),T}(dict)
         new{T,keytype(D)}(newcoeff, newdict)
