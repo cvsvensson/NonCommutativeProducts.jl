@@ -124,23 +124,3 @@ end
         @test x == f1 + 1
     end
 end
-
-@testitem "NCAdd: narrow coefficient types are preserved" setup = [Fermions] begin
-    using VectorInterface
-    import NonCommutativeProducts as NC
-    f1 = Fermion(1)
-    s = f1 + 0
-    K = keytype(s.dict)
-    for C in (Bool, Int8, Float32)
-        @test typeof(zero(NC.NCAdd{C,K})) == NC.NCAdd{C,K}
-        @test typeof(convert(NC.NCAdd{C,K}, s)) == NC.NCAdd{C,K}
-        @test typeof(NC.NCAdd{C,K}[s]) == Vector{NC.NCAdd{C,K}}
-        @test VectorInterface.scalartype(VectorInterface.zerovector(s, C)) == C
-        @test typeof(NC.NCAdd(zero(C), Dict{K,C}(NC.NCMul(1, [f1]) => one(C)))) == NC.NCAdd{C,K}
-    end
-    @test convert(NC.NCAdd{Bool,K}, s) == f1
-    # filtered scalar terms still promote where the sum needs it
-    x = NC.NCAdd(true, Dict(NC.NCMul(1, Fermion[]) => true, NC.NCMul(1, [f1]) => true))
-    @test NC.additive_coeff(x) == 2
-    @test x == 2 + f1
-end

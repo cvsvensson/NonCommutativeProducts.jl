@@ -393,6 +393,8 @@ end
     # Summing coefficients may widen beyond the promoted coefficient type (Bool + Bool isa Int)
     @test NCMul(true, [f1]) + NCMul(true, [f1]) == 2 * f1
     @test NCMul(true, [f1]) + (NCMul(true, [f1]) + NCMul(true, [f2])) == 2 * f1 + f2
+    b = convert(NCAdd{Bool,NonCommutativeProducts.to_add_dict_type(typeof(NCMul(true, [f1])))}, NCMul(true, [f1]))
+    @test b + b == 2 * f1
 
     # Tuple-backed and Vector-backed products promote to a concrete factors container
     tv = NCMul(1, (f1, f2)) + NCMul(1, [f1])

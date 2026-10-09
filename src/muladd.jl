@@ -17,13 +17,8 @@ function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), to_add_dict_type(typeof(b)))
     # convert the keys up front so that the Dict has a single concrete key type, e.g. when one term is Tuple-backed and the other Vector-backed
-    dict = add_term!!(Dict{K,C}(term_key(K, a) => prefactor(a)), b)
+    dict = add_term!!(Dict{K,C}(term_key(K, a) => prefactor(a)), term_key(K, b), prefactor(b))
     return NCAdd(zero(C), dict)
-end
-# Add the term `a` to `dict`. setindex!! widens the coefficients if the sum needs it (Bool + Bool isa Int)
-function add_term!!(dict::AbstractDict{K}, a::NCMul) where {K}
-    key = term_key(K, a)
-    return setindex!!(dict, get(dict, key, zero(valtype(dict))) + prefactor(a), key)
 end
 
 Base.:+(a::A, b::NCMul{C}) where {A<:Number,C} = NCAdd(a, to_add_dict(promote_type(A, C), b))
@@ -32,7 +27,7 @@ Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), K2)
-    newdict = add_term!!(copy_dict(b, K, C), a)
+    newdict = add_term!!(copy_dict(b, K, C), term_key(K, a), prefactor(a))
     return NCAdd(additive_coeff(b), newdict)
 end
 
