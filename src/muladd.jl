@@ -16,12 +16,14 @@ Base.:(==)(a::NCMul, b::NCAdd) = b == a
 function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), to_add_dict_type(typeof(b)))
-    # convert the keys up front: a Tuple-backed key is not isequal to its Vector-backed conversion
-    dict = Dict{K,C}(term_key(K, a) => prefactor(a))
-    bkey = term_key(K, b)
-    # setindex!! widens the coefficients if the sum needs it (Bool + Bool isa Int)
-    dict = setindex!!(dict, get(dict, bkey, zero(C)) + prefactor(b), bkey)
+    # convert the keys up front so that the Dict has a single concrete key type, e.g. when one term is Tuple-backed and the other Vector-backed
+    dict = add_term!!(Dict{K,C}(term_key(K, a) => prefactor(a)), b)
     return NCAdd(zero(C), dict)
+end
+# Add the term `a` to `dict`. setindex!! widens the coefficients if the sum needs it (Bool + Bool isa Int)
+function add_term!!(dict::AbstractDict{K}, a::NCMul) where {K}
+    key = term_key(K, a)
+    return setindex!!(dict, get(dict, key, zero(valtype(dict))) + prefactor(a), key)
 end
 
 Base.:+(a::A, b::NCMul{C}) where {A<:Number,C} = NCAdd(a, to_add_dict(promote_type(A, C), b))
@@ -30,9 +32,7 @@ Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), K2)
-    newdict = copy_dict(b, K, C)
-    key = term_key(K, a)
-    newdict = setindex!!(newdict, get(newdict, key, zero(C)) + prefactor(a), key)
+    newdict = add_term!!(copy_dict(b, K, C), a)
     return NCAdd(additive_coeff(b), newdict)
 end
 
