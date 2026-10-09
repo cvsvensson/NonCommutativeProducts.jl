@@ -89,7 +89,6 @@ function __bubble_sort!(terms::Vector{T}, n::Int=1, start::Int=1, done::Bool=fal
 end
 
 function __bubble_sort_step!(terms, index, start)
-    no_effect = true
     ncmul = terms[index]
     factors = ncmul.factors
     N::Int = length(factors)
@@ -98,33 +97,44 @@ function __bubble_sort_step!(terms, index, start)
         return terms, done, start
     end
     i::Int = max(0, start - 1)
-    while no_effect && i < N - 1
+    while i < N - 1
         i += 1
         a, b = factors[i], factors[i+1]
-        effect = mul_effect(a, b)
+        effect = _mul_effect(factors, a, b)
         isnothing(effect) && continue
-
-        no_effect = false
-        newncmul, newterms = splice!!_and_add(ncmul, i, effect)
-
-        terms_with_newterms = _add_newterms!!(terms, newterms)
-        if iszero(newncmul) && isfilterable(newncmul)
-            deleteat!(terms_with_newterms, index)
-            return terms_with_newterms, false, 1
-        end
-        return setindex!!(terms_with_newterms, newncmul, index), false, i - 1
+        return _apply_effect!!(terms, index, ncmul, i, effect)
     end
-    done = true #no_effect
+    done = true
     newstart = i - 1
     return terms, done, newstart
 end
-function _add_newterms!!(terms, newterms)
-    Nnew = length(newterms)::Int
-    if Nnew > 0
-        return append!!(terms, newterms)
-    else
-        return terms
+# Replaces the factors i and i+1 of `ncmul == terms[index]` according to `effect`, adding any new terms to `terms`
+function _apply_effect!!(terms, index, ncmul, i, effect)
+    # effect is often only known at runtime, and then the results below are inferred as ::Any. The conversions that
+    # follow would then be compiled for ::Any, which every downstream convert method for an atom type can invalidate.
+    # The type assertion here and the one in _add_newterms!! prevent that.
+    newncmul, newterms = splice!!_and_add(ncmul, i, effect)
+    newncmul::NCMul
+
+    terms_with_newterms = _add_newterms!!(terms, newterms)
+    if iszero(newncmul) && isfilterable(newncmul)
+        deleteat!(terms_with_newterms, index)
+        return terms_with_newterms, false, 1
     end
+    return setindex!!(terms_with_newterms, newncmul, index), false, i - 1
+end
+# The factors of a mixed-type product are a Vector{Any}, so mul_effect is dispatched at runtime anyway. Hiding it from
+# inference there means the compiled sorting loop doesn't depend on which mul_effect methods exist, so the code cached
+# by the precompile workload isn't invalidated when downstream packages add their rules.
+_mul_effect(::Vector{Any}, a, b) = Base.inferencebarrier(mul_effect)(a, b)
+_mul_effect(factors, a, b) = mul_effect(a, b)
+
+function _add_newterms!!(terms::Vector{T}, newterms) where {T}
+    isempty(newterms) && return terms
+    newterms isa Union{Vector{T},Tuple{Vararg{T}}} && return append!(terms, newterms)
+    # the new terms widen the element type of terms. When newterms is only known at runtime, append!! would be compiled
+    # for ::Any, which every downstream convert method for an atom type can invalidate (see _apply_effect!!).
+    return Base.inferencebarrier(append!!)(terms, newterms)::Vector
 end
 
 
