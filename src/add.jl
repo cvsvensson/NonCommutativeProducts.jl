@@ -48,14 +48,7 @@ function set_coeff!!(a::NCAdd{C}, x::Number) where {C}
 end
 # anyadd converts an NCAdd with any key type to an NCAdd whose keys hold their factors in a Vector{Any}.
 # Every key type promotes to that one, so it is a closed type for KrylovKit.
-function anyadd(x::NCAdd{C}) where {C}
-    d = Dict{NCMul{Int,Any,Vector{Any}},C}()
-    for (k, v) in x.dict
-        d[NCMul(1, Vector{Any}(k.factors))] = v
-    end
-    NCAdd(x.coeff, d)
-end
-anyadd(x::NCMul) = anyadd(NCAdd(x))
+anyadd(x::Union{NCMul{C},NCAdd{C}}) where {C} = convert(NCAdd{C,NCMul{Int,Any,Vector{Any}}}, x)
 
 const MulAdd = Union{NCMul,NCAdd}
 function filter_ncadd!!(x::NCAdd; kwargs...)

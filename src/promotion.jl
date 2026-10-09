@@ -5,7 +5,7 @@
 #   NCAdd{C,K}: the keys K are NCMul{Int,S,F}, and the terms are a Dict{K,C}
 #
 # Coefficient types and factor types are promoted independently. A product promotes with a sum as the sum
-# with the product's factors as a key, and an atom of type W promotes as the product NCMul{Int,W,Vector{W}}
+# with the product as a key (see to_add_dict_type), and an atom of type W promotes as the product NCMul{Int,W,Vector{W}}
 # (see @nc_common). Each rule is defined for one argument order only, since promote_type tries both.
 
 # promote_type(Vector{A}, Vector{B}) typejoins to the abstract `Vector` when A and B promote to Any, so build the container type explicitly.
@@ -32,7 +32,7 @@ function Base.promote_rule(::Type{NCAdd{C1,K1}}, ::Type{NCAdd{C2,K2}}) where {C1
     return ncadd_type(promote_type(C1, C2), promote_type(K1, K2))
 end
 function Base.promote_rule(::Type{NCMul{C1,S1,F1}}, ::Type{NCAdd{C2,K2}}) where {C1,S1,F1,C2,K2}
-    return ncadd_type(promote_type(C1, C2), promote_type(NCMul{Int,S1,F1}, K2))
+    return ncadd_type(promote_type(C1, C2), promote_type(to_add_dict_type(NCMul{C1,S1,F1}), K2))
 end
 
 Base.convert(::Type{NCMul{C,S,F}}, x::NCMul{C,S,F}) where {C,S,F} = x

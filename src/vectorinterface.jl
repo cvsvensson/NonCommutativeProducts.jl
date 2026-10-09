@@ -5,14 +5,7 @@ _scalartype(x) = VectorInterface.scalartype(typeof(x))
 VectorInterface.scalartype(::Type{<:NCMul{C}}) where {C<:Number} = C
 VectorInterface.scalartype(::Type{<:NCAdd{C}}) where {C<:Number} = C
 
-function VectorInterface.zerovector(x::NCMul, ::Type{S}) where {S<:Number}
-    K = typeof(NCMul(1, x.factors))
-    return NCAdd(zero(S), Dict{K,S}())
-end
-function VectorInterface.zerovector(x::NCAdd, ::Type{S}) where {S<:Number}
-    K = keytype(typeof(x.dict))
-    return NCAdd(zero(S), Dict{K,S}())
-end
+VectorInterface.zerovector(x::MulAdd, ::Type{S}) where {S<:Number} = zero(NCAdd{S,to_add_dict_type(typeof(x))})
 
 function VectorInterface.zerovector!(x::NCAdd)
     x.coeff = zero(_scalartype(x))

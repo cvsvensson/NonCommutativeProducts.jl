@@ -40,9 +40,14 @@ to_add_dict(a::NCMul{C}) where C = to_add_dict(C, a)
 to_add_dict(::Type{T}, a::NCMul) where {T<:Number} = Dict(term_key(a) => convert(T, prefactor(a)))
 # The key of the term `a` in a sum. It may share its factors with `a`, since factors are never mutated once they
 # are part of an NCMul that escapes the package (see the comment on NCMul).
-term_key(a::NCMul) = NCMul(1, a.factors)
-term_key(::Type{K}, a::NCMul) where {K} = convert(K, term_key(a))
+term_key(a::NCMul) = term_key(to_add_dict_type(typeof(a)), a)
+term_key(::Type{K}, a::NCMul) where {K} = convert(K, NCMul(1, a.factors))
+# The key type of a sum with the term `a`, or of the sum `a`. Every key of a sum built from products is derived
+# from this. Like zero and one (see mul.jl), keys built from Tuple-backed products are Vector-backed, so that the
+# sum can hold products of any length.
 to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{Int,S,F}
+to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F<:Tuple} = NCMul{Int,S,Vector{S}}
+to_add_dict_type(::Type{NCAdd{C,K}}) where {C,K} = K
 to_add_dict_type(::Type{NCMul{C,S}}) where {C,S} = NCMul{Int,S}
 to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
@@ -55,7 +60,7 @@ end
 macro nc_common(T)
     quote
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
-        NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(0, Dict(NCMul(1, [f]) => 1))
+        NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(NCMul(f))
         NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)

@@ -97,3 +97,32 @@ end
         @test NC.bubble_sort(NC.NCMul(1, [Alpha(1), Alpha(1), Alpha(2), Alpha(2)])) == NC.NCMul(1, Any[Beta(1), Beta(2)])
     end
 end
+
+@testitem "Sums of Tuple-backed products have Vector-backed keys" setup = [Fermions] begin
+    import NonCommutativeProducts: NCMul, NCAdd, anyadd
+    using VectorInterface
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    t = NCMul(1, (f1,))
+    vectorkeyed(x::NCAdd) = fieldtype(keytype(x.dict), :factors) <: Vector
+
+    # anyadd accepts any key type
+    for x in (NCMul(2, (f1, f2)), t + NCMul(1, (f2,)), t + NCMul(1, [f1, f2]) + 1, 2 * f1 * f2 + f1, f1)
+        y = anyadd(x)
+        @test keytype(y.dict) == NCMul{Int,Any,Vector{Any}}
+        @test y == x
+    end
+
+    # sums built from Tuple-backed products, and their zero vectors, can hold any product of the same atoms
+    for z in (t + 0, NCAdd(t), t + NCMul(1, (f2,)), t + (f1 * f2 + 0), zerovector(t), zerovector!!(t), zerovector(t, Float64))
+        @test vectorkeyed(z)
+        y = zerovector(z)
+        @test VectorInterface.add!(y, f1 * f2 + 0, 1, 1) == f1 * f2
+        @test VectorInterface.scale!(y, f1 * f2 + f2, 2) == 2 * f1 * f2 + 2 * f2
+        @test VectorInterface.add!!(zerovector(z), t, 1, 1) == f1
+    end
+    @test VectorInterface.add!(zerovector(t), f1 * f2 + 0, 1, 1) == f1 * f2
+    @test VectorInterface.scale!(zerovector(t), f1 * f2 + 0, 2) == 2 * f1 * f2
+    @test vectorkeyed(zero(promote_type(typeof(t), typeof(f1 * f2 + 0))))
+end
