@@ -213,6 +213,7 @@ function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where 
     promote_type(typeof(β), C) <: C || return _set_ncadd!(a, newcoeff, (k => v * β for (k, v) in a.dict))
     # the scaled terms fit in C, so only the coefficient can fail to convert. Convert it first and scale in place.
     set_coeff!(a, convert(C, newcoeff))
+    β isa One && return a
     map!(v -> v * β, values(a.dict))
     filter_zeros!(a.dict)
     return a
