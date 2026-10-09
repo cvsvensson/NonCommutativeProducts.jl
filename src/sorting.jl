@@ -41,15 +41,16 @@ function bubble_sort(a::NCMul)
     return bubble_sort!(copy(a))
 end
 # Sorts the factors of `a` in place. Only for products whose factors were just created and aren't shared.
+# Tuple factors can't be sorted in place, so they are collected into a Vector first.
 function bubble_sort!(a::NCMul{C}) where C
     if length(a.factors) <= 1
         return a
     end
-    return _bubble_sort!([a], C)
+    return _bubble_sort!([NCMul(prefactor(a), factors_vector(a.factors))], C)
 end
 function bubble_sort(ncadd::NCAdd{C}) where C
     length(ncadd.dict) == 0 && return ncadd
-    terms = collect(NCMul(v, copy(k.factors)) for (k, v) in pairs(ncadd.dict))
+    terms = collect(NCMul(v, copy_factors(k.factors)) for (k, v) in pairs(ncadd.dict))
     add!!(_bubble_sort!(terms, C), additive_coeff(ncadd))
 end
 function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
@@ -70,6 +71,8 @@ function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C
     return filter_ncadd!!(newadd; filter_zeros=true, filter_scalars=true)
 end
 
+# Sorts terms[n:end] one term at a time. The optional arguments let the recursive call below resume where it left off:
+# `n` is the term being sorted, `start` the factor position to continue from, and `done` whether terms[n] is sorted.
 function __bubble_sort!(terms::Vector{T}, n::Int=1, start::Int=1, done::Bool=false) where {T<:NCMul}
     while n <= length(terms)
         while !done && n <= length(terms)
@@ -131,7 +134,7 @@ function mysplice!!(v::V, i::UnitRange, replacement::W) where {V,W}
         _mysplice!(v, i, replacement)
         return v
     else
-        return Vector{T}(vcat(v[1:(first(i)-1)], replacement, v[(last(i)+1):end]))
+        return Vector{T}(vcat(v[1:(first(i)-1)], factors_vector(replacement), v[(last(i)+1):end]))
     end
 end
 function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
@@ -140,7 +143,7 @@ function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
         _mysplice!(v, i, replacement)
         return v
     else
-        return Vector{T}(vcat(v[1:(i-1)], replacement, v[(i+2):end]))
+        return Vector{T}(vcat(v[1:(i-1)], factors_vector(replacement), v[(i+2):end]))
     end
 end
 
@@ -201,7 +204,8 @@ function splice!!(ncmul::NCMul, i, term::NCMul)
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
     return NCMul(coeff, newfactors)
 end
-function splice!!(ncmul::NCMul{C,S}, i, term::S) where {C,S}
+# a single atom, which may be of a different type than the factors of ncmul
+function splice!!(ncmul::NCMul{C}, i, term) where {C}
     splice!!(ncmul, i, NCMul(one(C), (term,)))
 end
 function splice!!(ncmul::NCMul, i::UnitRange, coeff::Number)

@@ -1,8 +1,8 @@
 function filter_ncadd_dict!(d::AbstractDict{K,V}; filter_zeros=true, filter_scalars=true) where {K<:NCMul,V}
-    !filter_zeros && !filter_scalars && return d
     coeff = zero(V)
+    !filter_zeros && !filter_scalars && return d, coeff
     for (k, v) in d
-        if filter_zeros && iszero(v) && isfilterable(k)
+        if filter_zeros && dropzero(k, v)
             delete!(d, k)
             continue
         end
@@ -14,15 +14,21 @@ function filter_ncadd_dict!(d::AbstractDict{K,V}; filter_zeros=true, filter_scal
     return d, coeff
 end
 
-mutable struct NCAdd{C,K,D<:AbstractDict{K}}
+# Zero terms are dropped unless their key is not `isfilterable`, the same rule `filter_ncadd_dict!` uses.
+# Every path that mutates the terms of an NCAdd in place goes through this, so that in-place and out-of-place
+# results compare and hash equal.
+dropzero(k, v) = iszero(v) && isfilterable(k)
+filter_zeros!(d::AbstractDict) = filter!(kv -> !dropzero(first(kv), last(kv)), d)
+
+# D is always Dict{K,C}: the terms share the coefficient type of the sum, and Dict is the only container, since
+# equality and key lookup assume keys are compared by value. D is kept as a parameter for backwards compatibility.
+mutable struct NCAdd{C,K,D<:Dict{K,C}}
     coeff::C
     dict::D
     function NCAdd(coeff::C, dict::D; kwargs...) where {C,D<:AbstractDict}
         _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
         newcoeff = coeff + addcoeff
         T = promote_type(typeof(newcoeff), valtype(D))
-        # the terms share the coefficient type of the sum, so that C is the scalar type of the whole expression.
-        # Dict is the only container: equality and key lookup assume keys are compared by value.
         newdict = dict isa Dict{keytype(D),T} ? dict : Dict{keytype(D),T}(dict)
         new{T,keytype(D),typeof(newdict)}(newcoeff, newdict)
     end
@@ -36,17 +42,14 @@ function set_coeff!(a::NCAdd, x::Number)
     a.coeff = x
     return a
 end
-function set_coeff!!(a::NCAdd, x::Number)
-    try
-        set_coeff!(a, x)
-    catch e
-        NCAdd(x, a.dict)
-    end
+function set_coeff!!(a::NCAdd{C}, x::Number) where {C}
+    # decide up front, like scale!!, so that set_coeff! is only used where it can't fail
+    promote_type(typeof(x), C) <: C ? set_coeff!(a, x) : NCAdd(x, a.dict)
 end
 # anyadd converts an NCAdd with any key type to an NCAdd whose keys hold their factors in a Vector{Any}.
 # Every key type promotes to that one, so it is a closed type for KrylovKit.
-function anyadd(x::NCAdd{C,K,Dict{K,V}}) where {C,K,V}
-    d = Dict{NCMul{Int,Any,Vector{Any}},V}()
+function anyadd(x::NCAdd{C}) where {C}
+    d = Dict{NCMul{Int,Any,Vector{Any}},C}()
     for (k, v) in x.dict
         d[NCMul(1, Vector{Any}(k.factors))] = v
     end
@@ -141,15 +144,21 @@ function Base.:+(a::NCAdd, b::NCAdd)
 end
 add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
+# The new value of the term with key `key` when `coeff` is added to it, or nothing (meaning delete the term) if the
+# result is a zero term that can be dropped. For use with modify!!.
+function _add_to_term(val, key, coeff)
+    newval = isnothing(val) ? coeff : something(val) + coeff
+    return dropzero(key, newval) ? nothing : newval
+end
+
 function add!!(_a::NCAdd, b::NCMul, α::Number=One(), β::Number=One())
     # compute β * a + α * b
+    # a scalar product belongs in the coefficient, as in the NCAdd constructor
+    isscalar(b) && return add!!(_a, prefactor(b), α, β)
     a = scale!!(_a, β)
     key = term_key(b)
     coeff = α * prefactor(b)
-    newdict, ret = modify!!(a.dict, key) do val
-        isnothing(val) && return coeff
-        return something(val, 0) + coeff
-    end
+    newdict, _ = modify!!(val -> _add_to_term(val, key, coeff), a.dict, key)
     newcoeff = additive_coeff(a)
     if newdict === a.dict
         return set_coeff!!(a, newcoeff)
@@ -163,10 +172,7 @@ function add!!(_a::NCAdd, b::NCAdd, α::Number=One(), β::Number=One())
     newdict = a.dict
     for (k, v) in b.dict
         coeff = α * v
-        newdict, ret = modify!!(newdict, k) do val
-            isnothing(val) && return coeff
-            return something(val, 0) + coeff
-        end
+        newdict, _ = modify!!(val -> _add_to_term(val, k, coeff), newdict, k)
     end
     newcoeff = additive_coeff(a) + additive_coeff(b) * α
     if newdict === a.dict
@@ -178,38 +184,40 @@ function add!!(_a::NCAdd, b::Number, α::Number=One(), β::Number=One())
     a = scale!!(_a, β)
     set_coeff!!(a, additive_coeff(a) + α * b)
 end
-function add!(a::NCAdd, b::Number, α::Number=One(), β::Number=One())
-    # convert the new coefficient before touching the terms, so that a failure leaves `a` unchanged
-    newcoeff = convert(typeof(additive_coeff(a)), additive_coeff(a) * β + α * b)
-    scale_terms!(a, β)
-    set_coeff!(a, newcoeff)
-    return a
-end
 function add!!(_a::NCAdd, b::UniformScaling, α::Number=One(), β::Number=One())
     a = scale!!(_a, β)
     set_coeff!!(a, additive_coeff(a) + α * b.λ)
 end
 
-# scale! either scales all of `x` or, if a scaled coefficient doesn't fit in the coefficient type, throws and
-# leaves `x` unchanged
-function scale!(x::NCAdd, α::Number)
-    newcoeff = convert(typeof(additive_coeff(x)), additive_coeff(x) * α)
-    scale_terms!(x, α)
-    set_coeff!(x, newcoeff)
-    return x
-end
-function scale_terms!(x::NCAdd{C}, α::Number) where {C}
-    if promote_type(typeof(α), C) <: C
-        map!(v -> v * α, values(x.dict))
-    else
-        # convert every scaled term before storing any of them
-        newvalues = [convert(C, v * α) for v in values(x.dict)]
-        for (k, v) in zip(keys(x.dict), newvalues)
-            x.dict[k] = v
-        end
+# Convert, then mutate: sets `y` to the coefficient `coeff` plus the terms `terms`, an iterator of key => value pairs
+# that may read from `y.dict`. Everything is converted to the types of `y` before `y` is touched, so that a failed
+# conversion (e.g. an InexactError) leaves `y` unchanged. Zero terms are dropped as in the NCAdd constructor.
+function _set_ncadd!(y::NCAdd{C,K}, coeff, terms) where {C,K}
+    newcoeff = convert(C, coeff)
+    newterms = [convert(K, k) => convert(C, v) for (k, v) in terms]
+    y.coeff = newcoeff
+    empty!(y.dict)
+    for (k, v) in newterms
+        dropzero(k, v) || (y.dict[k] = v)
     end
-    return x
+    return y
 end
+_set_ncadd!(y::NCAdd, x::NCAdd) = _set_ncadd!(y, additive_coeff(x), x.dict)
+_set_ncadd!(y::NCAdd, x::NCMul) = _set_ncadd!(y, NCAdd(x))
+
+# add! and scale! either update all of `a` or, if the result doesn't fit in the coefficient type, throw and leave
+# `a` unchanged
+function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where {C}
+    # computes β * a + α * b
+    newcoeff = additive_coeff(a) * β + α * b
+    promote_type(typeof(β), C) <: C || return _set_ncadd!(a, newcoeff, (k => v * β for (k, v) in a.dict))
+    # the scaled terms fit in C, so only the coefficient can fail to convert. Convert it first and scale in place.
+    set_coeff!(a, convert(C, newcoeff))
+    map!(v -> v * β, values(a.dict))
+    filter_zeros!(a.dict)
+    return a
+end
+scale!(x::NCAdd, α::Number) = add!(x, false, One(), α)
 
 function scale!!(x::NCAdd{CS}, α::C) where {CS,C<:Number}
     # decide up front, so that scale! is only used where it can't fail

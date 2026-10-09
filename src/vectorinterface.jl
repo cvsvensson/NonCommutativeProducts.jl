@@ -1,11 +1,6 @@
 _scalartype(x) = VectorInterface.scalartype(typeof(x))
-
-function _set_ncadd!(y::NCAdd, x::NCAdd)
-    y.coeff = x.coeff
-    empty!(y.dict)
-    merge!(y.dict, x.dict)
-    return y
-end
+# The in-place methods below compute the result out of place and then store it with _set_ncadd! (see add.jl), which
+# converts everything before it mutates `y`, so that `y` is left unchanged if the result doesn't fit in it.
 
 VectorInterface.scalartype(::Type{<:NCMul{C}}) where {C<:Number} = C
 VectorInterface.scalartype(::Type{<:NCAdd{C}}) where {C<:Number} = C

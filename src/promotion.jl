@@ -2,7 +2,7 @@
 #
 # The rules rely on two invariants:
 #   NCMul{C,S,F}: S == eltype(F)
-#   NCAdd{C,K,D}: the keys K are NCMul{Int,S,F}, and valtype(D) == C (enforced by the NCAdd constructor)
+#   NCAdd{C,K,D}: the keys K are NCMul{Int,S,F}, and D == Dict{K,C} (enforced by the type parameter bound)
 #
 # Coefficient types and factor types are promoted independently. A product promotes with a sum as the sum
 # with the product's factors as a key, and an atom of type W promotes as the product NCMul{Int,W,Vector{W}}

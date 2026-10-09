@@ -71,11 +71,11 @@ macro nc_common(T)
 
         Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? bubble_sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
         function Base.:*(x::$(esc(T)), y::NCMul)
-            ncmul = NCMul(prefactor(y), pushfirst!!(copy(y.factors), x))
+            ncmul = NCMul(prefactor(y), pushfirst!!(copy_factors(y.factors), x))
             autosort() ? bubble_sort!(ncmul) : ncmul
         end
         function Base.:*(x::NCMul, y::$(esc(T)))
-            ncmul = NCMul(prefactor(x), push!!(copy(x.factors), y))
+            ncmul = NCMul(prefactor(x), push!!(copy_factors(x.factors), y))
             autosort() ? bubble_sort!(ncmul) : ncmul
         end
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(y)
