@@ -6,6 +6,9 @@ struct Fermion{L}
 end
 Base.adjoint(x::Fermion) = Fermion(x.label, !x.creation)
 Fermion(k) = Fermion(k, false)
+# The default hash of a struct mixes in its type, whose hash depends on the session when the type is defined in Main.
+# Dict layouts, and so the allocations in the benchmarks, then change from run to run. Hash the fields instead.
+Base.hash(x::Fermion, h::UInt) = hash(x.label, hash(x.creation, hash(0x243f6a8885a308d3, h)))
 Base.show(io::IO, x::Fermion) = print(io, "c", x.creation ? "†" : "", "[", x.label, "]")
 @nc Fermion
 

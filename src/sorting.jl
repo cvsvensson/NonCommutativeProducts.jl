@@ -33,26 +33,31 @@ end
 
 Base.sort(a::NCMul) = bubble_sort(a)
 Base.sort(a::NCAdd) = bubble_sort(a)
-Base.sort!(a::NCMul) = bubble_sort!(a)
-Base.sort!(a::NCAdd) = bubble_sort(a)
+bubble_sort!(a::NCAdd) = bubble_sort(a)
 function bubble_sort(a::NCMul)
     return bubble_sort!(copy(a))
 end
+# Sorts the factors of `a` in place. Only for products whose factors were just created and aren't shared.
+# Tuple factors can't be sorted in place, so they are collected into a Vector first.
 function bubble_sort!(a::NCMul{C}) where C
     if length(a.factors) <= 1
         return a
     end
-    return _bubble_sort!([a], C)
+    return _bubble_sort!([NCMul(prefactor(a), factors_vector(a.factors))], C)
 end
 function bubble_sort(ncadd::NCAdd{C}) where C
     length(ncadd.dict) == 0 && return ncadd
-    terms = collect(NCMul(v, copy(k.factors)) for (k, v) in pairs(ncadd.dict))
+    terms = collect(NCMul(v, copy_factors(k.factors)) for (k, v) in pairs(ncadd.dict))
     add!!(_bubble_sort!(terms, C), additive_coeff(ncadd))
 end
 function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
     sorted_terms = with(_autosort => false) do
         __bubble_sort!(terms)
     end
+    # function barrier: the element type of sorted_terms is only known at runtime
+    return _sum_sorted_terms(sorted_terms, C)
+end
+function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C}
     if length(sorted_terms) == 0
         return NCAdd(zero(C), Dict{to_add_dict_type(T),Int}())
     end
@@ -63,21 +68,24 @@ function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
     return filter_ncadd!!(newadd; filter_zeros=true, filter_scalars=true)
 end
 
-function __bubble_sort!(terms::Vector{T}) where {T<:NCMul}
-    n = 1
+# Sorts terms[n:end] one term at a time. The optional arguments let the recursive call below resume where it left off:
+# `n` is the term being sorted, `start` the factor position to continue from, and `done` whether terms[n] is sorted.
+function __bubble_sort!(terms::Vector{T}, n::Int=1, start::Int=1, done::Bool=false) where {T<:NCMul}
     while n <= length(terms)
-        done = false
-        start = 1
         while !done && n <= length(terms)
-            terms, done, start = __bubble_sort!(terms, n, start)
+            newterms, done, start = __bubble_sort_step!(terms, n, start)
+            # new terms can widen the vector's element type; continue in a call specialized on the new type
+            newterms isa Vector{T} || return __bubble_sort!(newterms, n, start, done)
+            terms = newterms
         end
         n += 1
+        done = false
+        start = 1
     end
     return terms
 end
 
-function __bubble_sort!(terms, index, start)
-    no_effect = true
+function __bubble_sort_step!(terms, index, start)
     ncmul = terms[index]
     factors = ncmul.factors
     N::Int = length(factors)
@@ -86,33 +94,44 @@ function __bubble_sort!(terms, index, start)
         return terms, done, start
     end
     i::Int = max(0, start - 1)
-    while no_effect && i < N - 1
+    while i < N - 1
         i += 1
         a, b = factors[i], factors[i+1]
-        effect = mul_effect(a, b)
+        effect = _mul_effect(factors, a, b)
         isnothing(effect) && continue
-
-        no_effect = false
-        newncmul, newterms = splice!!_and_add(ncmul, i, effect)
-
-        terms_with_newterms = _add_newterms!!(terms, newterms)
-        if iszero(newncmul) && isfilterable(newncmul)
-            deleteat!(terms_with_newterms, index)
-            return terms_with_newterms, false, 1
-        end
-        return setindex!!(terms_with_newterms, newncmul, index), false, i - 1
+        return _apply_effect!!(terms, index, ncmul, i, effect)
     end
-    done = true #no_effect
+    done = true
     newstart = i - 1
     return terms, done, newstart
 end
-function _add_newterms!!(terms, newterms)
-    Nnew = length(newterms)::Int
-    if Nnew > 0
-        return append!!(terms, newterms)
-    else
-        return terms
+# Replaces the factors i and i+1 of `ncmul == terms[index]` according to `effect`, adding any new terms to `terms`
+function _apply_effect!!(terms, index, ncmul, i, effect)
+    # effect is often only known at runtime, and then the results below are inferred as ::Any. The conversions that
+    # follow would then be compiled for ::Any, which every downstream convert method for an atom type can invalidate.
+    # The type assertion here and the one in _add_newterms!! prevent that.
+    newncmul, newterms = splice!!_and_add(ncmul, i, effect)
+    newncmul::NCMul
+
+    terms_with_newterms = _add_newterms!!(terms, newterms)
+    if iszero(newncmul) && isfilterable(newncmul)
+        deleteat!(terms_with_newterms, index)
+        return terms_with_newterms, false, 1
     end
+    return setindex!!(terms_with_newterms, newncmul, index), false, i - 1
+end
+# The factors of a mixed-type product are a Vector{Any}, so mul_effect is dispatched at runtime anyway. Hiding it from
+# inference there means the compiled sorting loop doesn't depend on which mul_effect methods exist, so the code cached
+# by the precompile workload isn't invalidated when downstream packages add their rules.
+_mul_effect(::Vector{Any}, a, b) = Base.inferencebarrier(mul_effect)(a, b)
+_mul_effect(factors, a, b) = mul_effect(a, b)
+
+function _add_newterms!!(terms::Vector{T}, newterms) where {T}
+    isempty(newterms) && return terms
+    newterms isa Union{Vector{T},Tuple{Vararg{T}}} && return append!(terms, newterms)
+    # the new terms widen the element type of terms. When newterms is only known at runtime, append!! would be compiled
+    # for ::Any, which every downstream convert method for an atom type can invalidate (see _apply_effect!!).
+    return Base.inferencebarrier(append!!)(terms, newterms)::Vector
 end
 
 
@@ -122,7 +141,7 @@ function mysplice!!(v::V, i::UnitRange, replacement::W) where {V,W}
         _mysplice!(v, i, replacement)
         return v
     else
-        return Vector{T}(vcat(v[1:first(i)-1], replacement, v[last(i)+1:end]))
+        return Vector{T}(vcat(v[1:(first(i)-1)], factors_vector(replacement), v[(last(i)+1):end]))
     end
 end
 function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
@@ -131,7 +150,7 @@ function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
         _mysplice!(v, i, replacement)
         return v
     else
-        return Vector{T}(vcat(v[1:i-1], replacement, v[i+2:end]))
+        return Vector{T}(vcat(v[1:(i-1)], factors_vector(replacement), v[(i+2):end]))
     end
 end
 
@@ -192,15 +211,27 @@ function splice!!(ncmul::NCMul, i, term::NCMul)
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
     return NCMul(coeff, newfactors)
 end
+# a single atom of the element type of the factors. For mixed products (S == Any) this matches any value, so values that
+# can't be a factor are rejected explicitly.
 function splice!!(ncmul::NCMul{C,S}, i, term::S) where {C,S}
+    _check_atom_effect(term)
     splice!!(ncmul, i, NCMul(one(C), (term,)))
 end
+# a single atom of another type than the factors, e.g. when mul_effect fuses two atoms into an atom of a new type.
+# NCMul(term) is defined by @nc, so only registered atoms are accepted.
+function splice!!(ncmul::NCMul, i, term)
+    _check_atom_effect(term)
+    splice!!(ncmul, i, NCMul(term)::NCMul)
+end
+_check_atom_effect(term) = nothing
+_check_atom_effect(term::Union{NCAdd,AddTerms}) = throw(ArgumentError("unsupported mul_effect value: an $(nameof(typeof(term))) can only be returned as the whole result of mul_effect, not nested inside AddTerms. Got $term."))
+_check_atom_effect(::Nothing) = throw(ArgumentError("unsupported mul_effect value: `nothing` can only be returned as the whole result of mul_effect, not nested inside AddTerms."))
 function splice!!(ncmul::NCMul, i::UnitRange, coeff::Number)
     deleteat!(ncmul.factors, i)
     return NCMul(coeff * prefactor(ncmul), ncmul.factors)
 end
 function splice!!(ncmul::NCMul, i::Integer, coeff::Number)
-    deleteat!(ncmul.factors, i:i+1)
+    deleteat!(ncmul.factors, i:(i+1))
     return NCMul(coeff * prefactor(ncmul), ncmul.factors)
 end
 function splice!!_and_add(ncmul::NCMul, i, add::NCAdd)

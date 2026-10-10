@@ -1,23 +1,11 @@
 _scalartype(x) = VectorInterface.scalartype(typeof(x))
-
-function _set_ncadd!(y::NCAdd, x::NCAdd)
-    y.coeff = x.coeff
-    empty!(y.dict)
-    merge!(y.dict, x.dict)
-    return y
-end
+# The in-place methods below compute the result out of place and then store it with _set_ncadd! (see add.jl), which
+# converts everything before it mutates `y`, so that `y` is left unchanged if the result doesn't fit in it.
 
 VectorInterface.scalartype(::Type{<:NCMul{C}}) where {C<:Number} = C
 VectorInterface.scalartype(::Type{<:NCAdd{C}}) where {C<:Number} = C
 
-function VectorInterface.zerovector(x::NCMul, ::Type{S}) where {S<:Number}
-    K = typeof(NCMul(1, x.factors))
-    return NCAdd(zero(S), Dict{K,S}())
-end
-function VectorInterface.zerovector(x::NCAdd, ::Type{S}) where {S<:Number}
-    K = keytype(typeof(x.dict))
-    return NCAdd(zero(S), Dict{K,S}())
-end
+VectorInterface.zerovector(x::MulAdd, ::Type{S}) where {S<:Number} = zero(NCAdd{S,to_add_dict_type(typeof(x))})
 
 function VectorInterface.zerovector!(x::NCAdd)
     x.coeff = zero(_scalartype(x))
@@ -37,13 +25,7 @@ VectorInterface.scale(x::MulAdd, α::Number) = α * x
 function VectorInterface.scale!(x::NCMul, α::Number)
     throw(ArgumentError("NCMul is immutable; use scale or scale!!"))
 end
-function VectorInterface.scale!(x::NCAdd, α::Number)
-    x.coeff *= α
-    for (k, v) in x.dict
-        x.dict[k] = v * α
-    end
-    return x
-end
+VectorInterface.scale!(x::NCAdd, α::Number) = scale!(x, α)
 function VectorInterface.scale!(y::NCMul, x::NCMul, α::Number)
     throw(ArgumentError("NCMul is immutable; use scale or scale!!"))
 end

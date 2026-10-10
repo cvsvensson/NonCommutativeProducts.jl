@@ -233,16 +233,16 @@ end
     @test oneunit(f1) == oneunit(f1mul) == oneunit(f1add) == 1
     @test one(typeof(f1)) == one(typeof(f1mul)) == one(typeof(f1add)) == 1
 
-    @test promote_rule(typeof(f1), typeof(f1)) == typeof(f1)
-    @test promote_rule(typeof(f1), typeof(1 * f1)) == typeof(1 * f1)
-    @test promote_rule(typeof(f1), typeof(f1 + 0)) == typeof(f1 + 0)
+    @test promote_type(typeof(f1), typeof(f1)) == typeof(f1)
+    @test promote_type(typeof(f1), typeof(1 * f1)) == typeof(1 * f1)
+    @test promote_type(typeof(f1), typeof(f1 + 0)) == typeof(f1 + 0)
 
-    @test promote_rule(typeof(f1mul), typeof(f1mul)) == typeof(f1mul)
-    @test promote_rule(typeof(f1mul), typeof(1im * f1mul)) == typeof(1im * f1mul)
+    @test promote_type(typeof(f1mul), typeof(f1mul)) == typeof(f1mul)
+    @test promote_type(typeof(f1mul), typeof(1im * f1mul)) == typeof(1im * f1mul)
 
-    @test promote_rule(typeof(f1mul), typeof(f1add)) == typeof(f1add)
-    @test promote_rule(typeof(f1add), typeof(f1mul)) == typeof(f1add)
-    @test promote_rule(typeof(f1add), typeof(f1add)) == typeof(f1add)
+    @test promote_type(typeof(f1mul), typeof(f1add)) == typeof(f1add)
+    @test promote_type(typeof(f1add), typeof(f1mul)) == typeof(f1add)
+    @test promote_type(typeof(f1add), typeof(f1add)) == typeof(f1add)
 
     @test isconcretetype(eltype([f1, f1 * 1]))
     @test isconcretetype(eltype([f1, f1 + 1]))
@@ -268,7 +268,7 @@ end
         (add, mul, f1),
         (f1, complex_mul, add),
         (complex_add, complex_mul, f1),
-         (f1, 2 * f1, (1 + 2im) * f1, f1 + f2, 1im + f1 + f2)
+        (f1, 2 * f1, (1 + 2im) * f1, f1 + f2, 1im + f1 + f2)
     )
     for values in combinations
         vector = [values...]
@@ -303,6 +303,215 @@ end
     for values in combinations
         @test [values...] isa Vector
     end
+
+    # Mixing species must give a concrete factors container (Vector{Any}, not the abstract Vector)
+    factorstype(::Type{T}) where {T<:NonCommutativeProducts.NCMul} = fieldtype(T, :factors)
+    factorstype(::Type{T}) where {T<:NonCommutativeProducts.NCAdd} = factorstype(T.parameters[2])
+    for x in (fermion_mul + boson_mul, (1.0 * fermion_mul) + boson_mul, mixed_mul, mixed_add, fermion_mul + mixed_mul, f1 * f2 + b * b)
+        @test isconcretetype(factorstype(typeof(x)))
+    end
+    fmul = NonCommutativeProducts.NCMul(1, [f1, f2])
+    bmul = NonCommutativeProducts.NCMul(1.0, [b, b])
+    @test factorstype(promote_type(typeof(fmul), typeof(bmul))) == Vector{Any}
+    @test factorstype(typeof(fmul + bmul)) == Vector{Any}
+end
+
+@testitem "Promotion and conversion robustness" setup = [Fermions, Bosons] begin
+    import NonCommutativeProducts: add!!, NCMul
+    using VectorInterface
+    NonCommutativeProducts.@commutative Fermion Boson
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    fi = Fermion(1)
+    b = Boson()
+
+    for sorted in (false, true)
+        sorted ? NonCommutativeProducts.enable_autosort!() : NonCommutativeProducts.disable_autosort!()
+
+        # Widening the additive coefficient widens the term coefficients too
+        x = 1.0 + (f1 + f2)
+        half = 0.5 + 0.5 * f1 + 0.5 * f2
+        @test valtype(x.dict) == Float64
+        @test 0.5 * x == half
+        @test x / 2 == half
+        @test VectorInterface.scale!(copy(x), 0.5) == half
+        @test VectorInterface.scale!!(copy(x), 0.5) == half
+        @test VectorInterface.add(x, f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
+        @test VectorInterface.add!!(copy(x), f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
+        @test (f1 + f2) + 0.5 * f1 == 1.5 * f1 + f2 == 0.5 * f1 + (f1 + f2)
+        @test add!!(f1 + f2, 0.5 * f1) == 1.5 * f1 + f2
+
+        # Adding a number gives a new sum that does not share storage with the old one
+        y = f1 + f2
+        add!!(1 + y, f1)
+        add!!(y + 1, f2)
+        add!!(0 + y, f1)
+        @test y == f1 + f2
+
+        # convert returns exactly the requested type, or throws
+        T = typeof(f1 + f2)
+        @test convert(T, 3) isa T
+        @test convert(T, 3) == 3
+        @test_throws InexactError convert(T, 3.5)
+        @test_throws InexactError push!([1.5 * f1 + 0], 1im)
+
+        # Atoms, products and sums convert into containers of any compatible type
+        for (container, value) in ((f1 * b, f1), (f1 + b, f1), (f1 + b, f1 * f2), (f1 * b, f1 * f2))
+            v = push!([container], value)
+            @test v[2] == value
+        end
+
+        # Heterogeneous vectors get one concrete element type
+        fm, bm, mm = f1 * f2, b * b', f1 * b
+        fa, ba, ma = f1 + f2, b + b', f1 + b
+        combinations = ((fa, ba), (fa, ma), (fm, ma), (mm, fa), (f1, mm), (f1, ma), (fi, fa), (1 * fi, fa), (fm, f1, b, bm, fa, ma), (1im * f1, b, 1im * mm, 1im + ma))
+        for values in combinations
+            v = [values...]
+            @test isconcretetype(eltype(v))
+            @test all(x -> typeof(x) === eltype(v), v)
+            @test all(splat(==), zip(v, values))
+        end
+        types = unique(typeof.((f1, fi, b, fm, bm, mm, fa, ba, ma, 1.0 * fm, 1im + fa)))
+        for A in types, B in types
+            @test promote_type(A, B) == promote_type(B, A)
+        end
+
+        # The result type of + does not depend on the order of the terms
+        anyf1 = NCMul(1, Any[f1])
+        @test typeof(anyf1 + 1.0 * f1) == typeof(1.0 * f1 + anyf1)
+        @test typeof(fm + mm) == typeof(mm + fm)
+    end
+end
+
+@testitem "Coefficient widening, Zero scaling, container types" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, NCMul, NCAdd
+    using VectorInterface
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+
+    # Summing coefficients may widen beyond the promoted coefficient type (Bool + Bool isa Int)
+    @test NCMul(true, [f1]) + NCMul(true, [f1]) == 2 * f1
+    @test NCMul(true, [f1]) + (NCMul(true, [f1]) + NCMul(true, [f2])) == 2 * f1 + f2
+    b = convert(NCAdd{Bool,NonCommutativeProducts.to_add_dict_type(typeof(NCMul(true, [f1])))}, NCMul(true, [f1]))
+    @test b + b == 2 * f1
+
+    # Tuple-backed and Vector-backed products promote to a concrete factors container
+    tv = NCMul(1, (f1, f2)) + NCMul(1, [f1])
+    K = keytype(tv.dict)
+    @test isconcretetype(K)
+    @test isconcretetype(fieldtype(K, :factors))
+    @test eltype(fieldtype(K, :factors)) == K.parameters[2]
+    @test tv == f1 * f2 + f1
+
+    # Adding a multi-term sum into an atom
+    @test add!!(f1, f2 + 3, 1, 1) == f1 + f2 + 3
+    @test add!!(f1, f2 + 3, 2, 5) == 5 * f1 + 2 * f2 + 6
+end
+
+@testitem "Mixed factor containers, aliasing, Dict canonical" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, NCMul, NCAdd
+    using VectorInterface
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+
+    # Tuple-backed and Vector-backed products are equal, hash equally, and share Dict keys
+    @test NCMul(1, (f1, f2)) == NCMul(1, [f1, f2])
+    @test hash(NCMul(2, (f1, f2))) == hash(NCMul(2, [f1, f2]))
+    @test NCMul(1, (f1, f2)) != NCMul(1, [f1])
+
+    # Scalar and zero products equal numbers, so they must hash like them
+    for (x, n) in ((NCMul(2, typeof(f1)[]), 2), (NCMul(2, ()), 2), (NCMul(0, [f1]), 0),
+        (NCMul(0, (f1, f2)), 0), (NCMul(0.0, [f1]), 0), (NCMul(0, typeof(f1)[]), 0))
+        @test x == n
+        @test hash(x) == hash(n)
+        @test n in Set([x])
+        @test x in Set([n])
+    end
+    s = f1 * f2 + 0
+    @test add!!(copy(s), NCMul(1, (f1, f2))) == 2 * f1 * f2
+    @test s + (NCMul(1, (f1, f2)) + 0) == 2 * f1 * f2
+    @test length((s + (NCMul(1, (f1, f2)) + f1)).dict) == 2
+
+    # Aliased destination and source
+    x = f1 + 2 * f2 + 1
+    @test VectorInterface.scale!!(x, x, 2) == 2 * f1 + 4 * f2 + 2
+    x = f1 + 2 * f2 + 1
+    @test add!!(x, x, 2, 3) == 5 * f1 + 10 * f2 + 5
+end
+
+@testitem "Sum keys own their factors, Tuple targets, scale!!" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, NCMul, NCAdd
+    using VectorInterface
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    f2 = Fermion(:b)
+    f3 = Fermion(:c)
+    f4 = Fermion(:d)
+
+    # Sorting a product must not change the keys of sums built from it
+    for build in (x -> x + f3 * f4, x -> x + (f3 * f4 + 1), x -> f3 * f4 + 1 + x, x -> add!!(f3 * f4 + 1, x), x -> NCAdd(x),
+        x -> x + 1, x -> convert(typeof(1.0 + f1), x))
+        x = f2 * f1
+        s = build(x)
+        s_ref = build(f2 * f1)
+        sort(x)
+        @test s == s_ref
+        @test all(k -> haskey(s.dict, k), keys(s_ref.dict))
+    end
+    # nor products that share its factors, nor the product itself
+    for share in (x -> 2 * x, x -> -x, x -> NCMul(x + 0), x -> convert(NCMul{Float64,eltype(x.factors),typeof(x.factors)}, x))
+        x = f2 * f1
+        y = share(x)
+        y_ref = share(f2 * f1)
+        @test sort(y) == sort(y_ref)
+        @test y == y_ref
+        @test x == f2 * f1
+        s = x + 0
+        sort(NCMul(s))
+        @test haskey(s.dict, f2 * f1)
+    end
+
+    # Sums only hold Dicts, so that terms compare and are looked up by value
+    K1 = typeof(NCMul(1, [f1]))
+    a = NCAdd(1.0, IdDict{K1,Float64}(NCMul(1, [f1]) => 1.0))
+    @test a.dict isa Dict{K1,Float64}
+    @test a == 1.0 + f1
+    @test add!!(a, f1) == 1.0 + 2 * f1
+    @test length(a.dict) == 1
+
+    # In-place scaling either scales everything or throws and leaves the sum unchanged
+    x = 2 + f1 + 2 * f2
+    @test_throws InexactError VectorInterface.scale!(x, 0.5)
+    @test x == 2 + f1 + 2 * f2
+    @test_throws InexactError NonCommutativeProducts.add!(x, 1, 1, 0.5)
+    @test x == 2 + f1 + 2 * f2
+    @test VectorInterface.scale!(x, 2.0) === x
+    @test x == 4 + 2 * f1 + 4 * f2
+    @test NonCommutativeProducts.add!(x, 1, 1, 0.5) == 3 + f1 + 2 * f2
+
+    # Atoms and Vector-backed products convert to Tuple-backed product and sum types
+    F = typeof(f1)
+    T1 = NCMul{Int,F,Tuple{F}}
+    @test convert(T1, f1) == NCMul(1, (f1,))
+    @test convert(T1, f1).factors isa Tuple{F}
+    @test convert(NCMul{Int,F,Tuple{F,F}}, f1 * f2) == f1 * f2
+    S1 = NCAdd{Int,T1}
+    @test convert(S1, f1) == f1 + 0
+    @test keytype(convert(S1, f1).dict) == T1
+
+    # scale!! scales in place when the coefficients can hold the result, and never scales twice
+    x = f1 + 2 * f2 + 1
+    @test VectorInterface.scale!!(x, 3) === x
+    @test x == 3 * f1 + 6 * f2 + 3
+    x = f1 + 2 * f2 + 1
+    y = VectorInterface.scale!!(x, 1.5)
+    @test y == 1.5 * f1 + 3 * f2 + 1.5
+    @test x == f1 + 2 * f2 + 1
+    x = f1 + 2 * f2 + 1
+    @test VectorInterface.scale!!(x, VectorInterface.One()) == f1 + 2 * f2 + 1
+    @test iszero(VectorInterface.scale!!(f1 + 2 * f2 + 1, VectorInterface.Zero()))
 end
 
 @testitem "isfilterable preserves zero terms" begin

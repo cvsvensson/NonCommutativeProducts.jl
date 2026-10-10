@@ -2,26 +2,6 @@ NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return pr
 
 Base.zero(nc::Union{<:NCAdd,<:NCMul}) = zero(typeof(nc))
 Base.one(nc::Union{<:NCAdd,<:NCMul}) = one(typeof(nc))
-function Base.promote_rule(::Type{<:NCAdd{C1,NCMul{Int,S,VS},D1}}, ::Type{<:NCAdd{C2,NCMul{Int,S,VS},D2}}) where {C1,C2,D1,D2,S,VS}
-    C = promote_type(C1, C2)
-    NCMUL = NCMul{Int,S,VS}
-    # Dict has no promote_rule of its own, so promote_type(D1, D2) would typejoin to an unparameterized Dict; build it explicitly instead.
-    D = Dict{NCMUL,promote_type(valtype(D1), valtype(D2))}
-    return NCAdd{C,NCMUL,D}
-end
-Base.promote_rule(::Type{<:NCMul{C1,S1,VS1}}, ::Type{<:NCMul{C2,S2,VS2}}) where {C1,C2,S1,S2,VS1,VS2} = NCMul{promote_type(C1, C2),promote_type(S1, S2),promote_type(VS1, VS2)}
-
-function Base.promote_rule(::Type{<:NCMul{C1,S,VS1}}, ::Type{<:NCAdd{C2,NCMul{Int,S,VS2},D}}) where {C1,C2,S,VS1,VS2,D}
-    C = promote_type(C1, C2)
-    VS = promote_type(VS1, VS2)
-    NCMUL = NCMul{Int,S,VS}
-    DD = Dict{NCMUL,promote_type(C, valtype(D))}
-    return NCAdd{C,NCMUL,DD}
-end
-function Base.promote_rule(::Type{A}, ::Type{M}) where {A<:NCAdd,M<:NCMul}
-    promote_rule(M, A)
-end
-
 function Base.:(==)(a::NCAdd, b::NCMul)
     if isscalar(b)
         additive_coeff(a) == prefactor(b) && length(a.dict) == 0 && return true
@@ -33,62 +13,49 @@ function Base.:(==)(a::NCAdd, b::NCMul)
 end
 Base.:(==)(a::NCMul, b::NCAdd) = b == a
 
-function Base.:+(a::NCMul{C1,F1,S}, b::NCMul{C2,F2,S}) where {C1,C2,F1,F2,S}
+function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     C = promote_type(C1, C2)
-    if a.factors == b.factors
-        return NCAdd(zero(C), Dict(NCMul(1, a.factors) => prefactor(a) + prefactor(b)))
-    end
-    F = Union{F1,F2}
-    C = promote_type(C1, C2)
-    return NCAdd(zero(C), Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
-end
-function Base.:+(a::NCMul{C1,F1,S1}, b::NCMul{C2,F2,S2}) where {C1,C2,F1,F2,S1,S2}
-    C = promote_type(C1, C2)
-    if a.factors == b.factors
-        return NCAdd(zero(C), Dict(NCMul(1, a.factors) => prefactor(a) + prefactor(b)))
-    end
-    F = promote_type(F1, F2)
-    C = promote_type(C1, C2)
-    S = promote_type(S1, S2)
-    return NCAdd(zero(C), Dict{NCMul{Int,F,S},C}(NCMul{Int,F,S}(1, a.factors) => prefactor(a), NCMul{Int,F,S}(1, b.factors) => prefactor(b)))
+    K = promote_type(to_add_dict_type(typeof(a)), to_add_dict_type(typeof(b)))
+    # convert the keys up front so that the Dict has a single concrete key type, e.g. when one term is Tuple-backed and the other Vector-backed
+    dict = add_term!!(Dict{K,C}(term_key(K, a) => prefactor(a)), term_key(K, b), prefactor(b))
+    return NCAdd(zero(C), dict)
 end
 
 Base.:+(a::A, b::NCMul{C}) where {A<:Number,C} = NCAdd(a, to_add_dict(promote_type(A, C), b))
 Base.:+(a::UniformScaling, b::NCMul) = a.λ + b
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
-function Base.:+(a::NCMul, b::NCAdd)
-    newdict = copy(b.dict)
-    for (k, v) in b.dict
-        if k.factors == a.factors
-            newdict[k] = v + prefactor(a)
-            return NCAdd(additive_coeff(b), newdict)
-        end
-    end
-    newdict2 = setindex!!(newdict, prefactor(a), NCMul(1, a.factors))
-    nc = NCAdd(additive_coeff(b), newdict2)
-    return nc
-end
-function Base.convert(::Type{NCAdd{C,NCMul{Int,S,F},_D}}, x::NCMul{C2,S,F}) where {C,C2,S,F,_D}
-    key = NCMul(1, x.factors)
-    NCAdd(zero(C), _D(key => convert(valtype(_D), prefactor(x))))
+function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
+    C = promote_type(C1, C2)
+    K = promote_type(to_add_dict_type(typeof(a)), K2)
+    newdict = add_term!!(copy_dict(b, K, C), term_key(K, a), prefactor(a))
+    return NCAdd(additive_coeff(b), newdict)
 end
 
 to_add_dict(a::NCMul{C}) where C = to_add_dict(C, a)
-to_add_dict(::Type{T}, a::NCMul) where {T<:Number} = Dict(NCMul(1, a.factors) => convert(T, prefactor(a)))
+to_add_dict(::Type{T}, a::NCMul) where {T<:Number} = Dict(term_key(a) => convert(T, prefactor(a)))
+# The key of the term `a` in a sum. It may share its factors with `a`, since factors are never mutated once they
+# are part of an NCMul that escapes the package (see the comment on NCMul).
+term_key(a::NCMul) = term_key(to_add_dict_type(typeof(a)), a)
+term_key(::Type{K}, a::NCMul) where {K} = convert(K, NCMul(1, a.factors))
+# The key type of a sum with the term `a`, or of the sum `a`. Every key of a sum built from products is derived
+# from this. Like zero and one (see mul.jl), keys built from Tuple-backed products are Vector-backed, so that the
+# sum can hold products of any length.
 to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{Int,S,F}
+to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F<:Tuple} = NCMul{Int,S,Vector{S}}
+to_add_dict_type(::Type{NCAdd{C,K}}) where {C,K} = K
 to_add_dict_type(::Type{NCMul{C,S}}) where {C,S} = NCMul{Int,S}
 to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)
-    autosort() && return sort!(ret)
+    autosort() && return bubble_sort!(ret)
     return ret
 end
 
 macro nc_common(T)
     quote
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
-        NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(0, Dict(NCMul(1, [f]) => 1))
+        NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(NCMul(f))
         NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
@@ -102,21 +69,20 @@ macro nc_common(T)
         Base.:-(x::Union{Number,UniformScaling,NCMul,NCAdd}, y::$(esc(T))) = x - NCMul(y)
         Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) - y
 
-        Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
+        Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? bubble_sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
         function Base.:*(x::$(esc(T)), y::NCMul)
-            ncmul = NCMul(prefactor(y), pushfirst!!(copy(y.factors), x))
-            autosort() ? sort!(ncmul) : ncmul
+            ncmul = NCMul(prefactor(y), pushfirst!!(copy_factors(y.factors), x))
+            autosort() ? bubble_sort!(ncmul) : ncmul
         end
         function Base.:*(x::NCMul, y::$(esc(T)))
-            ncmul = NCMul(prefactor(x), push!!(copy(x.factors), y))
-            autosort() ? sort!(ncmul) : ncmul
+            ncmul = NCMul(prefactor(x), push!!(copy_factors(x.factors), y))
+            autosort() ? bubble_sort!(ncmul) : ncmul
         end
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(y)
         Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(x) * y
         Base.:/(x::$(esc(T)), y::Number) = NCMul(x) / y
 
         Base.:^(a::$(esc(T)), b) = NCMul(a)^b
-        Base.convert(::Type{NCMul{C,S,F}}, x::$(esc(T))) where {C,S<:$(esc(T)),F} = NCMul(one(C), S[x])
 
         Base.:(==)(a::$(esc(T)), b::Union{NCMul,NCAdd}) = NCMul(a) == b
         Base.:(==)(a::Union{NCMul,NCAdd}, b::$(esc(T))) = b == a
@@ -134,19 +100,9 @@ macro nc_common(T)
             NCMul(1, W[])
         end
 
-        Base.promote_rule(::Type{W}, ::Type{W}) where W<:$(esc(T)) = return W
-        function Base.promote_rule(::Type{W}, ::Type{<:NCAdd{C,NCMul{Int,W,VS},D}}) where {C,VS,D,W<:$(esc(T))}
-            return NCAdd{C,NCMul{Int,W,VS},D}
-        end
-        function Base.promote_rule(::Type{W}, ::Type{<:NCMul{C,W,VS}}) where {C,VS,W<:$(esc(T))}
-            return NCMul{C,W,VS}
-        end
-        function Base.promote_rule(::Type{NC}, ::Type{W}) where {NC<:MulAdd,W<:$(esc(T))}
-            return promote_rule(W, NC)
-        end
-
-        Base.convert(::Type{NCMul{C,W,V}}, x::W) where {C,V,W<:$(esc(T))} = one(C) * x
-        Base.convert(::Type{NCAdd{C,NCMul{Int,W,V},D}}, x::W) where {C,V,D,W<:$(esc(T))} = NCAdd(zero(C), D(NCMul(1, [x]) => one(C)))
+        # an atom promotes and converts as the product with itself as the only factor
+        Base.promote_rule(::Type{W}, ::Type{NC}) where {W<:$(esc(T)),NC<:MulAdd} = promote_type(NCMul{Int,W,Vector{W}}, NC)
+        Base.convert(::Type{NC}, x::$(esc(T))) where {NC<:MulAdd} = convert(NC, NCMul(x))
 
         VectorInterface.inner(x::MulAdd, y::$(esc(T))) = _inner(x, y)
         VectorInterface.inner(x::$(esc(T)), y::MulAdd) = _inner(x, y)
@@ -155,7 +111,7 @@ macro nc_common(T)
 
         NonCommutativeProducts.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, NCMul(y), α, β)
         NonCommutativeProducts.add!!(x::$(esc(T)), y::$(esc(T)), α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
-        NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
+        NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), y, α, β)
 
         VectorInterface.scale(x::$(esc(T)), α::Number) = α * x
         VectorInterface.scale!!(x::$(esc(T)), α::Number) = α * x
@@ -191,7 +147,7 @@ macro nc_pairs(types...)
     for T1 in types
         for T2 in types
             T1 == T2 && continue
-            push!(mul_pairs, :(Base.:*(x::$(esc(T1)), y::$(esc(T2))) = autosort() ? sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])))
+            push!(mul_pairs, :(Base.:*(x::$(esc(T1)), y::$(esc(T2))) = autosort() ? bubble_sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])))
         end
     end
 

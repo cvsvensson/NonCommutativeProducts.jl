@@ -1,11 +1,12 @@
 name = "NonCommutativeProducts"
 uuid = "a9a0a982-c603-4485-bf80-6b61b825abb4"
-version = "0.4.7"
+version = "0.5.0"
 authors = ["Viktor Svensson", "William Samuelson"]
 
 [deps]
 BangBang = "198e06fe-97b7-11e9-32a5-e1d131e6ad66"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 VectorInterface = "409d34a3-91d5-4945-b6ec-7529ddf182d8"
 
@@ -19,13 +20,10 @@ NonCommutativeProductsKrylovKitExt = "KrylovKit"
 BangBang = "0.4"
 KrylovKit = "0.10"
 LinearAlgebra = "1"
-Test = "1"
+PrecompileTools = "1"
 TestItems = "1"
 VectorInterface = "0.5, 0.6"
-julia = "1.11"
+julia = "1.12"
 
-[extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[targets]
-test = ["Test"]
+[workspace]
+projects = ["test"]
