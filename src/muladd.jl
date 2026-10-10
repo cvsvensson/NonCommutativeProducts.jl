@@ -107,7 +107,7 @@ macro nc_common(T)
         VectorInterface.inner(x::MulAdd, y::$(esc(T))) = _inner(x, y)
         VectorInterface.inner(x::$(esc(T)), y::MulAdd) = _inner(x, y)
         VectorInterface.inner(x::$(esc(T)), y::$(esc(T))) = _inner(x, y)
-        LinearAlgebra.norm(x::$(esc(T))) = sqrt(VectorInterface.inner(x, x))
+        LinearAlgebra.norm(x::$(esc(T))) = sqrt(real(VectorInterface.inner(x, x)))
 
         NonCommutativeProducts.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, NCMul(y), α, β)
         NonCommutativeProducts.add!!(x::$(esc(T)), y::$(esc(T)), α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
@@ -118,6 +118,7 @@ macro nc_common(T)
         VectorInterface.scale!!(x::$(esc(T)), α::Number) = VectorInterface.scale(NCMul(x), α)
         VectorInterface.scale!!(a::NCAdd, x::$(esc(T)), α::Number) = add!!(a, NCMul(x), α, VectorInterface.Zero())
         VectorInterface.zerovector(x::$(esc(T)), ::Type{S}) where {S<:Number} = VectorInterface.zerovector(NCMul(x), S)
+        VectorInterface.zerovector!!(x::$(esc(T))) = VectorInterface.zerovector(x)
 
         NonCommutativeProducts.anyadd(x::$(esc(T))) = anyadd(NCAdd(x))
     end

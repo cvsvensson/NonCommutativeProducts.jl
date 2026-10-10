@@ -772,6 +772,8 @@ end
     @test VectorInterface.scale(f1, 1.5) == 1.5 * f1
     @test VectorInterface.scalartype(typeof(f1)) == Int
     @test VectorInterface.scalartype(f1) == Int
+    @test VectorInterface.zerovector!!(f1) isa NCAdd
+    @test typeof(VectorInterface.zerovector!!(f1)) == typeof(VectorInterface.scale(f1, 1))
 end
 
 @testitem "KrylovKit: exponentiate from a product or an atom" begin
@@ -805,6 +807,16 @@ end
         @test vals ≈ [-1, 1]
     end
     @test norm(im * Ket(0) + 0) isa Real
+
+    # an atom whose overlap with itself is complex still has a real norm
+    struct CKet
+        bra::Bool
+    end
+    Base.adjoint(k::CKet) = CKet(!k.bra)
+    @nc CKet
+    mul_effect(a::CKet, b::CKet) = a.bra && !b.bra ? 1 + 0im : nothing
+    @test norm(CKet(false)) isa Real
+    @test norm(CKet(false)) == 1
     NonCommutativeProducts.disable_autosort!()
 end
 
