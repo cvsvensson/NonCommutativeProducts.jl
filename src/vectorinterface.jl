@@ -20,7 +20,10 @@ function VectorInterface.zerovector!!(x::NCAdd)
     return VectorInterface.zerovector!(x)
 end
 
-VectorInterface.scale(x::MulAdd, α::Number) = α * x
+# A product isn't closed under addition, so as a vector it is represented by a sum. Solvers like KrylovKit store
+# vectors in containers typed by scale's result, so scale must return the same type as zerovector and add.
+VectorInterface.scale(x::NCAdd, α::Number) = α * x
+VectorInterface.scale(x::NCMul, α::Number) = α * NCAdd(x)
 
 function VectorInterface.scale!(x::NCMul, α::Number)
     throw(ArgumentError("NCMul is immutable; use scale or scale!!"))
@@ -62,4 +65,4 @@ VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number) = add!!(y, x
 VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
 _inner(x, y) = scalar(x' * y)
 
-LinearAlgebra.norm(x::MulAdd) = sqrt(VectorInterface.inner(x, x))
+LinearAlgebra.norm(x::MulAdd) = sqrt(real(VectorInterface.inner(x, x)))

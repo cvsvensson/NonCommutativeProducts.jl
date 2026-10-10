@@ -113,8 +113,9 @@ macro nc_common(T)
         NonCommutativeProducts.add!!(x::$(esc(T)), y::$(esc(T)), α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
         NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), y, α, β)
 
-        VectorInterface.scale(x::$(esc(T)), α::Number) = α * x
-        VectorInterface.scale!!(x::$(esc(T)), α::Number) = α * x
+        VectorInterface.scalartype(::Type{<:$(esc(T))}) = Int
+        VectorInterface.scale(x::$(esc(T)), α::Number) = VectorInterface.scale(NCMul(x), α)
+        VectorInterface.scale!!(x::$(esc(T)), α::Number) = VectorInterface.scale(NCMul(x), α)
         VectorInterface.scale!!(a::NCAdd, x::$(esc(T)), α::Number) = add!!(a, NCMul(x), α, VectorInterface.Zero())
         VectorInterface.zerovector(x::$(esc(T)), ::Type{S}) where {S<:Number} = VectorInterface.zerovector(NCMul(x), S)
 

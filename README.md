@@ -129,3 +129,28 @@ function mul_effect(a::Fermion, b::Fermion)
     return Swap(-1)
 end
 ```
+
+
+## Linear algebra
+
+Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = x' * y`. This requires `x' * y` to sort to a scalar. With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. Here is a two-level system, where kets and bras are the same type and `⟨i|j⟩ = δᵢⱼ`:
+```julia
+using KrylovKit
+import NonCommutativeProducts as NC
+NC.enable_autosort!()
+struct Ket
+    n::Int
+    bra::Bool
+    Ket(n::Int, bra::Bool=false) = new(n, bra)
+end
+Base.show(io::IO, k::Ket) = print(io, k.bra ? "⟨" : "|", k.n, k.bra ? "|" : "⟩")
+Base.adjoint(k::Ket) = Ket(k.n, !k.bra)
+NC.@nc Ket
+NC.mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+k0, k1 = Ket(0), Ket(1)
+H = k0 * k1' + k1 * k0'
+vals, vecs = eigsolve(H, k0, 2, :SR; ishermitian=true)
+exponentiate(1im*H, pi/2, Ket(0))[1]
+# ≈ (0.0 + 1.0im)*|1⟩
+```

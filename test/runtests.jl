@@ -752,6 +752,62 @@ end
     @test map(b -> inner(b, expsol), basis) ≈ numsol
 end
 
+@testitem "VectorInterface: products and atoms are represented by sums" setup = [Fermions] begin
+    using VectorInterface
+    import NonCommutativeProducts: NCAdd
+
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    p = 2 * f1
+
+    # scale must return the same type as zerovector and add, so that solvers can store them in one container
+    for x in (p, f1)
+        for s in (VectorInterface.scale(x, 1.5), VectorInterface.scale!!(x, 1.5))
+            @test s isa NCAdd
+            @test typeof(s) == typeof(VectorInterface.zerovector(s))
+            @test typeof(s) == typeof(VectorInterface.add(s, s, 1, 1))
+        end
+    end
+    @test VectorInterface.scale(p, 1.5) == 3.0 * f1
+    @test VectorInterface.scale(f1, 1.5) == 1.5 * f1
+    @test VectorInterface.scalartype(typeof(f1)) == Int
+    @test VectorInterface.scalartype(f1) == Int
+end
+
+@testitem "KrylovKit: exponentiate from a product or an atom" begin
+    using KrylovKit, LinearAlgebra
+    import NonCommutativeProducts: @nc, mul_effect
+
+    # A ket whose adjoint is a bra, with ⟨i|j⟩ = δᵢⱼ
+    struct Ket
+        n::Int
+        bra::Bool
+    end
+    Ket(n) = Ket(n, false)
+    Base.adjoint(k::Ket) = Ket(k.n, !k.bra)
+    @nc Ket
+    mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+    NonCommutativeProducts.enable_autosort!()
+    H = Ket(0) * Ket(1)' + Ket(1) * Ket(0)' # σx
+
+    for x0 in (Ket(0), 1.0 * Ket(0), Ket(0) + 0)
+        x, info = exponentiate(H, 1.0, x0)
+        @test info.converged > 0
+        @test norm(x - (cosh(1.0) * Ket(0) + sinh(1.0) * Ket(1))) < 1e-10
+
+        # real-time evolution: exp(-iπ/2 σx)|0⟩ = -i|1⟩
+        x, info = exponentiate(H, -im * pi / 2, x0)
+        @test info.converged > 0
+        @test norm(x - (-im * Ket(1))) < 1e-10
+
+        vals, _ = eigsolve(H, x0, 2, :SR; ishermitian=true)
+        @test vals ≈ [-1, 1]
+    end
+    @test norm(im * Ket(0) + 0) isa Real
+    NonCommutativeProducts.disable_autosort!()
+end
+
 @testitem "Regression: add!! and mul!! weighted accumulation" setup = [Fermions] begin
     import NonCommutativeProducts: add!!, scale!, mul!!
 
