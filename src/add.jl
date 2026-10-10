@@ -222,7 +222,8 @@ end
 _set_ncadd!(y::NCAdd, x::NCMul) = _set_ncadd!(y, NCAdd(x))
 
 # add! and scale! either update all of `a` or, if the result doesn't fit in the coefficient type, throw and leave
-# `a` unchanged
+# `a` unchanged. An error from the arithmetic itself (e.g. an OverflowError with Rational{Int}) may leave `a` partly
+# updated, since checking for that would need a temporary copy of the terms.
 function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where {C}
     # computes β * a + α * b
     newcoeff = additive_coeff(a) * β + α * b
