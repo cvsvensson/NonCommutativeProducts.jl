@@ -173,7 +173,7 @@ Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterf
 
 Example: Let's define kets and bras and exponentiate a hamiltonian:
 ```julia
-using KrylovKit
+using KrylovKit, LinearAlgebra
 import NonCommutativeProducts as NC
 NC.enable_autosort!()
 struct Ket
@@ -189,8 +189,8 @@ NC.mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
 k0, k1 = Ket(0), Ket(1)
 H = k0 * k1' + k1 * k0'
 vals, vecs = eigsolve(H, k0, 2, :SR; ishermitian=true)
-exponentiate(1im*H, pi/2, Ket(0))[1]
-# ≈ (0.0 + 1.0im)*|1⟩
+x, info = exponentiate(1im*H, pi/2, k0)
+norm(x - im*k1) < 1e-12 # true
 ```
 
 ## API overview

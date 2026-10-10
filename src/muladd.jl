@@ -104,21 +104,11 @@ macro nc_common(T)
         Base.promote_rule(::Type{W}, ::Type{NC}) where {W<:$(esc(T)),NC<:MulAdd} = promote_type(NCMul{Int,W,Vector{W}}, NC)
         Base.convert(::Type{NC}, x::$(esc(T))) where {NC<:MulAdd} = convert(NC, NCMul(x))
 
-        VectorInterface.inner(x::MulAdd, y::$(esc(T))) = _inner(x, y)
-        VectorInterface.inner(x::$(esc(T)), y::MulAdd) = _inner(x, y)
-        VectorInterface.inner(x::$(esc(T)), y::$(esc(T))) = _inner(x, y)
-        LinearAlgebra.norm(x::$(esc(T))) = sqrt(real(VectorInterface.inner(x, x)))
-
         NonCommutativeProducts.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, NCMul(y), α, β)
         NonCommutativeProducts.add!!(x::$(esc(T)), y::$(esc(T)), α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
         NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), y, α, β)
 
-        VectorInterface.scalartype(::Type{<:$(esc(T))}) = Int
-        VectorInterface.scale(x::$(esc(T)), α::Number) = VectorInterface.scale(NCMul(x), α)
-        VectorInterface.scale!!(x::$(esc(T)), α::Number) = VectorInterface.scale(NCMul(x), α)
-        VectorInterface.scale!!(a::NCAdd, x::$(esc(T)), α::Number) = add!!(a, NCMul(x), α, VectorInterface.Zero())
-        VectorInterface.zerovector(x::$(esc(T)), ::Type{S}) where {S<:Number} = VectorInterface.zerovector(NCMul(x), S)
-        VectorInterface.zerovector!!(x::$(esc(T))) = VectorInterface.zerovector(x)
+        @nc_vectorinterface $(esc(T))
 
         NonCommutativeProducts.anyadd(x::$(esc(T))) = anyadd(NCAdd(x))
     end
@@ -135,7 +125,12 @@ end
 enable_autosort!() = _DEFAULT_AUTOSORT[] = true
 disable_autosort!() = _DEFAULT_AUTOSORT[] = false
 
+"""
+    @nc T1 T2 ...
 
+Define addition and multiplication for the given types, both within each type and between them, and make them
+implement the VectorInterface.jl API.
+"""
 macro nc(types...)
     nc_common_calls = [:(@nc_common $(esc(T))) for T in types]
     quote
