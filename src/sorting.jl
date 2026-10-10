@@ -25,10 +25,27 @@ function splice!!(ncmul::NCMul, i::Integer, swap::Swap)
     return NCMul(coeff, factors)
 end
 function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
+    # for tuples this check is resolved at compile time, so the common case below stays type stable
+    any(term -> term isa Union{NCAdd,AddTerms}, terms.terms) && return _splice!!_and_add_flatten(ncmul, i, terms.terms)
     firstterm, state = iterate(terms.terms)
     newterms = map(term -> splice!!(copy(ncmul), i, term), Base.rest(terms.terms, state))
     ncmul2 = splice!!(ncmul, i, firstterm)
     return ncmul2, newterms
+end
+# Elements that are sums expand to several terms each. ncmul is copied for every element but the first, which is
+# spliced into ncmul last since that mutates it.
+function _splice!!_and_add_flatten(ncmul::NCMul, i, terms)
+    firstterm, state = iterate(terms)
+    newterms = Any[]
+    for term in Base.rest(terms, state)
+        ncmul2, newterms2 = splice!!_and_add(copy(ncmul), i, term)
+        push!(newterms, ncmul2)
+        append!(newterms, newterms2)
+    end
+    ncmul2, newterms2 = splice!!_and_add(ncmul, i, firstterm)
+    append!(newterms, newterms2)
+    # narrow the element type, since the sorting loop needs a Vector of NCMuls
+    return ncmul2, identity.(newterms)
 end
 
 Base.sort(a::NCMul) = bubble_sort(a)
@@ -224,8 +241,8 @@ function splice!!(ncmul::NCMul, i, term)
     splice!!(ncmul, i, NCMul(term)::NCMul)
 end
 _check_atom_effect(term) = nothing
-_check_atom_effect(term::Union{NCAdd,AddTerms}) = throw(ArgumentError("unsupported mul_effect value: an $(nameof(typeof(term))) can only be returned as the whole result of mul_effect, not nested inside AddTerms. Got $term."))
-_check_atom_effect(::Nothing) = throw(ArgumentError("unsupported mul_effect value: `nothing` can only be returned as the whole result of mul_effect, not nested inside AddTerms."))
+# `nothing` inside AddTerms would keep a*b as a term, which gives the same effect again and never terminates
+_check_atom_effect(::Nothing) = throw(ArgumentError("unsupported mul_effect value: `nothing` can only be returned as the whole result of mul_effect, not inside AddTerms."))
 function splice!!(ncmul::NCMul, i::UnitRange, coeff::Number)
     deleteat!(ncmul.factors, i)
     return NCMul(coeff * prefactor(ncmul), ncmul.factors)
