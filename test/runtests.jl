@@ -926,7 +926,7 @@ end
 
 @testitem "@nc keeps an existing scalartype method" begin
     using NonCommutativeProducts, VectorInterface
-    import NonCommutativeProducts: @nc
+    import NonCommutativeProducts: @nc, NCAdd
 
     struct HasScalartype end
     VectorInterface.scalartype(::Type{HasScalartype}) = Float64
