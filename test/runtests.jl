@@ -752,6 +752,193 @@ end
     @test map(b -> inner(b, expsol), basis) ≈ numsol
 end
 
+@testitem "VectorInterface: products and atoms are represented by sums" setup = [Fermions] begin
+    using VectorInterface
+    import NonCommutativeProducts: NCAdd, NCMul
+
+    NonCommutativeProducts.disable_autosort!()
+    f1 = Fermion(:a)
+    p = 2 * f1
+
+    # scale must return the same type as zerovector and add, so that solvers can store them in one container
+    for x in (p, f1)
+        for s in (VectorInterface.scale(x, 1.5), VectorInterface.scale!!(x, 1.5))
+            @test s isa NCAdd
+            @test typeof(s) == typeof(VectorInterface.zerovector(s))
+            @test typeof(s) == typeof(VectorInterface.add(s, s, 1, 1))
+        end
+    end
+    @test VectorInterface.scale(p, 1.5) == 3.0 * f1
+    @test VectorInterface.scale(f1, 1.5) == 1.5 * f1
+    @test VectorInterface.scalartype(typeof(f1)) == Int
+    @test VectorInterface.scalartype(f1) == Int
+    @test (@test_logs VectorInterface.zerovector(f1)) == 0
+    @test VectorInterface.zerovector(f1) isa NCAdd{Int}
+    @test VectorInterface.zerovector!!(f1, Float64) isa NCAdd{Float64}
+    @test VectorInterface.zerovector!!(f1) isa NCAdd
+    @test typeof(VectorInterface.zerovector!!(f1)) == typeof(VectorInterface.scale(f1, 1))
+
+    # atoms work in every argument position, without hitting VectorInterface's (warning) fallbacks
+    f2 = Fermion(:b)
+    forms = (identity, x -> 1 * x, x -> x + 0) # atom, NCMul, NCAdd
+    for fy in forms, fx in forms
+        y, x = fy(f1), fx(f2)
+        r = @test_logs VectorInterface.add(y, x, 2, 3)
+        @test r isa NCAdd && r == 3 * f1 + 2 * f2
+        r = @test_logs VectorInterface.add!!(deepcopy(y), x, 2, 3)
+        @test r isa NCAdd && r == 3 * f1 + 2 * f2
+        r = @test_logs VectorInterface.scale!!(deepcopy(y), x, 2)
+        @test r isa NCAdd && r == 2 * f2
+        if y isa NCAdd
+            yc = deepcopy(y)
+            r = @test_logs VectorInterface.add!(yc, x, 2, 3)
+            @test r === yc && r == 3 * f1 + 2 * f2
+            yc = deepcopy(y)
+            r = @test_logs VectorInterface.scale!(yc, x, 2)
+            @test r === yc && r == 2 * f2
+        else # atoms and products are immutable
+            @test_throws ArgumentError VectorInterface.add!(y, x, 2, 3)
+            @test_throws ArgumentError VectorInterface.scale!(y, x, 2)
+        end
+    end
+    @test_throws ArgumentError VectorInterface.scale!(f1, 2)
+end
+
+@testitem "KrylovKit: exponentiate from a product or an atom" begin
+    using KrylovKit, LinearAlgebra
+    using VectorInterface: inner
+    import NonCommutativeProducts: @nc, mul_effect
+
+    # A ket whose adjoint is a bra, with ⟨i|j⟩ = δᵢⱼ
+    struct Ket
+        n::Int
+        bra::Bool
+    end
+    Ket(n) = Ket(n, false)
+    Base.adjoint(k::Ket) = Ket(k.n, !k.bra)
+    @nc Ket
+    mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+    NonCommutativeProducts.enable_autosort!()
+    H = Ket(0) * Ket(1)' + Ket(1) * Ket(0)' # σx
+
+    for x0 in (Ket(0), 1.0 * Ket(0), Ket(0) + 0)
+        x, info = exponentiate(H, 1.0, x0)
+        @test info.converged > 0
+        @test norm(x - (cosh(1.0) * Ket(0) + sinh(1.0) * Ket(1))) < 1e-10
+
+        # real-time evolution: exp(-iπ/2 σx)|0⟩ = -i|1⟩
+        x, info = exponentiate(H, -im * pi / 2, x0)
+        @test info.converged > 0
+        @test norm(x - (-im * Ket(1))) < 1e-10
+
+        vals, _ = eigsolve(H, x0, 2, :SR; ishermitian=true)
+        @test vals ≈ [-1, 1]
+    end
+    @test norm(im * Ket(0) + 0) isa Real
+
+    # an operator that is a single product: exp(|1⟩⟨0|)|0⟩ = |0⟩ + |1⟩
+    x, info = exponentiate(Ket(1) * Ket(0)', 1.0, Ket(0))
+    @test info.converged > 0
+    @test norm(x - (Ket(0) + Ket(1))) < 1e-10
+
+    # (σx + 2)x = |0⟩ has the solution 2/3|0⟩ - 1/3|1⟩
+    x, info = linsolve(H + 2, 1.0 * Ket(0))
+    @test info.converged > 0
+    @test norm(x - (2 / 3 * Ket(0) - 1 / 3 * Ket(1))) < 1e-10
+
+    # inner agrees with computing x' * y as a sum
+    vecs = (x, H * x, 1im * Ket(0) + 2 * Ket(1), Ket(1))
+    @test all(inner(a, b) ≈ NonCommutativeProducts.scalar(a' * b) for a in vecs, b in vecs)
+
+    # an atom whose overlap with itself is complex still has a real norm
+    struct CKet
+        bra::Bool
+    end
+    Base.adjoint(k::CKet) = CKet(!k.bra)
+    @nc CKet
+    mul_effect(a::CKet, b::CKet) = a.bra && !b.bra ? 1 + 0im : nothing
+    @test norm(CKet(false)) isa Real
+    @test norm(CKet(false)) == 1
+    NonCommutativeProducts.disable_autosort!()
+end
+
+@testitem "VectorInterface: dot and overlaps that don't reduce to scalars" begin
+    using LinearAlgebra, VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect
+
+    struct Ket
+        n::Int
+        bra::Bool
+    end
+    Ket(n) = Ket(n, false)
+    Base.adjoint(k::Ket) = Ket(k.n, !k.bra)
+    @nc Ket
+    mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+    NonCommutativeProducts.enable_autosort!()
+    k0, k1 = Ket(0), Ket(1)
+    x = k0 + 2im * k1
+    y = 3 * k0 - k1
+
+    # dot is inner, conjugate-linear in the first argument
+    for (a, b) in ((x, y), (k0, x), (x, k1), (k0, k0), (k0, k1), (2 * k0, k0))
+        @test dot(a, b) == inner(a, b)
+    end
+    @test dot(x, y) == 3 + 2im
+    @test dot(im * k0, k0) == -im
+    @test dot(k0, im * k0) == im
+    @test dot(k0, k0) == 1
+    @test dot(k0, k1) == 0
+    @test dot(im * x, y) == -im * dot(x, y)
+    @test dot(x, im * y) == im * dot(x, y)
+    @test norm(x, 2) == norm(x)
+    @test_throws ArgumentError norm(x, 1)
+
+    # |0⟩⟨1| has no scalar overlap with itself
+    @test_throws ArgumentError norm(k0 * k1')
+    @test_throws ArgumentError inner(k0 * k1', k0 * k1')
+    @test_throws ArgumentError dot(k0, k0')
+
+    # inner sorts the products of the terms itself, and agrees with x' * y
+    k2 = Ket(2)
+    vecs = (x, y, k0, 2.0 * k1, x + 1, 2 + 0 * k0, zero(x), 0.5im * k0 * k1 * k0', k2 * k1' + 1im * k0 * k0')
+    for a in vecs, b in vecs
+        ref = a' * b
+        if NonCommutativeProducts._reduces_to_scalar(ref)
+            @test inner(a, b) ≈ NonCommutativeProducts.scalar(ref)
+            # the type doesn't depend on which terms happen to vanish
+            @test inner(a, b) isa promote_type(scalartype(a), scalartype(b), typeof(NonCommutativeProducts.scalar(ref)))
+        else
+            @test_throws ArgumentError inner(a, b)
+        end
+    end
+    # products that don't reduce to scalars, but cancel: ⟨0|0⟩|2⟩ - ⟨1|1⟩|2⟩ = 0
+    @test inner(k0 + k1, k0 * k2 - k1 * k2) == 0
+    @test_throws ArgumentError inner(k0 + k1, k0 * k2 - 2 * k1 * k2)
+    # without autosort, mul_effect is not applied, so ⟨0|0⟩ stays a product
+    Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do
+        @test_throws ArgumentError norm(k0)
+        @test_throws ArgumentError inner(k0 + 0, k0 + 0)
+    end
+    NonCommutativeProducts.disable_autosort!()
+end
+
+@testitem "@nc keeps an existing scalartype method" begin
+    using NonCommutativeProducts, VectorInterface
+    import NonCommutativeProducts: @nc, NCAdd
+
+    struct HasScalartype end
+    VectorInterface.scalartype(::Type{HasScalartype}) = Float64
+    @nc HasScalartype
+    @test VectorInterface.scalartype(HasScalartype) == Float64
+
+    struct NoScalartype end
+    @nc NoScalartype
+    @test VectorInterface.scalartype(NoScalartype) == Int
+    @test VectorInterface.zerovector(HasScalartype()) isa NCAdd{Int}
+end
+
 @testitem "Regression: add!! and mul!! weighted accumulation" setup = [Fermions] begin
     import NonCommutativeProducts: add!!, scale!, mul!!
 
