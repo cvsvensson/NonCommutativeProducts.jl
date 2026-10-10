@@ -456,7 +456,7 @@ end
         x = f2 * f1
         s = build(x)
         s_ref = build(f2 * f1)
-        sort!(x)
+        sort(x)
         @test s == s_ref
         @test all(k -> haskey(s.dict, k), keys(s_ref.dict))
     end
@@ -465,11 +465,11 @@ end
         x = f2 * f1
         y = share(x)
         y_ref = share(f2 * f1)
-        @test sort!(y) == sort(y_ref)
+        @test sort(y) == sort(y_ref)
         @test y == y_ref
         @test x == f2 * f1
         s = x + 0
-        sort!(NCMul(s))
+        sort(NCMul(s))
         @test haskey(s.dict, f2 * f1)
     end
 

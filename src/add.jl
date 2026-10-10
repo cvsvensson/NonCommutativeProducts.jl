@@ -290,7 +290,7 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
         end
     end
     if autosort()
-        return sort!(c)
+        return bubble_sort!(c)
     end
     return c
 end
@@ -302,7 +302,7 @@ function Base.adjoint(x::NCAdd)
     newx = with(_autosort => false) do
         _adjoint_terms(x)
     end
-    autosort() ? sort!(newx) : newx
+    autosort() ? bubble_sort!(newx) : newx
 end
 function _adjoint_terms(x::NCAdd)
     newx = zero(x)

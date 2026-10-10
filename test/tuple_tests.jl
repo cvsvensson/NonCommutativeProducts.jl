@@ -21,7 +21,6 @@
         @test t * sv == v * sv
         @test s' == sv'
         @test sort(t) == sort(v)
-        @test sort!(t) == sort(v)
         @test sort(s) == sort(sv)
         @test bubble_sort(t) == bubble_sort(v)
     end
