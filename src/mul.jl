@@ -76,7 +76,7 @@ function Base.hash(a::NCMul, h::UInt)
 end
 NCMul(f::NCMul) = f
 
-NCterms(a::NCMul) = (a,)
+NCterms(a::NCMul, copy=identity) = (NCMul(prefactor(a), copy(a.factors)),)
 Base.:-(a::NCMul) = NCMul(-prefactor(a), a.factors)
 
 Base.:*(x::Number, a::NCMul) = NCMul(x * prefactor(a), a.factors)

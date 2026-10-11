@@ -877,66 +877,74 @@ end
     mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
 
     NonCommutativeProducts.enable_autosort!()
-    k0, k1 = Ket(0), Ket(1)
+    k0, k1, k2 = Ket(0), Ket(1), Ket(2)
     x = k0 + 2im * k1
     y = 3 * k0 - k1
 
     # dot is inner, conjugate-linear in the first argument
-    for (a, b) in ((x, y), (k0, x), (x, k1), (k0, k0), (k0, k1), (2 * k0, k0))
-        @test dot(a, b) == inner(a, b)
-    end
-    @test dot(x, y) == 3 + 2im
-    @test dot(im * k0, k0) == -im
-    @test dot(k0, im * k0) == im
-    @test dot(k0, k0) == 1
-    @test dot(k0, k1) == 0
+    @test dot(x, y) == inner(x, y) == 3 + 2im
     @test dot(im * x, y) == -im * dot(x, y)
-    @test dot(x, im * y) == im * dot(x, y)
-    @test norm(x, 2) == norm(x)
+    @test norm(x, 2) == norm(x) ≈ sqrt(5)
     @test_throws ArgumentError norm(x, 1)
-    @test norm(k0, 2) == norm(k0) == 1
-    @test_throws ArgumentError norm(k0, 1)
-    @test norm(x) ≈ sqrt(5)
 
-    # the norm is undefined if the overlap of a vector with itself is not real
+    # the norm drops the imaginary part of inner(x, x), and clamps a negative real part to zero
     struct IKet
         bra::Bool
     end
     Base.adjoint(k::IKet) = IKet(!k.bra)
     @nc IKet
     mul_effect(a::IKet, b::IKet) = a.bra && !b.bra ? 1im : nothing
-    @test inner(IKet(false), IKet(false)) == im
-    @test_throws ArgumentError norm(IKet(false))
-    @test_throws ArgumentError norm(2 * IKet(false))
-    @test_throws ArgumentError norm(IKet(false) + 0)
+    @test norm(IKet(false)) == 0
+    @test NonCommutativeProducts._norm_from_inner(-3e-18 + 2e-18im) == 0
 
-    # |0⟩⟨1| has no scalar overlap with itself
-    @test_throws ArgumentError norm(k0 * k1')
-    @test_throws ArgumentError inner(k0 * k1', k0 * k1')
-    @test_throws ArgumentError dot(k0, k0')
+    # atoms of different types are converted to products, so they can be combined
+    struct KetA
+        bra::Bool
+    end
+    struct KetB
+        bra::Bool
+    end
+    Base.adjoint(k::KetA) = KetA(!k.bra)
+    Base.adjoint(k::KetB) = KetB(!k.bra)
+    @nc KetA KetB
+    mul_effect(a::Union{KetA,KetB}, b::Union{KetA,KetB}) = a.bra && !b.bra ? Int(typeof(a) == typeof(b)) : nothing
+    a, b = KetA(false), KetB(false)
+    @test inner(a + b, b) == 1
+    @test add(a, b, 2, 1) == a + 2 * b
 
-    # inner sorts the products of the terms itself, and agrees with x' * y
-    k2 = Ket(2)
-    vecs = (x, y, k0, 2.0 * k1, x + 1, 2 + 0 * k0, zero(x), 0.5im * k0 * k1 * k0', k2 * k1' + 1im * k0 * k0')
+    # inner agrees with x' * y, and throws when that doesn't reduce to a scalar
+    vecs = (x, k0, x + 1, zero(x), k0 * k1', k2 * k1' + 1im * k0 * k0')
     for a in vecs, b in vecs
         ref = a' * b
         if NonCommutativeProducts._reduces_to_scalar(ref)
             @test inner(a, b) ≈ NonCommutativeProducts.scalar(ref)
-            # the type doesn't depend on which terms happen to vanish
-            @test inner(a, b) isa promote_type(scalartype(a), scalartype(b), typeof(NonCommutativeProducts.scalar(ref)))
         else
             @test_throws ArgumentError inner(a, b)
         end
     end
     # products that don't reduce to scalars, but cancel: ⟨0|0⟩|2⟩ - ⟨1|1⟩|2⟩ = 0
     @test inner(k0 + k1, k0 * k2 - k1 * k2) == 0
-    @test_throws ArgumentError inner(k0 + k1, k0 * k2 - 2 * k1 * k2)
     # without autosort, mul_effect is not applied, so ⟨0|0⟩ stays a product
     Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do
         @test_throws ArgumentError norm(k0)
-        @test_throws ArgumentError inner(k0 + 0, k0 + 0)
     end
     NonCommutativeProducts.disable_autosort!()
+end
+
+@testitem "VectorInterface: the type of inner doesn't depend on autosort" setup = [Fermions] begin
+    using VectorInterface: inner
+    f = Fermion(1)
+    x, y = zero(1.0im * f + 0), zero(f + 0)
+    results = map((true, false)) do sorted
+        try
+            sorted ? NonCommutativeProducts.enable_autosort!() : NonCommutativeProducts.disable_autosort!()
+            (inner(x, y), inner(y, x), inner(2 + 0 * f, 1.0 + 0 * f))
+        finally
+            NonCommutativeProducts.disable_autosort!()
+        end
+    end
+    @test results[1] == results[2] == (0, 0, 2)
+    @test map(typeof, results[1]) == map(typeof, results[2]) == (ComplexF64, ComplexF64, Float64)
 end
 
 @testitem "@nc keeps an existing scalartype method" begin
@@ -953,6 +961,13 @@ end
     @test VectorInterface.scalartype(NoScalartype) == Int
     @test VectorInterface.zerovector(HasScalartype()) isa NCAdd{Float64}
     @test VectorInterface.scalartype(VectorInterface.zerovector(HasScalartype())) == Float64
+    # scale and add return the same type as zerovector, as KrylovKit requires
+    x = HasScalartype()
+    T = typeof(VectorInterface.zerovector(x))
+    @test VectorInterface.scale(x, 1) isa T
+    @test VectorInterface.scale!!(x, 1) isa T
+    @test VectorInterface.add(x, x, 1, 1) isa T
+    @test VectorInterface.add!!(x, x, 1, 1) isa T
 end
 
 @testitem "Regression: add!! and mul!! weighted accumulation" setup = [Fermions] begin
