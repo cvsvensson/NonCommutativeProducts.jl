@@ -894,6 +894,21 @@ end
     @test dot(x, im * y) == im * dot(x, y)
     @test norm(x, 2) == norm(x)
     @test_throws ArgumentError norm(x, 1)
+    @test norm(k0, 2) == norm(k0) == 1
+    @test_throws ArgumentError norm(k0, 1)
+    @test norm(x) ≈ sqrt(5)
+
+    # the norm is undefined if the overlap of a vector with itself is not real
+    struct IKet
+        bra::Bool
+    end
+    Base.adjoint(k::IKet) = IKet(!k.bra)
+    @nc IKet
+    mul_effect(a::IKet, b::IKet) = a.bra && !b.bra ? 1im : nothing
+    @test inner(IKet(false), IKet(false)) == im
+    @test_throws ArgumentError norm(IKet(false))
+    @test_throws ArgumentError norm(2 * IKet(false))
+    @test_throws ArgumentError norm(IKet(false) + 0)
 
     # |0⟩⟨1| has no scalar overlap with itself
     @test_throws ArgumentError norm(k0 * k1')
@@ -936,7 +951,8 @@ end
     struct NoScalartype end
     @nc NoScalartype
     @test VectorInterface.scalartype(NoScalartype) == Int
-    @test VectorInterface.zerovector(HasScalartype()) isa NCAdd{Int}
+    @test VectorInterface.zerovector(HasScalartype()) isa NCAdd{Float64}
+    @test VectorInterface.scalartype(VectorInterface.zerovector(HasScalartype())) == Float64
 end
 
 @testitem "Regression: add!! and mul!! weighted accumulation" setup = [Fermions] begin

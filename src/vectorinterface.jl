@@ -83,8 +83,7 @@ function _inner_sorted(x::MulAdd, y::MulAdd)
     sorted = with(_autosort => false) do
         xterms_adjoint = map(adjoint, xterms)
         products = vec([catenate(a, b) for a in xterms_adjoint, b in yterms])
-        # inference may leave the element type abstract, e.g. when x and y have different types
-        __bubble_sort!(eltype(products) <: NCMul ? products : identity.(products))
+        __bubble_sort!(products)
     end
     return _sum_inner_terms(sorted, init)
 end
@@ -110,9 +109,19 @@ _reduces_to_scalar(::Number) = true
 _reduces_to_scalar(z::MulAdd) = isscalar(z)
 _reduces_to_scalar(z) = false
 
-LinearAlgebra.norm(x::MulAdd) = sqrt(real(VectorInterface.inner(x, x)))
+LinearAlgebra.norm(x::MulAdd) = _norm_from_inner(VectorInterface.inner(x, x))
 # p-norms depend on a choice of basis, which a sum of products doesn't have
-LinearAlgebra.norm(x::MulAdd, p::Real) = p == 2 ? LinearAlgebra.norm(x) : throw(ArgumentError("norm(x, p) is only supported for p = 2, the norm induced by inner"))
+LinearAlgebra.norm(x::MulAdd, p::Real) = _norm_p(x, p)
+_norm_p(x, p::Real) = p == 2 ? LinearAlgebra.norm(x) : throw(ArgumentError("norm(x, p) is only supported for p = 2, the norm induced by inner"))
+# The norm is only defined if inner(x, x) is real and nonnegative. The imaginary part is compared with a relative
+# tolerance of sqrt(eps), since floating-point sums can leave a tiny imaginary part.
+function _norm_from_inner(z::Number)
+    tol = sqrt(eps(real(float(typeof(z))))) * abs(z)
+    abs(imag(z)) <= tol || throw(ArgumentError(string("norm(x) is undefined since inner(x, x) = ", z, " is not real")))
+    r = real(z)
+    r < 0 && throw(DomainError(z, "norm(x) is undefined since inner(x, x) is negative"))
+    return sqrt(r)
+end
 LinearAlgebra.dot(x::MulAdd, y::MulAdd) = VectorInterface.inner(x, y)
 
 # Whether scalartype(T) is defined by a method other than VectorInterface's generic (warning) fallback
@@ -129,7 +138,8 @@ macro nc_vectorinterface(T)
         VectorInterface.inner(x::MulAdd, y::$T) = _inner(x, y)
         VectorInterface.inner(x::$T, y::MulAdd) = _inner(x, y)
         VectorInterface.inner(x::$T, y::$T) = _inner(x, y)
-        LinearAlgebra.norm(x::$T) = sqrt(real(VectorInterface.inner(x, x)))
+        LinearAlgebra.norm(x::$T) = _norm_from_inner(VectorInterface.inner(x, x))
+        LinearAlgebra.norm(x::$T, p::Real) = _norm_p(x, p)
         LinearAlgebra.dot(x::MulAdd, y::$T) = VectorInterface.inner(x, y)
         LinearAlgebra.dot(x::$T, y::MulAdd) = VectorInterface.inner(x, y)
         LinearAlgebra.dot(x::$T, y::$T) = VectorInterface.inner(x, y)
@@ -154,7 +164,7 @@ macro nc_vectorinterface(T)
         VectorInterface.add!(y::$T, x::Union{$T,MulAdd}, α::Number, β::Number) = throw(ArgumentError(string(typeof(y), " is immutable; use add or add!!")))
         VectorInterface.add!(y::NCMul, x::$T, α::Number, β::Number) = VectorInterface.add!(y, NCMul(x), α, β)
         VectorInterface.add!(y::NCAdd, x::$T, α::Number, β::Number) = VectorInterface.add!(y, NCAdd(x), α, β)
-        VectorInterface.zerovector(x::$T) = VectorInterface.zerovector(NCMul(x))
+        VectorInterface.zerovector(x::$T) = VectorInterface.zerovector(NCMul(x), _scalartype(x))
         VectorInterface.zerovector(x::$T, ::Type{S}) where {S<:Number} = VectorInterface.zerovector(NCMul(x), S)
         VectorInterface.zerovector!!(x::$T) = VectorInterface.zerovector(x)
         VectorInterface.zerovector!!(x::$T, ::Type{S}) where {S<:Number} = VectorInterface.zerovector(x, S)
