@@ -64,7 +64,7 @@ function bubble_sort!(a::NCMul{C}) where C
 end
 function bubble_sort(ncadd::NCAdd{C}) where C
     length(ncadd.dict) == 0 && return ncadd
-    terms = collect(NCMul(v, copy_factors(k.factors)) for (k, v) in pairs(ncadd.dict))
+    terms = collect(NCterms(ncadd, copy_factors))
     add!!(_bubble_sort!(terms, C), additive_coeff(ncadd))
 end
 function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}

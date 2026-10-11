@@ -250,9 +250,7 @@ function scale!!(y::NCAdd, x::MulAdd, α::C) where C<:Number
 end
 scale(x::NCAdd, α::Number) = α * x
 
-function NCterms(a::NCAdd)
-    (v * k for (k, v) in pairs(a.dict))
-end
+NCterms(a::NCAdd, copy=identity) = (NCMul(v, copy(k.factors)) for (k, v) in pairs(a.dict))
 
 function Base.:*(x::Number, a::NCAdd{C,K}) where {C,K}
     dict = copy_dict(a, K, promote_type(typeof(x), C))
@@ -274,6 +272,17 @@ function Base.:*(a::NCAdd, b::NCAdd)
     filter_ncadd!!(mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
 end
 function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
+    c = _add_coeff_terms!!(c, a, b)
+    autosort() && return _add_sorted_products!!(c, a, b)
+    for bterm in NCterms(b)
+        for aterm in NCterms(a)
+            c = add!!(c, catenate(aterm, bterm))
+        end
+    end
+    return c
+end
+# c + acoeff * b + a * bcoeff - acoeff * bcoeff, the part of c + a * b that involves the additive coefficients
+function _add_coeff_terms!!(c::NCAdd, a::MulAdd, b::MulAdd)
     acoeff = additive_coeff(a)
     bcoeff = additive_coeff(b)
     if !iszero(acoeff)
@@ -283,17 +292,20 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
         c = add!!(c, a, bcoeff, One())
         c = add!!(c, -acoeff * bcoeff) # We've double counted this term so subtract it
     end
-    for bterm in NCterms(b)
-        for aterm in NCterms(a)
-            newterm = catenate(aterm, bterm)
-            c = add!!(c, newterm)
-        end
-    end
-    if autosort()
-        return bubble_sort!(c)
-    end
     return c
 end
+# The sorted sum of c and the products of the terms of a and b. The products are sorted together with the terms of c
+# as one list before they are added up, which avoids hashing every unsorted product. The result is the same as
+# adding the products to c and then sorting it.
+function _add_sorted_products!!(c::NCAdd{C}, a::MulAdd, b::MulAdd) where {C}
+    products = [catenate(aterm, bterm) for bterm in NCterms(b) for aterm in NCterms(a)]
+    isempty(products) && return bubble_sort!(c)
+    terms = isempty(c.dict) ? products : vcat(products, collect(NCterms(c, copy_factors)))
+    # the coefficient type of c with the products added, also if they all vanish when sorted
+    return add!!(_bubble_sort!(terms, promote_type(C, _coeff_type(products))), additive_coeff(c))
+end
+_coeff_type(::Vector{<:NCMul{C}}) where {C} = C
+_coeff_type(terms::Vector{<:NCMul}) = mapreduce(t -> typeof(prefactor(t)), promote_type, terms)
 add!!(c::NCMul, term) = c + term
 add!!(c::Number, term) = c + term
 

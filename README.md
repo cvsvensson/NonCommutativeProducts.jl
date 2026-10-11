@@ -166,6 +166,33 @@ function mul_effect(a::Fermion, b::Fermion)
 end
 ```
 
+## Linear algebra
+
+Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types and autosort to be enabled, and `x' * y` must sort to an expression with no factors left, so that `scalar` can extract its value. With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. 
+
+
+Example: Let's define kets and bras and exponentiate a hamiltonian:
+```julia
+using KrylovKit, LinearAlgebra
+import NonCommutativeProducts as NC
+NC.enable_autosort!()
+struct Ket
+    n::Int
+    bra::Bool
+    Ket(n::Int, bra::Bool=false) = new(n, bra)
+end
+Base.show(io::IO, k::Ket) = print(io, k.bra ? "⟨" : "|", k.n, k.bra ? "|" : "⟩")
+Base.adjoint(k::Ket) = Ket(k.n, !k.bra)
+NC.@nc Ket
+NC.mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+k0, k1 = Ket(0), Ket(1)
+H = k0 * k1' + k1 * k0'
+vals, vecs = eigsolve(H, k0, 2, :SR; ishermitian=true)
+x, info = exponentiate(1im*H, pi/2, k0)
+norm(x - im*k1) < 1e-12 # true
+```
+
 ## API overview
 
 No names are exported, so access them as `NonCommutativeProducts.name` or import them explicitly.
@@ -188,4 +215,3 @@ No names are exported, so access them as `NonCommutativeProducts.name` or import
 * `add!!(a, b)`: computes `a + b`, in place when possible.
 * `ncmap(f, x)`: applies `f` to every factor of `x`, e.g. `ncmap(f, 2*a*b + 1) == 2*f(a)*f(b) + 1`.
 * `ncmapreduce(f, (add, mul), x; scalarmap=identity)`: maps `f` over the factors and combines them with custom operations instead of `+` and `*`.
-
