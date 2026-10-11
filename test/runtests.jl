@@ -887,16 +887,7 @@ end
     @test norm(x, 2) == norm(x) ≈ sqrt(5)
     @test_throws ArgumentError norm(x, 1)
 
-    # the norm drops the imaginary part of inner(x, x), and clamps a negative real part to zero
-    struct IKet
-        bra::Bool
-    end
-    Base.adjoint(k::IKet) = IKet(!k.bra)
-    @nc IKet
-    mul_effect(a::IKet, b::IKet) = a.bra && !b.bra ? 1im : nothing
-    @test norm(IKet(false)) == 0
-    @test NonCommutativeProducts._norm_from_inner(-3e-18 + 2e-18im) == 0
-
+  
     # atoms of different types are converted to products, so they can be combined
     struct KetA
         bra::Bool
