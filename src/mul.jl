@@ -84,7 +84,7 @@ Base.:*(m::NCMul, x::Number) = x * m
 function Base.:*(a::NCMul, b::NCMul)
     ncmul = catenate(a, b)
     if autosort()
-        return bubble_sort!(ncmul)
+        return _with_zero_grades(bubble_sort!(ncmul), () -> _mul_grades(_grades(a), _grades(b)))
     end
     return ncmul
 end
@@ -94,12 +94,10 @@ function Base.adjoint(x::NCMul)
     length(x.factors) == 0 && return NCMul(adjoint(prefactor(x)), x.factors)
     ncmul = NCMul(adjoint(prefactor(x)), adjoint_factors(x.factors))
     if autosort()
-        return bubble_sort!(ncmul)
+        return _with_zero_grades(bubble_sort!(ncmul), () -> _adjoint_grades(_grades(x)))
     end
     return ncmul
 end
 adjoint_factors(factors) = collect(Iterators.reverse(Iterators.map(adjoint, factors)))
 # keep mixed-type products on Vector{Any} instead of narrowing to the eltype of this particular product
 adjoint_factors(factors::Vector{Any}) = Any[adjoint(f) for f in Iterators.reverse(factors)]
-
-isfilterable(x::NCMul) = all(isfilterable, x.factors)

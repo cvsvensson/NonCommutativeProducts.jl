@@ -52,7 +52,7 @@ Base.sort(a::NCMul) = bubble_sort(a)
 Base.sort(a::NCAdd) = bubble_sort(a)
 bubble_sort!(a::NCAdd) = bubble_sort(a)
 function bubble_sort(a::NCMul)
-    return bubble_sort!(copy(a))
+    return _with_zero_grades(bubble_sort!(copy(a)), () -> _grades(a))
 end
 # Sorts the factors of `a` in place. Only for products whose factors were just created and aren't shared.
 # Tuple factors can't be sorted in place, so they are collected into a Vector first.
@@ -65,7 +65,8 @@ end
 function bubble_sort(ncadd::NCAdd{C}) where C
     length(ncadd.dict) == 0 && return ncadd
     terms = collect(NCterms(ncadd, copy_factors))
-    add!!(_bubble_sort!(terms, C), additive_coeff(ncadd))
+    sorted = _add_scaled!!(_bubble_sort!(terms, C), additive_coeff(ncadd), One())
+    return _with_zero_grades(sorted, () -> _grades(ncadd))
 end
 function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
     sorted_terms = with(_autosort => false) do
@@ -80,7 +81,7 @@ function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C
     end
     newadd = NCAdd(zero(C), to_add_dict(first(sorted_terms)))
     for term in Iterators.drop(sorted_terms, 1)
-        newadd = add!!(newadd, term)
+        newadd = _add_scaled!!(newadd, term, One())
     end
     return filter_ncadd!!(newadd; filter_zeros=true, filter_scalars=true)
 end
@@ -131,7 +132,7 @@ function _apply_effect!!(terms, index, ncmul, i, effect)
     newncmul::NCMul
 
     terms_with_newterms = _add_newterms!!(terms, newterms)
-    if iszero(newncmul) && isfilterable(newncmul)
+    if iszero(newncmul)
         deleteat!(terms_with_newterms, index)
         return terms_with_newterms, false, 1
     end

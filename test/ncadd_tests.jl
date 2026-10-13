@@ -98,19 +98,6 @@ end
     @test iscanonical(1 * f1 + b1 - b1, f1 + 0)
 end
 
-@testitem "NCAdd: unfilterable zero terms are kept by add!!" begin
-    import NonCommutativeProducts as NC
-    struct UnfilterableAtom end
-    NC.isfilterable(::UnfilterableAtom) = false
-    g = NC.NCMul(1, [UnfilterableAtom()])
-    y = NC.add!!(g + 1, NC.NCMul(-1, [UnfilterableAtom()]))
-    @test length(y.dict) == 1
-    @test only(values(y.dict)) == 0
-    y = NC.scale!!(g + 1, 0)
-    @test length(y.dict) == 1
-    @test iszero(y)
-end
-
 @testitem "NCAdd: UniformScaling + NCAdd copies" setup = [Fermions] begin
     using LinearAlgebra
     import NonCommutativeProducts: add!!

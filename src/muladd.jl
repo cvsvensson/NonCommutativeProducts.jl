@@ -1,6 +1,9 @@
 NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul: $f"))
 
-Base.zero(nc::Union{<:NCAdd,<:NCMul}) = zero(typeof(nc))
+# The zero of a sum keeps its grades (see grading.jl). The zero of a product is a product without factors, which has
+# the identity grade.
+Base.zero(nc::NCMul) = zero(typeof(nc))
+Base.zero(nc::NCAdd) = _set_zero_grades!(zero(typeof(nc)), _grades(nc))
 Base.one(nc::Union{<:NCAdd,<:NCMul}) = one(typeof(nc))
 function Base.:(==)(a::NCAdd, b::NCMul)
     if isscalar(b)
@@ -18,17 +21,19 @@ function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     K = promote_type(to_add_dict_type(typeof(a)), to_add_dict_type(typeof(b)))
     # convert the keys up front so that the Dict has a single concrete key type, e.g. when one term is Tuple-backed and the other Vector-backed
     dict = add_term!!(Dict{K,C}(term_key(K, a) => prefactor(a)), term_key(K, b), prefactor(b))
-    return NCAdd(zero(C), dict)
+    return _with_zero_grades(NCAdd(zero(C), dict), () -> _union_grades(_grades(a), _grades(b)))
 end
 
-Base.:+(a::A, b::NCMul{C}) where {A<:Number,C} = NCAdd(a, to_add_dict(promote_type(A, C), b))
+function Base.:+(a::A, b::NCMul{C}) where {A<:Number,C}
+    return _with_zero_grades(NCAdd(a, to_add_dict(promote_type(A, C), b)), () -> _union_grades(_grades(a), _grades(b)))
+end
 Base.:+(a::UniformScaling, b::NCMul) = a.λ + b
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
 function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), K2)
     newdict = add_term!!(copy_dict(b, K, C), term_key(K, a), prefactor(a))
-    return NCAdd(additive_coeff(b), newdict)
+    return _with_zero_grades(NCAdd(additive_coeff(b), newdict), () -> _union_grades(_grades(a), _grades(b)))
 end
 
 to_add_dict(a::NCMul{C}) where C = to_add_dict(C, a)
@@ -48,8 +53,15 @@ to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
     ret = Base.power_by_squaring(a, b)
-    autosort() && return bubble_sort!(ret)
+    # bubble_sort rather than bubble_sort!, so that a product keeps its factors for the grades of a zero result
+    autosort() && return bubble_sort(ret)
     return ret
+end
+
+# The product `ncmul` of the atoms or products `x` and `y`, sorted if autosort is enabled. Used by @nc.
+function _autosort_product(ncmul::NCMul, x, y)
+    autosort() || return ncmul
+    return _with_zero_grades(bubble_sort!(ncmul), () -> _mul_grades(_grades(x), _grades(y)))
 end
 
 macro nc_common(T)
@@ -69,15 +81,9 @@ macro nc_common(T)
         Base.:-(x::Union{Number,UniformScaling,NCMul,NCAdd}, y::$(esc(T))) = x - NCMul(y)
         Base.:-(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) - y
 
-        Base.:*(x::$(esc(T)), y::$(esc(T))) = autosort() ? bubble_sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])
-        function Base.:*(x::$(esc(T)), y::NCMul)
-            ncmul = NCMul(prefactor(y), pushfirst!!(copy_factors(y.factors), x))
-            autosort() ? bubble_sort!(ncmul) : ncmul
-        end
-        function Base.:*(x::NCMul, y::$(esc(T)))
-            ncmul = NCMul(prefactor(x), push!!(copy_factors(x.factors), y))
-            autosort() ? bubble_sort!(ncmul) : ncmul
-        end
+        Base.:*(x::$(esc(T)), y::$(esc(T))) = _autosort_product(NCMul(1, [x, y]), x, y)
+        Base.:*(x::$(esc(T)), y::NCMul) = _autosort_product(NCMul(prefactor(y), pushfirst!!(copy_factors(y.factors), x)), x, y)
+        Base.:*(x::NCMul, y::$(esc(T))) = _autosort_product(NCMul(prefactor(x), push!!(copy_factors(x.factors), y)), x, y)
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(y)
         Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(x) * y
         Base.:/(x::$(esc(T)), y::Number) = NCMul(x) / y
@@ -114,7 +120,6 @@ macro nc_common(T)
     end
 end
 
-isfilterable(x) = true
 const _DEFAULT_AUTOSORT = Ref(false)
 const _autosort = ScopedValue{Bool}()
 
@@ -144,7 +149,7 @@ macro nc_pairs(types...)
     for T1 in types
         for T2 in types
             T1 == T2 && continue
-            push!(mul_pairs, :(Base.:*(x::$(esc(T1)), y::$(esc(T2))) = autosort() ? bubble_sort!(NCMul(1, [x, y])) : NCMul(1, [x, y])))
+            push!(mul_pairs, :(Base.:*(x::$(esc(T1)), y::$(esc(T2))) = _autosort_product(NCMul(1, [x, y]), x, y)))
         end
     end
 

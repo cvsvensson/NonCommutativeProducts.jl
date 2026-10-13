@@ -5,12 +5,16 @@ _scalartype(x) = VectorInterface.scalartype(typeof(x))
 VectorInterface.scalartype(::Type{<:NCMul{C}}) where {C<:Number} = C
 VectorInterface.scalartype(::Type{<:NCAdd{C}}) where {C<:Number} = C
 
-VectorInterface.zerovector(x::MulAdd, ::Type{S}) where {S<:Number} = zero(NCAdd{S,to_add_dict_type(typeof(x))})
+# The zero vector has the grades of x (see grading.jl)
+function VectorInterface.zerovector(x::MulAdd, ::Type{S}) where {S<:Number}
+    return _set_zero_grades!(zero(NCAdd{S,to_add_dict_type(typeof(x))}), _grades(x))
+end
 
 function VectorInterface.zerovector!(x::NCAdd)
+    gs = _grades(x)
     x.coeff = zero(_scalartype(x))
     empty!(x.dict)
-    return x
+    return _set_zero_grades!(x, gs)
 end
 
 function VectorInterface.zerovector!!(x::NCMul)
@@ -48,7 +52,10 @@ function VectorInterface.scale!!(y::NCAdd, x::MulAdd, α::Number)
 end
 
 function VectorInterface.add(y::MulAdd, x::MulAdd, α::Number, β::Number)
-    return β * y + α * x
+    result = β * y + α * x
+    # as in add!!, the grades of y are dropped when β isa Zero
+    β isa VectorInterface.Zero || return result
+    return _with_zero_grades(result, () -> _grades(x))
 end
 
 function VectorInterface.add!(y::NCMul, x::MulAdd, α::Number, β::Number)
