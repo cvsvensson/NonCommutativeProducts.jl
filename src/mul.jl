@@ -24,7 +24,8 @@ Base.one(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul(one(C), S[])
 Base.oneunit(::T) where {T<:NCMul} = oneunit(T)
 Base.oneunit(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul(one(C), S[])
 Base.copy(x::NCMul) = NCMul(copy(prefactor(x)), copy_factors(x.factors))
-isscalar(x::NCMul) = length(x.factors) == 0
+# By value: a zero product is the scalar 0, whatever factors it still carries
+isscalar(x::NCMul) = isempty(x.factors) || iszero(x)
 scalar(x::NCMul) = isscalar(x) ? prefactor(x) : throw(ArgumentError("NCMul is not a scalar"))
 scalar(x::Number) = x
 additive_coeff(::NCMul{C}) where C = zero(C)
@@ -32,7 +33,7 @@ additive_coeff(::NCMul{Any}) = 0
 prefactor(x::NCMul) = x.coeff
 
 function Base.show(io::IO, x::NCMul)
-    print_coeff = !isone(prefactor(x)) || isscalar(x)
+    print_coeff = !isone(prefactor(x)) || isempty(x.factors)
     if print_coeff
         v = prefactor(x)
         if isreal(v)
@@ -55,16 +56,18 @@ function Base.show(io::IO, x::NCMul)
 end
 Base.iszero(x::NCMul) = iszero(prefactor(x))
 
-Base.:(==)(a::NCMul, b::Number) = (isscalar(a) && prefactor(a) == b) || iszero(a) && iszero(b)
+# Equality is by value, so all zero products are equal, to each other and to 0, whatever their factors
+Base.:(==)(a::NCMul, b::Number) = isscalar(a) && prefactor(a) == b
 Base.:(==)(a::Number, b::NCMul) = b == a
-Base.:(==)(a::NCMul, b::NCMul) = prefactor(a) == prefactor(b) && factors_equal(a.factors, b.factors)
+Base.:(==)(a::NCMul, b::NCMul) = iszero(a) ? iszero(b) : prefactor(a) == prefactor(b) && factors_equal(a.factors, b.factors)
 # Equality and hashing ignore the factors container, so that Tuple-backed and Vector-backed products
 # can be used interchangeably as keys of the same Dict
 factors_equal(a::F, b::F) where {F} = a == b
 factors_equal(a, b) = length(a) == length(b) && all(splat(==), zip(a, b))
 hash_factors(factors, h::UInt) = foldl((h, f) -> hash(f, h), factors; init=hash(length(factors), h))
 function Base.hash(a::NCMul, h::UInt)
-    # scalar and zero products are == to numbers, so they must hash like them
+    # hashing is by value like ==: a zero product hashes like 0 whatever its factors, and a scalar product like its
+    # coefficient
     iszero(a) && return hash(zero(prefactor(a)), h)::UInt
     isscalar(a) && return hash(prefactor(a), h)::UInt
     single_term = isone(prefactor(a)) && length(a.factors) == 1

@@ -202,7 +202,7 @@ A grading gives every factor a grade, so that the grade of a product is the prod
 
 Then `grades(x)` returns the set of grades of the terms of `x`, and `grade(x)` returns the single grade of `x`, throwing an error if there isn't exactly one.
 
-The value `0` doesn't say what kind of zero it is. Instead, a sum that is zero keeps the grades of the expressions it was derived from. For the kets of the previous section, a ket has grade (1,0) and a bra (0,1).
+The value `0` doesn't say what kind of zero it is. Instead, a zero keeps the grades of the expressions it was derived from. For the kets of the previous section, a ket has grade (1,0) and a bra (0,1).
 ```julia
 struct Bicyclic
     m::Int
@@ -247,10 +247,11 @@ No names are exported, so access them as `NonCommutativeProducts.name` or import
 * `mul_effect(a, b)`: defined by you, says what to replace `a*b` with while sorting. Return `nothing` to keep it, or a number, an object, a sum or product of these, `Swap(λ)` or `AddTerms(terms)`.
 * `Swap(λ)`: return value for `mul_effect` that replaces `a*b` by `λ*b*a`.
 * `AddTerms(terms)`: return value for `mul_effect` that replaces `a*b` by a sum of `terms`. Elements can be any other allowed return value except `nothing`, including sums and nested `AddTerms`.
-* `grade(a)`: defined by you, the grade of a factor (see [Gradings](#gradings)). Defaults to `nothing`, the identity grade. For an expression, it returns its single grade.
+* `grade(a)`: defined by you, the grade of a factor (see [Gradings](#gradings)). Defaults to `nothing`, the identity grade. For an expression, it returns the single element of `grades(x)`, and throws an `ArgumentError` if there isn't exactly one.
 * `mul_grade(g, h)`: defined by you, the associative product of two grades other than `nothing`. Return `nothing` for the identity.
 * `adjoint_grade(g)`: defined by you, the grade of `a'` for a factor `a` of grade `g`.
-* `grades(x)`: the set of grades of the terms of `x`. A zero sum keeps the grades it was derived from.
+* `grades(x)`: the set of grades of the terms of `x`. A zero has the grades it was computed from, and a zero without grades, such as the number `0`, has none.
+* `grade_part(x, g)`: the part of `x` with grade `g`, i.e. the sum of its terms of grade `g`. The parts over `grades(x)` sum to `x`.
 * `check_grading(a, b)`: checks that every term of `mul_effect(a, b)` has the grade `mul_grade(grade(a), grade(b))`.
 
 **Sorting**

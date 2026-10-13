@@ -1,14 +1,13 @@
 NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul: $f"))
 
-# The zero of a sum keeps its grades (see grading.jl). The zero of a product is a product without factors, which has
-# the identity grade.
-Base.zero(nc::NCMul) = zero(typeof(nc))
+# zero(x) keeps the grades of x (see grading.jl): the zero of a sum stores them, and the zero of a product keeps its
+# factors, with the same Vector-backed type as zero(typeof(x)). The factors may be shared, since they are never mutated.
+# zero of a type carries no derivation, so it is a bare zero without grades.
+Base.zero(nc::NCMul{C,S}) where {C,S} = NCMul(zero(C), convert(Vector{S}, factors_vector(nc.factors)))
 Base.zero(nc::NCAdd) = _set_zero_grades!(zero(typeof(nc)), _grades(nc))
 Base.one(nc::Union{<:NCAdd,<:NCMul}) = one(typeof(nc))
 function Base.:(==)(a::NCAdd, b::NCMul)
-    if isscalar(b)
-        additive_coeff(a) == prefactor(b) && length(a.dict) == 0 && return true
-    end
+    isscalar(b) && return isempty(a.dict) && additive_coeff(a) == prefactor(b)
     iszero(additive_coeff(a)) || return false
     length(a.dict) == 1 || return false
     ncmul, coeff = only(a.dict)
@@ -93,7 +92,8 @@ macro nc_common(T)
         Base.:(==)(a::$(esc(T)), b::Union{NCMul,NCAdd}) = NCMul(a) == b
         Base.:(==)(a::Union{NCMul,NCAdd}, b::$(esc(T))) = b == a
 
-        Base.zero(a::$(esc(T))) = zero($(esc(T)))
+        # the zero of an atom keeps it as a factor for its grade, with the same type as zero(T)
+        Base.zero(a::$(esc(T))) = NCMul(0, typeof(a)[a])
         function Base.zero(::Type{W}) where W<:$(esc(T))
             NCMul(0, W[])
         end

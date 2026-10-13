@@ -91,6 +91,150 @@ end
     @test NC.grades(bra(1)) == Set([BRA])
     @test NC.grades(GFermion(1)') == Set([Charge(1)])
     @test NC.grades(GFermion(1)) == Set([Charge(-1)])
+    @test NC.grade(2) === nothing
+    @test_throws ArgumentError NC.grade(0)
+end
+
+@testitem "Grading: all zeros are equal" setup = [GradedKets] begin
+    import NonCommutativeProducts as NC
+    using VectorInterface
+    NC.enable_autosort!()
+    u = NC.NCAdd(0, Dict(1 * ket(1) => 0))
+    # -0.0 is left out, since isequal(-0.0, 0.0) is false in Base
+    zs = [0, 0.0, 0 * ket(1), 0 * bra(1), 0 * ket(1) * bra(2), NC.NCMul(0, GKet[]), ket(1) - ket(1), zero(ket(1)),
+        zero(1.0 * ket(1) * bra(2)), u, zerovector(ket(1))]
+    for a in zs, b in zs
+        @test a == b
+        @test isequal(a, b)
+        @test hash(a) == hash(b)
+    end
+    @test length(Dict(z => i for (i, z) in enumerate(zs))) == 1
+    @test length(Dict(0 * ket(1) => 1, 0 * bra(1) => 2, 0 => 3)) == 1
+    for z in zs
+        z isa NC.MulAdd || continue
+        @test NC.isscalar(z)
+        @test NC.scalar(z) == 0
+    end
+
+    # nonzero values still compare by their factors
+    @test 2 * ket(1) != 2 * bra(1)
+    @test NC.NCMul(2, GKet[]) == 2
+end
+
+@testitem "Grading: zeros don't keep grades from earlier values" setup = [GradedKets] begin
+    import NonCommutativeProducts as NC
+    using VectorInterface
+    NC.enable_autosort!()
+    satisfies_Z(x) = !(x isa NC.NCAdd) || iszero(x) || x.zero_grades === nothing
+    x = 1.0 * ket(1) + 2.0 * ket(2)
+    kb = 1.0 * ket(3) * bra(1)
+
+    # each row starts from a zero ket, makes it the nonzero kb and then zero again
+    rows = (
+        ("add!!", y -> NC.add!!(y, kb), y -> NC.add!!(y, kb, -1)),
+        ("VectorInterface.add!", y -> add!(y, kb), y -> add!(y, kb, -1)),
+        ("mul!!", y -> NC.mul!!(y, 1.0 * ket(3), 1 * bra(1)), y -> NC.mul!!(y, -1.0 * ket(3), 1 * bra(1))),
+        ("scale!(y, 0)", y -> add!(y, kb), y -> scale!(y, 0)),
+        ("scale!!(y, 0)", y -> NC.add!!(y, kb), y -> scale!!(y, 0)),
+        ("VectorInterface.scale!(y, kb, 0)", y -> add!(y, kb), y -> VectorInterface.scale!(y, kb, 0)),
+        ("scale!!(y, kb, 0)", y -> NC.add!!(y, kb), y -> scale!!(y, kb, 0)),
+        ("zerovector!", y -> add!(y, kb), y -> zerovector!(y)),
+    )
+    for (name, make_nonzero, make_zero) in rows
+        @testset "$name" begin
+            y = x - x
+            @test iszero(y) && NC.grades(y) == Set([KET])
+            @test satisfies_Z(y)
+            y = make_nonzero(y)
+            @test y == kb
+            @test satisfies_Z(y)
+            y = make_zero(y)
+            @test satisfies_Z(y)
+            @test iszero(y) && NC.grades(y) == Set([KETBRA])
+        end
+    end
+
+    # results of public operations satisfy invariant Z
+    for r in (x + kb, x * bra(1), x', sort(x), copy(x), NC.anyadd(x), 2x, (x - x) + kb)
+        @test satisfies_Z(r)
+    end
+end
+
+@testitem "Grading: bare zeros are the unit" setup = [GradedKets] begin
+    import NonCommutativeProducts as NC
+    using LinearAlgebra
+    NC.enable_autosort!()
+    x = 1.0 * ket(1) + 2.0 * ket(2)
+    u = NC.NCAdd(0, Dict(1 * ket(1) => 0))
+    mixed = ket(1) + ket(2) * bra(3)
+    for b in Any[0, 0.0, NC.NCMul(0, GKet[]), u, zero(typeof(x)), zero(typeof(1 * ket(1)))]
+        @test isempty(NC.grades(b))
+        @test NC.grades(b + (x - x)) == Set([KET])
+        @test NC.grades(b * ket(1)) == NC.grades(ket(1) * b) == Set([KET])
+        @test NC.grades(b * mixed) == Set([KET, KETBRA])
+        @test isempty(NC.grades(b'))
+    end
+    # UniformScaling * NCMul is not defined, so only grades and +
+    @test isempty(NC.grades(0I))
+    @test NC.grades(0I + (x - x)) == Set([KET])
+end
+
+@testitem "Grading: grade is the only element of grades" setup = [GradedKets, Fermions] begin
+    import NonCommutativeProducts as NC
+    using LinearAlgebra
+    NC.enable_autosort!()
+    u = NC.NCAdd(0, Dict(1 * ket(1) => 0))
+    rows = Any[
+        (2, Set([nothing])),
+        (2I, Set([nothing])),
+        (NC.NCMul(2, GKet[]), Set([nothing])),
+        (0, Set()),
+        (0I, Set()),
+        (NC.NCMul(0, GKet[]), Set()),
+        (u, Set()),
+        (ket(1), Set([KET])),
+        (0 * ket(1), Set([KET])),
+        (zero(ket(1)), Set([KET])),
+        (ket(1) - ket(1), Set([KET])),
+        (zero(2 * ket(1) * bra(2)), Set([KETBRA])),
+        (ket(1) + ket(2) * bra(3), Set([KET, KETBRA])),
+        (0 * (ket(1) + ket(2) * bra(3)), Set([KET, KETBRA])),
+    ]
+    for (x, expected) in rows
+        @test NC.grades(x) == expected
+        if length(expected) == 1
+            @test isequal(NC.grade(x), only(expected))
+        else
+            @test_throws ArgumentError NC.grade(x)
+        end
+    end
+
+    # the grade of an ungraded product is inferred, also for a zero product and one without factors
+    f1 = Fermion(1)
+    @test (@inferred NC.grade(NC.NCMul(1, [f1', f1]))) === nothing
+    @test (@inferred NC.grade(NC.NCMul(1, (f1', f1)))) === nothing
+    @test (@inferred NC.grade(NC.NCMul(0, [f1', f1]))) === nothing
+    @test (@inferred NC.grade(NC.NCMul(2, typeof(f1)[]))) === nothing
+end
+
+@testitem "Grading: zero of a product or atom" setup = [GradedKets] begin
+    import NonCommutativeProducts as NC
+    NC.enable_autosort!()
+    @test NC.grades(zero(ket(1))) == Set([KET])
+    @test zero(ket(1)) isa typeof(zero(GKet))
+    @test iszero(zero(ket(1)))
+    @test zero(ket(1)) == 0
+
+    p = NC.NCMul(2, [ket(1), bra(2)])
+    @test p.factors isa Vector
+    pt = NC.NCMul(2, (ket(1), bra(2)))
+    @test pt.factors isa Tuple
+    for q in (p, pt)
+        @test typeof(zero(q)) == typeof(zero(typeof(q)))
+        @test NC.grades(zero(q)) == Set([KETBRA])
+        @test iszero(zero(q))
+        @test zero(q) == 0
+    end
 end
 
 @testitem "Grading: bicyclic kets and bras" setup = [GradedKets] begin
@@ -248,6 +392,44 @@ end
     @test isequal(zk, zb)
     @test hash(zk) == hash(zb)
     @test length(Dict(zk => 1, zb => 2)) == 1
+end
+
+@testitem "Grading: grade_part" setup = [GradedKets] begin
+    import NonCommutativeProducts as NC
+    NC.enable_autosort!()
+    kb = ket(2) * bra(3)
+
+    # a mixed sum splits into its graded parts
+    x = ket(1) + 2 * ket(4) + kb + 3
+    @test NC.grade_part(x, KET) == ket(1) + 2 * ket(4)
+    @test NC.grade_part(x, KETBRA) == kb
+    @test NC.grade_part(x, nothing) == 3
+    @test sum(NC.grade_part(x, g) for g in NC.grades(x)) == x
+    @test x == ket(1) + 2 * ket(4) + kb + 3 # not mutated
+
+    # atoms and products are kept or replaced by a zero
+    @test NC.grade_part(ket(1), KET) === ket(1)
+    @test iszero(NC.grade_part(ket(1), BRA))
+    @test iszero(NC.grade_part(kb, KET))
+    @test isempty(NC.grades(NC.grade_part(kb, KET)))
+
+    # a grade that isn't present gives a zero without grades
+    z = NC.grade_part(x, BRA)
+    @test iszero(z) && z == 0
+    @test isempty(NC.grades(z))
+
+    # zeros keep the requested grade if they have it
+    z0 = 0 * (ket(1) + kb)
+    @test NC.grades(z0) == Set([KET, KETBRA])
+    zk = NC.grade_part(z0, KET)
+    @test iszero(zk) && zk == 0
+    @test NC.grades(zk) == Set([KET])
+    @test isempty(NC.grades(NC.grade_part(z0, BRA)))
+    @test NC.grades(z0) == Set([KET, KETBRA])
+
+    # numbers have the identity grade
+    @test NC.grade_part(2, nothing) == 2
+    @test iszero(NC.grade_part(2, KET))
 end
 
 @testitem "Grading: fermion charge" setup = [ChargedFermions] begin

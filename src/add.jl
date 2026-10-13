@@ -18,12 +18,12 @@ filter_zeros!(d::AbstractDict) = filter!(kv -> !iszero(last(kv)), d)
 
 # The terms are always a Dict{K,C}: they share the coefficient type of the sum, and Dict is the only container,
 # since equality and key lookup assume keys are compared by value.
-# `zero_grades` holds the grades of a zero sum (see grading.jl), and is `nothing` if they are unknown. It is not part
-# of the value, so equality and hashing ignore it.
+# `zero_grades` holds the grades of a zero sum (see grading.jl), and is `nothing` for a nonzero sum and for a zero
+# without grades (∅). It is not part of the value, so equality and hashing ignore it.
 mutable struct NCAdd{C,K}
     coeff::C
     dict::Dict{K,C}
-    zero_grades::Any
+    zero_grades::Union{Nothing,Set{Any}}
     # The coefficient type follows arithmetic, so absorbing scalar terms may widen it (false + false isa Int)
     function NCAdd(coeff::C, dict::D; zero_grades=nothing, kwargs...) where {C,D<:AbstractDict}
         _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
@@ -57,9 +57,10 @@ end
 anyadd(x::Union{NCMul{C},NCAdd{C}}) where {C} = convert(NCAdd{C,NCMul{Int,Any,Vector{Any}}}, x)
 
 const MulAdd = Union{NCMul,NCAdd}
+# Like the other helpers, this doesn't maintain the grades of a zero result, which is left to the public operation that
+# calls it (see _with_zero_grades).
 function filter_ncadd!!(x::NCAdd; kwargs...)
     dict, coeff = filter_ncadd_dict!(x.dict; kwargs...)
-    # if x is zero, coeff is a zero of its coefficient type, so x is updated in place and keeps its grades
     _add_scaled!!(x, coeff, One())
 end
 Base.iszero(x::NCAdd) = iszero(additive_coeff(x)) && all(iszero, values(x.dict))
@@ -273,17 +274,14 @@ end
 Base.:*(a::NCAdd, x::Number) = x * a
 
 # zero(typeof(a)) rather than zero(a), which would compute the grades of a
-function Base.:*(a::NCAdd, b::NCMul)
-    c = zero(typeof(a))
-    filter_ncadd!!(mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
-end
-function Base.:*(a::NCMul, b::NCAdd)
-    c = zero(typeof(b))
-    filter_ncadd!!(mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
-end
-function Base.:*(a::NCAdd, b::NCAdd)
-    c = zero(typeof(a))
-    filter_ncadd!!(mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
+Base.:*(a::NCAdd, b::NCMul) = _mul_sums(zero(typeof(a)), a, b)
+Base.:*(a::NCMul, b::NCAdd) = _mul_sums(zero(typeof(b)), a, b)
+Base.:*(a::NCAdd, b::NCAdd) = _mul_sums(zero(typeof(a)), a, b)
+# The product a * b, accumulated in the fresh zero `c`. `c` is not an operand, so a zero result has the grades of a
+# and b only.
+function _mul_sums(c::NCAdd, a::MulAdd, b::MulAdd)
+    product = filter_ncadd!!(_mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
+    return _with_zero_grades(product, () -> _mul_grades(_grades(a), _grades(b)))
 end
 # Computes c + a * b. A zero result has the grades of c and the products of the grades of a and b. As in add!!, those
 # of a nonzero c needn't be computed, since they are among the latter.
