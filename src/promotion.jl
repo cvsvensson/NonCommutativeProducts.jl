@@ -37,10 +37,12 @@ Base.convert(::Type{NCMul{C,S,F}}, x::NCMul) where {C,S,F} = NCMul{C,S,F}(conver
 
 Base.convert(::Type{NCAdd{C,K}}, x::NCAdd{C,K}) where {C,K} = x
 function Base.convert(::Type{NCAdd{C,K}}, x::NCAdd) where {C,K}
-    NCAdd{C,K}(additive_coeff(x), Dict{K,C}(convert(K, k) => convert(C, v) for (k, v) in pairs(x.dict)))
+    dict = Dict{K,C}(convert(K, k) => convert(C, v) for (k, v) in pairs(x.dict))
+    NCAdd{C,K}(additive_coeff(x), dict; zero_grades=x.zero_grades)
 end
 function Base.convert(::Type{NCAdd{C,K}}, x::NCMul) where {C,K}
-    NCAdd{C,K}(zero(C), Dict{K,C}(term_key(K, x) => convert(C, prefactor(x))))
+    ncadd = NCAdd{C,K}(zero(C), Dict{K,C}(term_key(K, x) => convert(C, prefactor(x))))
+    return _with_zero_grades(ncadd, () -> _grades(x))
 end
 Base.convert(::Type{NCAdd{C,K}}, x::Number) where {C,K} = NCAdd{C,K}(x, Dict{K,C}())
 
