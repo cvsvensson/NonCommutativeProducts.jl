@@ -197,7 +197,7 @@ norm(x - im*k1) < 1e-12 # true
 
 A grading gives every factor a grade, so that the grade of a product is the product of the grades of its factors. Gradings can be used to keep track of what kind of object an expression is, e.g. a ket, a bra or an operator, or of quantities such as particle number. The grade `nothing` is the identity grade, which numbers and types without a grade have. Define these for your types:
 * `grade(a)`: the grade of the factor `a`.
-* `mul_grade(g, h)`: the product of two grades. It must be associative and return `nothing` for the identity.
+* `mul_grade(g, h)`: the product of two grades of one grading. It must be associative, return a grade of the same grading, and return `nothing` for the identity.
 * `adjoint_grade(g)`: the grade of `a'` when `a` has grade `g`.
 
 Then `grades(x)` returns the set of grades of the terms of `x`, and `grade(x)` returns the single grade of `x`, throwing an error if there isn't exactly one.
@@ -235,7 +235,15 @@ H = sum(Fermion(n)' * Fermion(n + 1) + Fermion(n + 1)' * Fermion(n) for n in 1:3
 NC.grades(H) # Set([nothing]), so H conserves the particle number
 NC.grades(Fermion(1)' + Fermion(2)' * Fermion(1)' * Fermion(1)) # Set([Charge(1)])
 ```
-Every term that `mul_effect(a, b)` returns must have the grade `mul_grade(grade(a), grade(b))`. Use `check_grading(a, b)` in your tests to check this, e.g. `NC.check_grading(Fermion(1), Fermion(1)')`.
+To mix grades of different types, declare which grading each type belongs to:
+```julia
+NC.grading(::Type{Charge}) = Charge
+NC.grading(::Type{Bicyclic}) = Bicyclic
+NC.@commutative Fermion Ket
+```
+Grades of the same type, or of different types with the same declared grading, are multiplied with `mul_grade`. Grades of different declared gradings are independent and combine into a `NC.ProductGrade`, with one component per grading. Mixing grades where either type has no declared grading throws an `ArgumentError`. So `Fermion(1)' * k0` has the grade `ProductGrade(Charge(1), Bicyclic(1, 0))` in either order. Components of the same grading are multiplied with each other, and components that become `nothing` are dropped, so `Fermion(1)' * k0 * Fermion(1)` has the grade `Bicyclic(1, 0)`. Several types can share a grading, e.g. `NC.grading(::Type{<:U1}) = U1`, and then you define `mul_grade` between them. A type can also carry several gradings, e.g. `NC.grade(f::SpinfulFermion) = NC.ProductGrade(Charge(1), Spin(1))`, if `Charge` and `Spin` have declared gradings.
+
+Every term that `mul_effect(a, b)` returns must have the product of the grades of `a` and `b`. Use `check_grading(a, b)` in your tests to check this, e.g. `NC.check_grading(Fermion(1), Fermion(1)')`.
 
 ## API overview
 
@@ -248,11 +256,13 @@ No names are exported, so access them as `NonCommutativeProducts.name` or import
 * `Swap(λ)`: return value for `mul_effect` that replaces `a*b` by `λ*b*a`.
 * `AddTerms(terms)`: return value for `mul_effect` that replaces `a*b` by a sum of `terms`. Elements can be any other allowed return value except `nothing`, including sums and nested `AddTerms`.
 * `grade(a)`: defined by you, the grade of a factor (see [Gradings](#gradings)). Defaults to `nothing`, the identity grade. For an expression, it returns the single element of `grades(x)`, and throws an `ArgumentError` if there isn't exactly one.
-* `mul_grade(g, h)`: defined by you, the associative product of two grades other than `nothing`. Return `nothing` for the identity.
+* `mul_grade(g, h)`: defined by you, the associative product of two grades of one grading, other than `nothing`. Return a grade of that grading, or `nothing` for the identity.
 * `adjoint_grade(g)`: defined by you, the grade of `a'` for a factor `a` of grade `g`.
+* `grading(T)`: defined by you, the grading that grades of type `T` belong to, e.g. `NC.grading(::Type{Charge}) = Charge`. Needed only to mix grades of different types. Defaults to `nothing`, undeclared.
+* `ProductGrade(g1, g2, ...)`: a grade in the direct product of independent gradings, one component per grading, in any order. It is the product of grades of different declared gradings.
 * `grades(x)`: the set of grades of the terms of `x`. A zero has the grades it was computed from, and a zero without grades, such as the number `0`, has none.
 * `grade_part(x, g)`: the part of `x` with grade `g`, i.e. the sum of its terms of grade `g`. The parts over `grades(x)` sum to `x`.
-* `check_grading(a, b)`: checks that every term of `mul_effect(a, b)` has the grade `mul_grade(grade(a), grade(b))`.
+* `check_grading(a, b)`: checks that every term of `mul_effect(a, b)` has the product of the grades of `a` and `b`.
 
 **Sorting**
 * `sort(x)`: sorts a product or sum by repeatedly applying `mul_effect`.

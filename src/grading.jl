@@ -11,8 +11,9 @@
     grade(atom)
 
 The grade of `atom`. Define it for your types to make them graded; the default is `nothing`, the identity grade.
-Every term of [`mul_effect`](@ref)`(a, b)` must have the grade [`mul_grade`](@ref)`(grade(a), grade(b))`, see
-[`check_grading`](@ref).
+Every term of [`mul_effect`](@ref)`(a, b)` must have the product of the grades of `a` and `b`, see
+[`check_grading`](@ref). Within one grading, this is [`mul_grade`](@ref)`(grade(a), grade(b))`. Grades of different
+types are combined according to their [`grading`](@ref).
 
 For other expressions, `grade(x) == only(grades(x))`, and it throws an `ArgumentError` if there are several grades or
 none.
@@ -47,24 +48,205 @@ end
 """
     mul_grade(g, h)
 
-The product of the grades `g` and `h`, neither of which is `nothing`. It must be associative, and return `nothing` for
-the identity grade.
+The product of the grades `g` and `h` of one grading, neither of which is `nothing`. It must be associative, and
+return `nothing` for the identity grade or else a grade of the same grading.
+
+It is only called for grades of one grading: grades of the same type, or of different types with the same
+[`grading`](@ref). So a family of types sharing a key needs `mul_grade` methods between its member types. Grades of
+different gradings are combined into a [`ProductGrade`](@ref) instead.
 """
 function mul_grade end
 
 """
     adjoint_grade(g)
 
-The grade of the adjoint of an expression of grade `g` (not `nothing`). Only needed for adjoints of zero sums.
+The grade of the adjoint of an expression of grade `g` (not `nothing`). It must return `nothing` or a grade of the same
+grading. Only needed for adjoints of zero sums.
 """
 function adjoint_grade end
+
+"""
+    grading(G::Type)
+
+The key of the grading that grades of type `G` belong to, or `nothing` if it is undeclared (the default). Keys are
+compared with `isequal`, and should be types or symbols.
+
+Grades of the same type are multiplied with [`mul_grade`](@ref), and need no declaration. Grades of different types
+are combined by their keys:
+- equal keys: one grading, multiplied with `mul_grade`, which must be defined between the types;
+- different keys: independent gradings, combined into a [`ProductGrade`](@ref);
+- an undeclared key: an `ArgumentError`.
+
+# Example
+```julia
+NonCommutativeProducts.grading(::Type{Charge}) = Charge
+NonCommutativeProducts.grading(::Type{<:U1}) = U1 # one grading spread over the types U1{T}
+```
+"""
+grading(::Type) = nothing
 
 _mul_grade(::Nothing, ::Nothing) = nothing
 _mul_grade(::Nothing, h) = h
 _mul_grade(g, ::Nothing) = g
-_mul_grade(g, h) = mul_grade(g, h)
+function _mul_grade(g, h)
+    (g isa ProductGrade || h isa ProductGrade) && return _mul_product_grade(g, h)
+    typeof(g) === typeof(h) && return mul_grade(g, h)
+    kg, kh = grading(typeof(g)), grading(typeof(h))
+    (isnothing(kg) || isnothing(kh)) && throw(_undeclared_grading_error(g, h))
+    isequal(kg, kh) && return mul_grade(g, h)
+    return ProductGrade((g, h), Val(:unchecked))
+end
 _adjoint_grade(::Nothing) = nothing
 _adjoint_grade(g) = adjoint_grade(g)
+
+@noinline function _undeclared_grading_error(g, h)
+    Ts = unique!([typeof(x) for x in (g, h) if !(x isa ProductGrade) && isnothing(grading(typeof(x)))])
+    defs = join(("`NonCommutativeProducts.grading(::Type{$T})`" for T in Ts), " and ")
+    return ArgumentError("cannot multiply the grades $(repr(g)) and $(repr(h)) of different types: define $defs to \
+        treat them as independent gradings, or, if they are the same grading, give them the same key and define \
+        `mul_grade` between them")
+end
+
+# Whether `c`, the result of mul_grade or adjoint_grade within the grading `key`, stays in that grading
+_is_closed(c, key) = isnothing(c) || isequal(grading(typeof(c)), key)
+
+@noinline function _closure_error(f, args, c)
+    call = "$(nameof(f))($(join(map(repr, args), ", ")))"
+    return ArgumentError("$call returned $(repr(c)), which is neither `nothing` nor a grade of the grading \
+        $(repr(grading(typeof(first(args)))))")
+end
+
+"""
+    ProductGrade(g1, g2, ...)
+
+A grade in the direct product of independent gradings, with one component per [`grading`](@ref). It is the product of
+grades with different declared gradings, so that e.g. fermions graded by `Charge` and kets graded by `Bicyclic` can be
+multiplied without defining `mul_grade(::Charge, ::Bicyclic)`, once both types declare their `grading`.
+
+Products involving a `ProductGrade` are computed componentwise:
+- components of the same grading are multiplied with [`mul_grade`](@ref), in order, so the product is associative;
+- components that become `nothing` are dropped, and a single remaining component is returned unwrapped, so the
+  product of the grades `Charge(1)`, `KET` and `Charge(-1)` is `KET`.
+
+Components are matched by grading regardless of their order, so `f * k` and `k * f` have the same grade.
+[`adjoint_grade`](@ref) acts componentwise. `mul_grade` and `adjoint_grade` within one grading must return a grade of
+that grading or `nothing`, and this is checked. Construct a `ProductGrade` with at least two components, in any order,
+with distinct declared gradings, none of them `nothing` or a `ProductGrade`.
+
+# Example
+```julia
+# Fermions with spin, graded by charge and by spin, using `Charge` from the example in the README
+struct Spin
+    s::Int
+end
+spin(s) = iszero(s) ? nothing : Spin(s)
+NonCommutativeProducts.grading(::Type{Spin}) = Spin # and likewise for Charge
+NonCommutativeProducts.mul_grade(a::Spin, b::Spin) = spin(a.s + b.s)
+NonCommutativeProducts.adjoint_grade(a::Spin) = spin(-a.s)
+NonCommutativeProducts.grade(f::SpinFermion) = ProductGrade(Charge(f.dagger ? 1 : -1), Spin(f.up == f.dagger ? 1 : -1))
+```
+"""
+struct ProductGrade
+    grades::Tuple
+    # Unchecked: the components must be valid, with distinct keys (see ProductGrade(gs...))
+    ProductGrade(grades::Tuple, ::Val{:unchecked}) = new(grades)
+end
+function ProductGrade(gs...)
+    length(gs) >= 2 || throw(ArgumentError("a ProductGrade needs at least two components, got $(length(gs))"))
+    for g in gs
+        (isnothing(g) || g isa ProductGrade) && throw(ArgumentError("invalid ProductGrade component $(repr(g))"))
+        isnothing(grading(typeof(g))) && throw(ArgumentError("the grading of the ProductGrade component $(repr(g)) is \
+            undeclared; define `NonCommutativeProducts.grading(::Type{$(typeof(g))})`"))
+    end
+    allunique(map(g -> grading(typeof(g)), gs)) || throw(ArgumentError("the components of a ProductGrade must have \
+        different gradings, got $(join(map(repr, gs), ", "))"))
+    return ProductGrade(gs, Val(:unchecked))
+end
+
+_grade_components(g::ProductGrade) = g.grades
+_grade_components(g) = (g,)
+
+# The component of `cs` with the key `key`, or nothing
+function _component(cs::Tuple, key)
+    for c in cs
+        isequal(grading(typeof(c)), key) && return c
+    end
+    return nothing
+end
+
+# Components are compared by key, independently of their order
+function Base.:(==)(g::ProductGrade, h::ProductGrade)
+    length(g.grades) == length(h.grades) || return false
+    for a in g.grades
+        b = _component(h.grades, grading(typeof(a)))
+        (isnothing(b) || !(a == b)) && return false
+    end
+    return true
+end
+function Base.isequal(g::ProductGrade, h::ProductGrade)
+    length(g.grades) == length(h.grades) || return false
+    for a in g.grades
+        b = _component(h.grades, grading(typeof(a)))
+        (isnothing(b) || !isequal(a, b)) && return false
+    end
+    return true
+end
+function Base.hash(g::ProductGrade, h::UInt)
+    s = zero(UInt)
+    for c in g.grades
+        s += hash(c)
+    end
+    return hash(s, hash(ProductGrade, h))
+end
+# Sorted by key, so that the output is deterministic
+function Base.show(io::IO, g::ProductGrade)
+    cs = sort!(collect(Any, g.grades); by=c -> string(grading(typeof(c))))
+    print(io, "ProductGrade(")
+    join(io, (sprint(show, x; context=io) for x in cs), ", ")
+    print(io, ")")
+end
+
+# A ProductGrade of nonidentity components with distinct keys, unwrapped if there are fewer than two
+function _product_grade(cs::Vector{Any})
+    isempty(cs) && return nothing
+    length(cs) == 1 && return only(cs)
+    return ProductGrade(Tuple(cs), Val(:unchecked))
+end
+
+# Merges the components of g and h by key, multiplying those of the same key with g's on the left
+function _mul_product_grade(g, h)
+    for x in (g, h)
+        x isa ProductGrade || !isnothing(grading(typeof(x))) || throw(_undeclared_grading_error(g, h))
+    end
+    gs, hs = _grade_components(g), _grade_components(h)
+    cs = Any[]
+    for a in gs
+        key = grading(typeof(a))
+        b = _component(hs, key)
+        if isnothing(b)
+            push!(cs, a)
+        else
+            c = mul_grade(a, b)
+            _is_closed(c, key) || throw(_closure_error(mul_grade, (a, b), c))
+            isnothing(c) || push!(cs, c)
+        end
+    end
+    for b in hs
+        isnothing(_component(gs, grading(typeof(b)))) && push!(cs, b)
+    end
+    return _product_grade(cs)
+end
+
+# Componentwise
+function _adjoint_grade(g::ProductGrade)
+    cs = Any[]
+    for a in g.grades
+        c = adjoint_grade(a)
+        _is_closed(c, grading(typeof(a))) || throw(_closure_error(adjoint_grade, (a,), c))
+        isnothing(c) || push!(cs, c)
+    end
+    return _product_grade(cs)
+end
 
 # Inferred from the return type of grade, so this is a compile time constant for types without a grade method
 _is_ungraded(::Type{S}) where {S} = Base.promote_op(grade, S) === Nothing
@@ -81,15 +263,20 @@ A zero has the grades of how it was computed, from the grades `Γ(a)`, `Γ(b)` o
 
 | operation | grades of a zero result |
 |:--|:--|
-| `a * b`, `a^n` | `Γ(a) ⊗ Γ(b) = {mul_grade(g, h) : g ∈ Γ(a), h ∈ Γ(b)}` |
+| `a * b`, `a^n` | `Γ(a) ⊗ Γ(b) = {g ⋅ h : g ∈ Γ(a), h ∈ Γ(b)}` |
 | `a + b`, `a - b` | `Γ(a) ∪ Γ(b)` |
 | `a'` | `{adjoint_grade(g) : g ∈ Γ(a)}` |
 | `α * a`, `zero(a)`, `zerovector(a)`, `copy`, `convert`, `sort` | `Γ(a)` |
 | `mul!!(c, a, b)` | `Γ(c) ∪ Γ(a) ⊗ Γ(b)` |
 | `add!!(a, b, α, β)`, `VectorInterface.add(!)` | `Γ(a) ∪ Γ(b)`, or `Γ(b)` if `β isa VectorInterface.Zero` |
 
+Here `g ⋅ h` is the product of grades, [`mul_grade`](@ref) within one grading (see [`grading`](@ref)).
+
 A zero without such a history (the number `0`, `zero(typeof(a))`, or a zero sum built from a `Dict` or by `ncmap`)
 has no grades. The empty set is the unit of both `⊗` and `∪`.
+
+A product without factors behaves like its prefactor, a number, so a zero one has no grades: `grades(2 * one(f))` is
+`Set([nothing])`, but `grades(0 * one(f))` is empty. The table applies to products with factors and to sums.
 
 # Example
 ```julia
@@ -179,8 +366,8 @@ end
 """
     check_grading(a, b)
 
-Check that every term of [`mul_effect`](@ref)`(a, b)` has the grade `mul_grade(grade(a), grade(b))`. Zero terms are
-always allowed. Meant to be used in tests.
+Check that every term of [`mul_effect`](@ref)`(a, b)` has the product of the grades of `a` and `b` (see
+[`grade`](@ref)). Zero terms are always allowed. Meant to be used in tests.
 
 # Example
 ```julia
@@ -189,7 +376,10 @@ check_grading(f, f') # true
 ```
 """
 function check_grading(a, b)
-    effect = mul_effect(a, b)
+    # without autosort, as when sorting, so that the effect is checked as the sorter sees it
+    effect = with(_autosort => false) do
+        mul_effect(a, b)
+    end
     isnothing(effect) && return true
     return _has_grade(effect, _mul_grade(grade(a), grade(b)), _mul_grade(grade(b), grade(a)))
 end
