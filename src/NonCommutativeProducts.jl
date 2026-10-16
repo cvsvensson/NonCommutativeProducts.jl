@@ -10,6 +10,7 @@ using PrecompileTools: @setup_workload, @compile_workload
 include("mul.jl")
 include("add.jl")
 include("muladd.jl")
+include("accessors.jl")
 include("promotion.jl")
 include("sorting.jl")
 include("grading.jl")

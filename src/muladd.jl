@@ -72,6 +72,7 @@ macro nc_common(T)
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
         NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(NCMul(f))
         NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
+        NonCommutativeProducts.terms(x::$(esc(T))) = terms(NCMul(x))
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
         Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) + y

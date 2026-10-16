@@ -1020,5 +1020,5 @@ end
             :apply, :apply_normal, :apply_adjoint, :MulAdd)),
         # qualified names in macro-generated code
         no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
-            :mul_effect, :ncmapreduce)))
+            :mul_effect, :ncmapreduce, :terms)))
 end
