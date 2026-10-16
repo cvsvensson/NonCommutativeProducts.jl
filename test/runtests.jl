@@ -189,6 +189,40 @@ end
     @test NonCommutativeProducts.autosort()
 end
 
+@testitem "with_autosort overrides the global setting" setup = [Majoranas] begin
+    γ1, γ2 = Majorana.(1:2)
+    was_enabled = NonCommutativeProducts.autosort()
+    try
+        NonCommutativeProducts.disable_autosort!()
+        @test !NonCommutativeProducts.autosort()
+
+        # The default argument enables autosort inside the block.
+        sorted_product = NonCommutativeProducts.with_autosort() do
+            @test NonCommutativeProducts.autosort()
+            γ2 * γ1
+        end
+        @test sorted_product == -γ1 * γ2
+        @test !NonCommutativeProducts.autosort()
+
+        NonCommutativeProducts.enable_autosort!()
+        unsorted_product = NonCommutativeProducts.with_autosort(false) do
+            @test !NonCommutativeProducts.autosort()
+            γ2 * γ1
+        end
+        @test unsorted_product != sorted_product
+        @test sort(unsorted_product) == sorted_product
+
+        # The global setting is restored after the block.
+        @test NonCommutativeProducts.autosort()
+        NonCommutativeProducts.with_autosort(true) do
+            @test NonCommutativeProducts.autosort()
+        end
+        @test NonCommutativeProducts.autosort()
+    finally
+        was_enabled ? NonCommutativeProducts.enable_autosort!() : NonCommutativeProducts.disable_autosort!()
+    end
+end
+
 
 @testitem "Fermions+Bosons" setup = [Fermions, Bosons] begin
     import NonCommutativeProducts: @nc, add!!
@@ -893,7 +927,7 @@ end
     # products that don't reduce to scalars, but cancel: ⟨0|0⟩|2⟩ - ⟨1|1⟩|2⟩ = 0
     @test inner(k0 + k1, k0 * k2 - k1 * k2) == 0
     # without autosort, mul_effect is not applied, so ⟨0|0⟩ stays a product
-    Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do
+    NonCommutativeProducts.with_autosort(false) do
         @test_throws ArgumentError norm(k0)
     end
     NonCommutativeProducts.disable_autosort!()

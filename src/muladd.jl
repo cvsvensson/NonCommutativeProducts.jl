@@ -133,6 +133,17 @@ enable_autosort!() = _DEFAULT_AUTOSORT[] = true
 disable_autosort!() = _DEFAULT_AUTOSORT[] = false
 
 """
+    with_autosort(f, enabled::Bool=true)
+
+Call `f()` with autosorting set to `enabled`, overriding the global setting from `enable_autosort!` and `disable_autosort!` for the duration of the call. Works with a `do` block:
+
+    with_autosort(false) do
+        a * b
+    end
+"""
+with_autosort(f, enabled::Bool=true) = with(f, _autosort => enabled)
+
+"""
     @nc T1 T2 ...
 
 Define addition and multiplication for the given types, both within each type and between them, and make them

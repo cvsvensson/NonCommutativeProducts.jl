@@ -41,13 +41,12 @@
 end
 
 @testitem "adjoint of mixed-species sums" setup = [Fermions, Bosons] begin
-    import NonCommutativeProducts: NCMul, _autosort
-    using Base.ScopedValues: with
+    import NonCommutativeProducts: NCMul
     NonCommutativeProducts.@commutative Fermion Boson
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     b = Boson()
-    unsorted(f) = with(f, _autosort => false)
+    unsorted(f) = NonCommutativeProducts.with_autosort(f, false)
     s = unsorted() do
         2 * f1 * b * f2' + 1im * b' * f2 * b + f1' * f2 + 3 * b * f1 + 1
     end
