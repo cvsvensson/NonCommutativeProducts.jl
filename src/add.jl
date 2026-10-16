@@ -22,7 +22,7 @@ filter_zeros!(d::AbstractDict) = filter!(kv -> !iszero(last(kv)), d)
 # without grades (∅). It is not part of the value, so equality and hashing ignore it.
 mutable struct NCAdd{C,K}
     coeff::C
-    dict::Dict{K,C}
+    const dict::Dict{K,C}
     zero_grades::Union{Nothing,Set{Any}}
     # The coefficient type follows arithmetic, so absorbing scalar terms may widen it (false + false isa Int)
     function NCAdd(coeff::C, dict::D; zero_grades=nothing, kwargs...) where {C,D<:AbstractDict}
