@@ -111,3 +111,19 @@ end
         @test x == f1 + 1
     end
 end
+
+@testitem "NCAdd: show prints all terms in sorted order" setup = [Fermions] begin
+    f = Fermion.(1:5)
+    x = 1 + f[3] - 2 * f[1] + f[2] + f[4] + f[5]
+    @test string(x) == "1I - 2*c[1] + c[2] + c[3] + c[4] + c[5]"
+    @test string(x) == string(1 + f[5] + f[4] + f[3] + f[2] - 2 * f[1])
+    @test !occursin("...", string(x))
+    @test sprint(show, MIME"text/plain"(), x) == string(x)
+
+    limited = IOContext(IOBuffer(), :limit => true)
+    show(limited, MIME"text/plain"(), x)
+    @test String(take!(limited.io)) == "Sum with 6 terms: \n1I-2*c[1]+c[2]+c[3] + ..."
+    short = 1 + f[1]
+    show(limited, MIME"text/plain"(), short)
+    @test String(take!(limited.io)) == string(short)
+end

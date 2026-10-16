@@ -90,43 +90,52 @@ function print_coeff(io, coeff)
         print(io, "(", coeff, ")", "I")
     end
 end
-function Base.show(io::IO, x::NCAdd; max_terms=3)
-    compact = get(io, :compact, false)
-    print_one = !iszero(additive_coeff(x)) || length(x.dict) == 0
-    compact = length(x.dict) > max_terms
-    print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
-
-    compact && println(io, "Sum with ", length(x.dict) + !iszero(additive_coeff(x)), " terms: ")
-    N = min(max_terms, length(x.dict))
-
-    print_one && print_coeff(io, additive_coeff(x))
-    for (n, (k, v)) in enumerate(pairs(x.dict))
-        n > max_terms && break
-        should_print_sign = (n > 1 || print_one)
-        if isreal(v)
-            v = real(v)
-            neg = v < 0
-            if neg isa Bool
-                if neg
-                    print_sign("-")
-                    print(io, -real(v) * k)
-                else
-                    should_print_sign && print_sign("+")
-                    print(io, real(v) * k)
-                end
-            else
-                should_print_sign && print_sign("+")
-                print(io, "(", v, ")*", k)
-            end
+# Each term is rendered with the context of `io` as `(negative, text)`, and the terms are sorted by
+# their signed printed form so the output does not depend on dictionary order.
+function _term_parts(io::IO, x::NCAdd)
+    parts = Tuple{Bool,String}[]
+    for (k, v) in pairs(x.dict)
+        r = isreal(v) ? real(v) : v
+        isneg = isreal(v) ? r < 0 : nothing
+        if isneg isa Bool
+            neg = isneg
+            text = sprint(print, neg ? -r * k : r * k; context=io)
         else
-            should_print_sign && print_sign("+")
-            print(io, "(", v, ")*", k)
+            neg = false
+            text = sprint(print, "(", v, ")*", k; context=io)
         end
+        push!(parts, (neg, text))
     end
-    if N < length(x.dict)
-        print(io, " + ...")
+    sort!(parts; by=((neg, text),) -> neg ? "-" * text : text)
+    return parts
+end
+
+function _show_terms(io::IO, x::NCAdd, parts, compact::Bool, ellipsis::Bool)
+    print_one = !iszero(additive_coeff(x)) || length(x.dict) == 0
+    print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
+    print_one && print_coeff(io, additive_coeff(x))
+    for (n, (neg, text)) in enumerate(parts)
+        if neg
+            n > 1 || print_one ? print_sign("-") : print(io, "-")
+        elseif n > 1 || print_one
+            print_sign("+")
+        end
+        print(io, text)
     end
+    ellipsis && print(io, " + ...")
     return nothing
+end
+
+Base.show(io::IO, x::NCAdd) = _show_terms(io, x, _term_parts(io, x), false, false)
+
+function Base.show(io::IO, ::MIME"text/plain", x::NCAdd; max_terms=3)
+    parts = _term_parts(io, x)
+    if get(io, :limit, false) && length(parts) > max_terms
+        println(io, "Sum with ", length(parts) + !iszero(additive_coeff(x)), " terms: ")
+        _show_terms(io, x, parts[1:max_terms], true, true)
+    else
+        _show_terms(io, x, parts, false, false)
+    end
 end
 
 Base.:+(a::Number, b::NCAdd) = _with_zero_grades(NCAdd(a + additive_coeff(b), copy(b.dict)), () -> _union_grades(_grades(a), _grades(b)))

@@ -82,7 +82,7 @@ In order to automatically sort them on each multiplication, we can call `enable_
 NonCommutativeProducts.enable_autosort!()
 prod(Fermion(n) + Fermion(n)' for n in 1:4) 
 #=Sum with 16 terms: 
- -c†[1]*c†[2]*c†[4]*c[3] + c†[1]*c[2]*c[3]*c[4] + c†[1]*c†[3]*c†[4]*c[2] + ...=#
+ -c†[1]*c†[2]*c†[4]*c[3]-c†[1]*c†[3]*c[2]*c[4]-c†[2]*c[1]*c[3]*c[4] + ...=#
 ```
 `enable_autosort!` sets the global default. You can override it locally in a scope with `NonCommutativeProducts.with_autosort(false) do ... end`. This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort is always locally disabled to avoid infinite recursion. Use `NonCommutativeProducts.disable_autosort!()` to turn autosort off globally again.
 
@@ -125,7 +125,7 @@ This package is flexible, but not very efficient. Sorting is done via bubble sor
 # Example timing: 108.298 ms (1142139 allocations: 78.37 MiB)
 op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
 #= Sum with 59049 terms: 
-1I-c†[2]*c†[6]*c†[9]*c[1]*c[3]*c[4]*c[7]*c[8]-c†[1]*c†[2]*c†[4]*c†[5]*c†[10]*c[6]*c[8]*c[9]-c†[5]*c†[8]*c[2]*c[7] + ...
+1I-c†[10]*c[1]-c†[10]*c[1]*c[2]*c[3]-c†[10]*c[1]*c[2]*c[3]*c[4]*c[5] + ...
 =#
 ```
 
