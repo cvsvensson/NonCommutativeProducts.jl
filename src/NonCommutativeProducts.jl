@@ -2,7 +2,6 @@ module NonCommutativeProducts
 
 using Base.ScopedValues
 using LinearAlgebra: LinearAlgebra, UniformScaling
-using TestItems: @testitem
 using BangBang: push!!, pushfirst!!, setindex!!, append!!
 using BangBang.Extras: modify!!
 using VectorInterface: VectorInterface, One
