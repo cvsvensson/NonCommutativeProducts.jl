@@ -10,7 +10,8 @@
 """
     grade(atom)
 
-The grade of `atom`. Define it for your types to make them graded; the default is `nothing`, the identity grade.
+The grade of `atom`. Define it for your types to make them graded; the default for types declared with `@nc` is
+`nothing`, the identity grade. For other objects it throws an `ArgumentError`.
 Every term of [`mul_effect`](@ref)`(a, b)` must have the product of the grades of `a` and `b`, see
 [`check_grading`](@ref). Within one grading, this is [`mul_grade`](@ref)`(grade(a), grade(b))`. Grades of different
 types are combined according to their [`grading`](@ref).
@@ -26,7 +27,7 @@ NonCommutativeProducts.mul_grade(g::Int, h::Int) = iszero(g + h) ? nothing : g +
 NonCommutativeProducts.adjoint_grade(g::Int) = -g
 ```
 """
-grade(x) = nothing
+grade(x) = _is_atom(typeof(x)) ? nothing : throw(_not_an_atom_error(x))
 grade(x::Number) = iszero(x) ? throw(_no_grade_error(x, Set{Any}())) : nothing
 grade(x::UniformScaling) = grade(x.λ)
 function grade(x::NCMul{C,S}) where {C,S}
@@ -39,6 +40,11 @@ function grade(x::NCAdd)
     length(gs) == 1 || throw(_no_grade_error(x, gs))
     return only(gs)
 end
+
+# Whether values of type `T` are atoms registered with @nc. Only registered atoms have the default grade `nothing`.
+_is_atom(::Type) = false
+
+_not_an_atom_error(x) = ArgumentError("$(typeof(x)) has no grade: it is not declared with `@nc`, and `grade` is not defined for it")
 
 function _no_grade_error(x, gs)
     isempty(gs) && return ArgumentError("$x is a zero without grades (e.g. the number 0 or a zero of unknown origin), so it has no grade")

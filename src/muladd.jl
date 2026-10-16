@@ -67,6 +67,8 @@ end
 
 macro nc_common(T)
     quote
+        NonCommutativeProducts._is_atom(::Type{<:$(esc(T))}) = true
+
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
         NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(NCMul(f))
         NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
