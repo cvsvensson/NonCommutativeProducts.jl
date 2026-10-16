@@ -188,7 +188,8 @@ function _mysplice!(a::Vector, r::AbstractUnitRange{<:Integer}, ins)
 
     if m < d
         delta = d - m
-        Base._deleteat!(a, (f - 1 < n - l) ? f : (l - delta + 1), delta)
+        start = (f - 1 < n - l) ? f : (l - delta + 1)
+        deleteat!(a, start:(start+delta-1))
     elseif m > d
         Base._growat!(a, (f - 1 < n - l) ? f : (l + 1), m - d)
     end
@@ -203,12 +204,12 @@ end
 function _mysplice!(a::Vector, i::Integer, ins)
     m = length(ins)
     if m == 0
-        Base._deleteat!(a, i, 2)
+        deleteat!(a, i:(i+1))
         return nothing
     end
     left = 2i < length(a)
     if m == 1
-        Base._deleteat!(a, left ? i : i + 1, 1)
+        deleteat!(a, left ? i : i + 1)
     elseif m > 2
         Base._growat!(a, left ? i : i + 2, m - 2)
     end

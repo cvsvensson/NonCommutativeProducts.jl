@@ -979,3 +979,15 @@ end
     using Aqua
     Aqua.test_all(NonCommutativeProducts)
 end
+
+@testitem "ExplicitImports" begin
+    using ExplicitImports
+    using KrylovKit: KrylovKit  # loads the extension so that it is checked too
+    test_explicit_imports(NonCommutativeProducts;
+        # Base internals without a public equivalent, KrylovKit operator hooks, and package internals used by the extension
+        all_qualified_accesses_are_public=(; ignore=(:_growat!, :inferencebarrier, :power_by_squaring, :promote_op,
+            :apply, :apply_normal, :apply_adjoint, :MulAdd)),
+        # qualified names in macro-generated code and in @testitem bodies, which run outside the package module
+        no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :add!!, :anyadd,
+            :disable_autosort!, :enable_autosort!, :mul_effect, :ncmapreduce)))
+end
