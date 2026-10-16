@@ -27,7 +27,6 @@ end
 end
 
 @testitem "Fermions" setup = [Fermions] begin
-    import NonCommutativeProducts: bubble_sort
     using Symbolics, LinearAlgebra
     using Random: seed!
     seed!(1)
@@ -36,7 +35,7 @@ end
     f2 = Fermion(:b)
     f3 = Fermion((1, :↑))
     NonCommutativeProducts.disable_autosort!()
-    ord(op) = bubble_sort(op)
+    ord(op) = sort(op)
     ord_equals(a, b) = iszero(ord(a - b))
     ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
 
@@ -164,10 +163,10 @@ end
     @test f1 - 1 == (1 * f1) - 1 == (0.5 + f1) - 1.5
 
     bigprod = prod(Majorana(rand(1:15)) for k in 1:20)
-    @test NonCommutativeProducts.bubble_sort(bigprod) == bigprod
+    @test sort(bigprod) == bigprod
     bigprod2 = prod(Majorana(rand(1:15)) + Majorana(rand(1:15)) for k in 1:10)
-    @test NonCommutativeProducts.bubble_sort(bigprod2) == bigprod2
-    @test NonCommutativeProducts.bubble_sort(bigprod2') == bigprod2'
+    @test sort(bigprod2) == bigprod2
+    @test sort(bigprod2') == bigprod2'
 end
 
 @testitem "Autosort local override with ScopedValue" setup = [Majoranas] begin
@@ -184,7 +183,7 @@ end
         γ2 * γ1
     end
     @test local_unsorted != canonical
-    @test NonCommutativeProducts.bubble_sort(local_unsorted) == canonical
+    @test sort(local_unsorted) == canonical
 
     # Global setting remains unchanged outside the local override.
     @test NonCommutativeProducts.autosort()
@@ -192,7 +191,7 @@ end
 
 
 @testitem "Fermions+Bosons" setup = [Fermions, Bosons] begin
-    import NonCommutativeProducts: bubble_sort, @nc, add!!
+    import NonCommutativeProducts: @nc, add!!
     using LinearAlgebra
     using Random: seed!
     NonCommutativeProducts.enable_autosort!()
@@ -549,7 +548,6 @@ end
 end
 
 @testitem "Paulis" setup = [Paulis] begin
-    import NonCommutativeProducts: bubble_sort
     using Symbolics
 
     @variables a::Real
@@ -557,7 +555,7 @@ end
     σy = Pauli(2)
     σz = Pauli(3)
 
-    ord(op) = bubble_sort(op)
+    ord(op) = sort(op)
     ord_equals(x, y) = iszero(ord(x - y))
 
     # Basic algebraic properties
@@ -609,14 +607,13 @@ end
 
 
 @testitem "SpinOperators" setup = [SpinOperators] begin
-    import NonCommutativeProducts: bubble_sort
     using Symbolics
 
     Sz = SpinOp(0, :z)
     Sp = SpinOp(0, :+)
     Sm = SpinOp(0, :-)
 
-    ord(op) = bubble_sort(op)
+    ord(op) = sort(op)
     ord_equals(x, y) = iszero(ord(x - y))
 
     # Commutation relations

@@ -316,7 +316,7 @@ end
 # adding the products to c and then sorting it.
 function _add_sorted_products!!(c::NCAdd{C}, a::MulAdd, b::MulAdd) where {C}
     products = [catenate(aterm, bterm) for bterm in NCterms(b) for aterm in NCterms(a)]
-    isempty(products) && return bubble_sort!(c)
+    isempty(products) && return bubble_sort(c)
     terms = isempty(c.dict) ? products : vcat(products, collect(NCterms(c, copy_factors)))
     # the coefficient type of c with the products added, also if they all vanish when sorted
     return _add_scaled!!(_bubble_sort!(terms, promote_type(C, _coeff_type(products))), additive_coeff(c), One())
@@ -331,7 +331,7 @@ function Base.adjoint(x::NCAdd)
     newx = with(_autosort => false) do
         _adjoint_terms(x)
     end
-    newx = autosort() ? bubble_sort!(newx) : newx
+    newx = autosort() ? bubble_sort(newx) : newx
     return _with_zero_grades(newx, () -> _adjoint_grades(_grades(x)))
 end
 function _adjoint_terms(x::NCAdd)

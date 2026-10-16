@@ -266,7 +266,7 @@ No names are exported, so access them as `NonCommutativeProducts.name` or import
 * `check_grading(a, b)`: checks that every term of `mul_effect(a, b)` has the product of the grades of `a` and `b`.
 
 **Sorting**
-* `sort(x)`: sorts a product or sum by repeatedly applying `mul_effect`.
+* `sort(x)`: sorts a product or sum by repeatedly applying `mul_effect`. The result is always a sum.
 * `enable_autosort!()` / `disable_autosort!()`: sets whether products are sorted automatically when they are formed. Override locally with `Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do ... end`.
 
 **Expressions**

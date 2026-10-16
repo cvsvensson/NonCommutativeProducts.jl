@@ -37,9 +37,11 @@ function _splice!!_and_add_flatten(ncmul::NCMul, i, terms)
     return ncmul2, identity.(newterms)
 end
 
-Base.sort(a::NCMul) = bubble_sort(a)
+# Sorting returns a sum for products too, also when the sorted product is a single term.
+Base.sort(a::NCMul) = bubble_sort(a) |> _as_ncadd
 Base.sort(a::NCAdd) = bubble_sort(a)
-bubble_sort!(a::NCAdd) = bubble_sort(a)
+_as_ncadd(a::NCAdd) = a
+_as_ncadd(a::NCMul) = NCAdd(a)
 function bubble_sort(a::NCMul)
     return _with_zero_grades(bubble_sort!(copy(a)), () -> _grades(a))
 end
