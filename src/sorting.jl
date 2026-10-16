@@ -5,17 +5,6 @@ struct Swap{T}
     λ::T
 end
 
-function splice!!(ncmul::NCMul, i::UnitRange, swap::Swap)
-    i1, i2 = first(i), last(i)
-    i2 == i1 + 1 && length(i) == 2 || throw(ArgumentError("Invalid index for swap"))
-    factors = ncmul.factors
-    a = factors[i1]
-    b = factors[i2]
-    factors[i1] = b
-    factors[i2] = a
-    coeff = prefactor(ncmul) * swap.λ
-    return NCMul(coeff, factors)
-end
 function splice!!(ncmul::NCMul, i::Integer, swap::Swap)
     factors = ncmul.factors
     a = factors[i]
@@ -153,15 +142,6 @@ function _add_newterms!!(terms::Vector{T}, newterms) where {T}
 end
 
 
-function mysplice!!(v::V, i::UnitRange, replacement::W) where {V,W}
-    T = promote_type(eltype(W), eltype(V))
-    if T <: eltype(V)
-        _mysplice!(v, i, replacement)
-        return v
-    else
-        return Vector{T}(vcat(v[1:(first(i)-1)], factors_vector(replacement), v[(last(i)+1):end]))
-    end
-end
 function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
     T = promote_type(eltype(W), eltype(V))
     if T <: eltype(V)
@@ -172,35 +152,6 @@ function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
     end
 end
 
-function _mysplice!(a::Vector, r::AbstractUnitRange{<:Integer}, ins)
-    # this is a copy of the splice! in base, except that it does not return the deleted elements,
-    # in order to avoid allocations
-    m = length(ins)
-    if m == 0
-        deleteat!(a, r)
-        return nothing
-    end
-
-    n = length(a)
-    f = first(r)
-    l = last(r)
-    d = length(r)
-
-    if m < d
-        delta = d - m
-        start = (f - 1 < n - l) ? f : (l - delta + 1)
-        deleteat!(a, start:(start+delta-1))
-    elseif m > d
-        Base._growat!(a, (f - 1 < n - l) ? f : (l + 1), m - d)
-    end
-
-    k = 1
-    for x in ins
-        a[f+k-1] = x
-        k += 1
-    end
-    return nothing
-end
 function _mysplice!(a::Vector, i::Integer, ins)
     m = length(ins)
     if m == 0
@@ -221,10 +172,6 @@ function _mysplice!(a::Vector, i::Integer, ins)
 end
 
 
-function splice!!(ncmul::NCMul, i::UnitRange)
-    splice!(ncmul.factors, i)
-    return ncmul
-end
 function splice!!(ncmul::NCMul, i, term::NCMul)
     coeff = prefactor(term) * prefactor(ncmul)
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
@@ -245,10 +192,6 @@ end
 _check_atom_effect(term) = nothing
 # `nothing` inside AddTerms would keep a*b as a term, which gives the same effect again and never terminates
 _check_atom_effect(::Nothing) = throw(ArgumentError("unsupported mul_effect value: `nothing` can only be returned as the whole result of mul_effect, not inside AddTerms."))
-function splice!!(ncmul::NCMul, i::UnitRange, coeff::Number)
-    deleteat!(ncmul.factors, i)
-    return NCMul(coeff * prefactor(ncmul), ncmul.factors)
-end
 function splice!!(ncmul::NCMul, i::Integer, coeff::Number)
     deleteat!(ncmul.factors, i:(i+1))
     return NCMul(coeff * prefactor(ncmul), ncmul.factors)

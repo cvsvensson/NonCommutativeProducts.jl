@@ -21,3 +21,12 @@
     @test add!!(f[1] + 1, f[1], 2, 5) == 7f[1] + 5
     @test add!!(f[1] + 1, 5 * f[1], 2, 5) == 15f[1] + 5
 end
+
+@testitem "oneunit of NCAdd" setup = [Fermions] begin
+    f1 = Fermion(1)
+    x = 2 * f1 + 3
+    @test oneunit(x) == 1
+    @test oneunit(x) isa typeof(x)
+    @test oneunit(typeof(x)) == oneunit(x)
+    @test oneunit(x) * x == x
+end

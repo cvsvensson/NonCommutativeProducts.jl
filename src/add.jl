@@ -43,7 +43,6 @@ NCAdd{C,K}(ncadd::NCAdd{C,K}) where {C,K} = ncadd
 NCAdd(ncmul::NCMul{C}) where C = _with_zero_grades(NCAdd(zero(C), to_add_dict(ncmul)), () -> _grades(ncmul))
 
 additive_coeff(x::NCAdd) = x.coeff
-add_to_coeff!(a::NCAdd, x::Number) = a.coeff += x
 function set_coeff!(a::NCAdd, x::Number)
     a.coeff = x
     return a
@@ -346,3 +345,5 @@ end
 
 Base.zero(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(zero(C), Dict{K,C}())
 Base.one(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(one(C), Dict{K,C}())
+Base.oneunit(::T) where {T<:NCAdd} = oneunit(T)
+Base.oneunit(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(one(C), Dict{K,C}())
