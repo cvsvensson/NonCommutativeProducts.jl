@@ -223,6 +223,10 @@ It must have a branch that returns `nothing` in order for the sorting to termina
 
 No methods for `mul_effect` are defined in this package, so you need to define them for your types.
 
+The return value can be `nothing`, a number, an object, a sum or product of these, or one of the helper types `Swap(λ)`
+(replace `a*b` by `λ*b*a`) and `AddTerms(terms)` (replace `a*b` by a sum of `terms`). `Swap` and `AddTerms` are
+available as `NonCommutativeProducts.Swap` and `NonCommutativeProducts.AddTerms`, but are not yet public.
+
 # Example
 ```julia
 # Anticommuting Grassmann numbers

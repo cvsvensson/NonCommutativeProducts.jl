@@ -128,11 +128,27 @@ end
 const _DEFAULT_AUTOSORT = Ref(false)
 const _autosort = ScopedValue{Bool}()
 
+"""
+    autosort()
+
+Whether products are sorted with `mul_effect` as they are formed. Set the global default with `enable_autosort!` and
+`disable_autosort!`, or override it for a block of code with `with_autosort`. Autosorting is off by default.
+"""
 function autosort()
     Base.isassigned(_autosort) && return _autosort[]
     return _DEFAULT_AUTOSORT[]
 end
+"""
+    enable_autosort!()
+
+Sort products with `mul_effect` as they are formed, unless overridden by `with_autosort`.
+"""
 enable_autosort!() = _DEFAULT_AUTOSORT[] = true
+"""
+    disable_autosort!()
+
+Do not sort products as they are formed, unless overridden by `with_autosort`. This is the default.
+"""
 disable_autosort!() = _DEFAULT_AUTOSORT[] = false
 
 """
@@ -184,6 +200,12 @@ macro nc_pairs(types...)
     end
 
 end
+"""
+    @commutative T1 T2 ...
+
+Define mixed arithmetic for types that commute with each other, and order them as listed: `mul_effect(x::Ti, y::Tj)`
+is `nothing` if `i < j` and `y * x` if `i > j`. The types must already be registered with `@nc`.
+"""
 macro commutative(types...)
     mul_effect = Expr[]
     for (n1, T1) in enumerate(types)

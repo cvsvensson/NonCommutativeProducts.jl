@@ -248,7 +248,7 @@ Every term that `mul_effect(a, b)` returns must have the product of the grades o
 
 ## API overview
 
-No names are exported, so access them as `NonCommutativeProducts.name` or import them explicitly.
+The names below are public but not exported, so access them as `NonCommutativeProducts.name` or import them explicitly, e.g. `using NonCommutativeProducts: @nc, terms`.
 
 **Setting up types**
 * `@nc T1 T2 ...`: defines addition and multiplication for the given types, both within each type and between them.
@@ -267,11 +267,15 @@ No names are exported, so access them as `NonCommutativeProducts.name` or import
 
 **Sorting**
 * `sort(x)`: sorts a product or sum by repeatedly applying `mul_effect`. The result is always a sum.
-* `enable_autosort!()` / `disable_autosort!()`: sets whether products are sorted automatically when they are formed. Override locally with `NonCommutativeProducts.with_autosort(false) do ... end` (or `NonCommutativeProducts.with_autosort(true) do ... end`).
+* `enable_autosort!()` / `disable_autosort!()`: sets whether products are sorted automatically when they are formed. `autosort()` returns the current setting. Override locally with `with_autosort(false) do ... end` (or `with_autosort(true) do ... end`).
 
 **Expressions**
 * `NCMul`: a product, i.e. a coefficient times a list of factors.
-* `NCAdd`: a sum of `NCMul`s plus a scalar term.
-* `add!!(a, b)`: computes `a + b`, in place when possible.
+* `NCAdd`: a sum of `NCMul`s plus a scalar term. Its constructors are internal; create sums by adding atoms and products.
+* `terms(x)`: an iterator over the terms of `x`, each as an `NCMul` including its coefficient. A nonzero scalar part appears as a product without factors, so `sum(terms(x)) == x`. Works for sums, products, numbers and atoms.
+* `factors(m)`: the factors of the product `m` as a vector.
+* `coefficient(m)`: the coefficient of the product `m`.
+* `scalar(x)`: the number `x` equals if it is a scalar, and an error otherwise.
+* `add!!(a, b)` / `add!!(a, b, α, β)`: computes `a + b` or `β*a + α*b`, in place when possible. This is the package's own function, not `VectorInterface.add!!`: it also has the 2-argument form, and `α` and `β` default to `One()`.
 * `ncmap(f, x)`: applies `f` to every factor of `x`, e.g. `ncmap(f, 2*a*b + 1) == 2*f(a)*f(b) + 1`.
 * `ncmapreduce(f, (add, mul), x; scalarmap=identity)`: maps `f` over the factors and combines them with custom operations instead of `+` and `*`.

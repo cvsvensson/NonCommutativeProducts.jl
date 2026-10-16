@@ -1006,6 +1006,21 @@ end
 end
 
 
+@testitem "Public API" begin
+    using NonCommutativeProducts
+    public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :enable_autosort!,
+        :disable_autosort!, :autosort, :with_autosort, :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors,
+        :coefficient]
+    for name in public_names
+        @test Base.ispublic(NonCommutativeProducts, name)
+        @test Base.Docs.hasdoc(NonCommutativeProducts, name)
+    end
+    for name in [:Swap, :AddTerms, :bubble_sort, :MulAdd, :_autosort, :grade, :mul!!, :anyadd, :isscalar]
+        @test !Base.ispublic(NonCommutativeProducts, name)
+    end
+    @test !Base.isexported(NonCommutativeProducts, :NCMul)
+end
+
 @testitem "Aqua" begin
     using Aqua
     Aqua.test_all(NonCommutativeProducts)

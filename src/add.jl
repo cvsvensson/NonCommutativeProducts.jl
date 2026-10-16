@@ -20,6 +20,14 @@ filter_zeros!(d::AbstractDict) = filter!(kv -> !iszero(last(kv)), d)
 # since equality and key lookup assume keys are compared by value.
 # `zero_grades` holds the grades of a zero sum (see grading.jl), and is `nothing` for a nonzero sum and for a zero
 # without grades (∅). It is not part of the value, so equality and hashing ignore it.
+"""
+    NCAdd
+
+A sum of products (`NCMul`) with a scalar term. Create sums by adding atoms and products, e.g. `a*b + 2*c + 1`. Use
+`terms(x)` to iterate over the terms of a sum.
+
+The constructors of `NCAdd` are internal. They may take ownership of the dictionary passed to them and mutate it.
+"""
 mutable struct NCAdd{C,K}
     coeff::C
     const dict::Dict{K,C}
@@ -154,6 +162,15 @@ function Base.:+(a::NCAdd{C1,K1}, b::NCAdd{C2,K2}) where {C1,K1,C2,K2}
     sum = NCAdd(additive_coeff(a) + additive_coeff(b), dict)
     return _with_zero_grades(sum, () -> _union_grades(_grades(a), _grades(b)))
 end
+"""
+    add!!(a, b)
+    add!!(a, b, α, β)
+
+Compute `a + b`, or `β * a + α * b`, reusing the storage of `a` when possible. Use the returned value, since `a` may
+be left unchanged or modified. This function belongs to this package and is not `VectorInterface.add!!`. It differs
+in having the 2-argument form, and in the weights `α` and `β` defaulting to `One()`, so that `add!!(a, b)` is `a + b`.
+Methods for `VectorInterface.add!!` call it.
+"""
 add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
 # Add `coeff` to the term with key `key` in `dict`, and delete the term if it becomes zero.
