@@ -974,3 +974,8 @@ end
     @test got_prod == expected_prod
 end
 
+
+@testitem "Aqua" begin
+    using Aqua
+    Aqua.test_all(NonCommutativeProducts)
+end
