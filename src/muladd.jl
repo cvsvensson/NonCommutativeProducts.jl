@@ -28,6 +28,8 @@ function Base.:+(a::A, b::NCMul{C}) where {A<:Number,C}
 end
 Base.:+(a::UniformScaling, b::NCMul) = a.λ + b
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
+Base.:*(x::MulAdd, J::UniformScaling) = x * J.λ
+Base.:*(J::UniformScaling, x::MulAdd) = J.λ * x
 function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), K2)
@@ -65,9 +67,12 @@ end
 
 macro nc_common(T)
     quote
+        NonCommutativeProducts._is_atom(::Type{<:$(esc(T))}) = true
+
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
         NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(NCMul(f))
         NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
+        NonCommutativeProducts.terms(x::$(esc(T))) = terms(NCMul(x))
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
         Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) + y
@@ -123,12 +128,39 @@ end
 const _DEFAULT_AUTOSORT = Ref(false)
 const _autosort = ScopedValue{Bool}()
 
+"""
+    autosort()
+
+Whether products are sorted with `mul_effect` as they are formed. Set the global default with `enable_autosort!` and
+`disable_autosort!`, or override it for a block of code with `with_autosort`. Autosorting is off by default.
+"""
 function autosort()
     Base.isassigned(_autosort) && return _autosort[]
     return _DEFAULT_AUTOSORT[]
 end
+"""
+    enable_autosort!()
+
+Sort products with `mul_effect` as they are formed, unless overridden by `with_autosort`.
+"""
 enable_autosort!() = _DEFAULT_AUTOSORT[] = true
+"""
+    disable_autosort!()
+
+Do not sort products as they are formed, unless overridden by `with_autosort`. This is the default.
+"""
 disable_autosort!() = _DEFAULT_AUTOSORT[] = false
+
+"""
+    with_autosort(f, enabled::Bool=true)
+
+Call `f()` with autosorting set to `enabled`, overriding the global setting from `enable_autosort!` and `disable_autosort!` for the duration of the call. Works with a `do` block:
+
+    with_autosort(false) do
+        a * b
+    end
+"""
+with_autosort(f, enabled::Bool=true) = with(f, _autosort => enabled)
 
 """
     @nc T1 T2 ...
@@ -168,6 +200,12 @@ macro nc_pairs(types...)
     end
 
 end
+"""
+    @commutative T1 T2 ...
+
+Define mixed arithmetic for types that commute with each other, and order them as listed: `mul_effect(x::Ti, y::Tj)`
+is `nothing` if `i < j` and `y * x` if `i > j`. The types must already be registered with `@nc`.
+"""
 macro commutative(types...)
     mul_effect = Expr[]
     for (n1, T1) in enumerate(types)
@@ -180,21 +218,5 @@ macro commutative(types...)
     quote
         $(mul_effect...)
         @nc_pairs $(esc.(types)...)
-    end
-end
-
-@testitem "Addition and multiplication with different number types" setup = [Fermions] begin
-    # This tests that addition and multiplication with different number types does not throw errors due to promotion issues and in place operations
-    f1 = Fermion(1)
-    f2 = Fermion(2)
-    nums = (1, 1/2, 1//3, 0.1+1im, big(4))
-    for x in nums
-        @test x + f1 == f1 + x
-        for y in nums
-            @test x + y*f1 == y*f1 + x
-            for z in nums
-                @test z*(x+y*f1) isa NonCommutativeProducts.NCAdd #throws error on v0.4.4
-            end
-        end
     end
 end

@@ -1,5 +1,5 @@
 @testitem "Arithmetic and sorting on Tuple-backed products" setup = [Fermions] begin
-    import NonCommutativeProducts: NCMul, NCAdd, bubble_sort
+    import NonCommutativeProducts: NCMul, NCAdd
     f1 = Fermion(1)
     f2 = Fermion(2)
     # each Tuple-backed expression is compared with its Vector-backed counterpart
@@ -22,7 +22,6 @@
         @test s' == sv'
         @test sort(t) == sort(v)
         @test sort(s) == sort(sv)
-        @test bubble_sort(t) == bubble_sort(v)
     end
     NonCommutativeProducts.disable_autosort!()
     # the tuple is not nested as a single factor
@@ -42,23 +41,22 @@
 end
 
 @testitem "adjoint of mixed-species sums" setup = [Fermions, Bosons] begin
-    import NonCommutativeProducts: NCMul, bubble_sort, _autosort
-    using Base.ScopedValues: with
+    import NonCommutativeProducts: NCMul
     NonCommutativeProducts.@commutative Fermion Boson
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     b = Boson()
-    unsorted(f) = with(f, _autosort => false)
+    unsorted(f) = NonCommutativeProducts.with_autosort(f, false)
     s = unsorted() do
         2 * f1 * b * f2' + 1im * b' * f2 * b + f1' * f2 + 3 * b * f1 + 1
     end
     NonCommutativeProducts.enable_autosort!()
-    @test s' == bubble_sort(unsorted(() -> s'))
-    @test sort(s)' == bubble_sort(unsorted(() -> sort(s)'))
+    @test s' == sort(unsorted(() -> s'))
+    @test sort(s)' == sort(unsorted(() -> sort(s)'))
     @test s'' == sort(s)
     # Tuple-backed mixed products
     p = NCMul(2, (f1, b, f2'))
-    @test p' == bubble_sort(unsorted(() -> p'))
+    @test p' == sort(unsorted(() -> p'))
     @test p' == NCMul(2, Any[f1, b, f2'])'
 end
 
@@ -87,13 +85,13 @@ end
         bare_atom[] = bare
         # the factors start out as Vector{Alpha} and are widened when the Beta appears
         x = NC.NCMul(1, [Alpha(2), Alpha(1), Alpha(2), Alpha(3)])
-        @test NC.bubble_sort(x) == expected
-        @test NC.bubble_sort(NC.NCMul(1, (Alpha(2), Alpha(1), Alpha(2), Alpha(3)))) == expected
+        @test sort(x) == expected
+        @test sort(NC.NCMul(1, (Alpha(2), Alpha(1), Alpha(2), Alpha(3)))) == expected
         @test x.factors == [Alpha(2), Alpha(1), Alpha(2), Alpha(3)]
         # in a sum, the other terms keep sorting after the element type of the terms has widened
-        y = NC.bubble_sort(x + NC.NCMul(1, [Alpha(3), Alpha(1)]))
+        y = sort(x + NC.NCMul(1, [Alpha(3), Alpha(1)]))
         @test y == expected - NC.NCMul(1, [Alpha(1), Alpha(3)])
-        @test NC.bubble_sort(NC.NCMul(1, [Alpha(1), Alpha(1), Alpha(2), Alpha(2)])) == NC.NCMul(1, Any[Beta(1), Beta(2)])
+        @test sort(NC.NCMul(1, [Alpha(1), Alpha(1), Alpha(2), Alpha(2)])) == NC.NCMul(1, Any[Beta(1), Beta(2)])
     end
 end
 
@@ -140,13 +138,13 @@ end
     for x in (NC.NCMul(1, [Gamma(2), Gamma(1)]), NC.NCMul(1, Any[Gamma(2), Gamma(1)]), NC.NCMul(1, (Gamma(2), Gamma(1))))
         # nothing is only allowed as the whole effect, not inside AddTerms
         effect[] = NC.AddTerms((NC.Swap(1), nothing))
-        @test_throws ArgumentError NC.bubble_sort(x)
+        @test_throws ArgumentError sort(x)
         effect[] = NC.AddTerms((NC.Swap(1), 1))
-        @test NC.bubble_sort(x) == NC.NCMul(1, [Gamma(1), Gamma(2)]) + 1
+        @test sort(x) == NC.NCMul(1, [Gamma(1), Gamma(2)]) + 1
     end
     # an atom of a type not registered with @nc can't be spliced in as a factor
     effect[] = Unregistered()
-    @test_throws MethodError NC.bubble_sort(NC.NCMul(1, [Gamma(2), Gamma(1)]))
+    @test_throws MethodError sort(NC.NCMul(1, [Gamma(2), Gamma(1)]))
 end
 
 @testitem "Sums and nested AddTerms inside AddTerms" begin
@@ -162,13 +160,13 @@ end
     sorted = NC.NCMul(1, [Delta(1), Delta(2)])
     for x in (NC.NCMul(2, [Delta(2), Delta(1)]), NC.NCMul(2, Any[Delta(2), Delta(1)]), NC.NCMul(2, (Delta(2), Delta(1))))
         effect[] = (a, b) -> NC.AddTerms((NC.Swap(1), NC.NCMul(Delta(0)) + 1))
-        @test NC.bubble_sort(x) == 2 * (sorted + Delta(0) + 1)
+        @test sort(x) == 2 * (sorted + Delta(0) + 1)
         effect[] = (a, b) -> NC.AddTerms((NC.NCMul(Delta(0)) + 1, NC.Swap(-1)))
-        @test NC.bubble_sort(x) == 2 * (-sorted + Delta(0) + 1)
+        @test sort(x) == 2 * (-sorted + Delta(0) + 1)
         effect[] = (a, b) -> NC.AddTerms([NC.Swap(1), 3 * NC.NCMul(Delta(0)) + 0])
-        @test NC.bubble_sort(x) == 2 * (sorted + 3 * Delta(0))
+        @test sort(x) == 2 * (sorted + 3 * Delta(0))
         effect[] = (a, b) -> NC.AddTerms((NC.Swap(1), NC.AddTerms((3, NC.NCMul(Delta(5)), NC.NCMul(Delta(4)) - 1))))
-        @test NC.bubble_sort(x) == 2 * (sorted + 2 + Delta(5) + Delta(4))
+        @test sort(x) == 2 * (sorted + 2 + Delta(5) + Delta(4))
     end
 
     # in longer products, sums inside AddTerms give the same result as returning the whole sum
@@ -178,8 +176,8 @@ end
             (a, b) -> -NC.NCMul(1, [b, a]) + 2 + Delta(0) - Delta(1)))
     for (nested, whole) in effects, factors in ([Delta(4), Delta(2), Delta(1), Delta(3)], Any[Delta(4), Delta(2), Delta(1), Delta(3)])
         effect[] = nested
-        result = NC.bubble_sort(NC.NCMul(1, copy(factors)))
+        result = sort(NC.NCMul(1, copy(factors)))
         effect[] = whole
-        @test result == NC.bubble_sort(NC.NCMul(1, copy(factors)))
+        @test result == sort(NC.NCMul(1, copy(factors)))
     end
 end

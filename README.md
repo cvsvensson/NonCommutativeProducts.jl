@@ -4,6 +4,7 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/) -->
 [![Build Status](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl)
+[![Aqua QA](https://juliatesting.github.io/Aqua.jl/dev/assets/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
 
 **NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. Install by
 ```julia
@@ -81,9 +82,9 @@ In order to automatically sort them on each multiplication, we can call `enable_
 NonCommutativeProducts.enable_autosort!()
 prod(Fermion(n) + Fermion(n)' for n in 1:4) 
 #=Sum with 16 terms: 
- -c†[1]*c†[2]*c†[4]*c[3] + c†[1]*c[2]*c[3]*c[4] + c†[1]*c†[3]*c†[4]*c[2] + ...=#
+ -c†[1]*c†[2]*c†[4]*c[3]-c†[1]*c†[3]*c[2]*c[4]-c†[2]*c[1]*c[3]*c[4] + ...=#
 ```
-`enable_autosort!` sets the global default. You can override it locally in a scope with `Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do ... end`. This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort is always locally disabled to avoid infinite recursion. Use `NonCommutativeProducts.disable_autosort!()` to turn autosort off globally again.
+`enable_autosort!` sets the global default. You can override it locally in a scope with `NonCommutativeProducts.with_autosort(false) do ... end`. This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort is always locally disabled to avoid infinite recursion. Use `NonCommutativeProducts.disable_autosort!()` to turn autosort off globally again.
 
 ## Multiple types
 
@@ -124,7 +125,7 @@ This package is flexible, but not very efficient. Sorting is done via bubble sor
 # Example timing: 108.298 ms (1142139 allocations: 78.37 MiB)
 op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
 #= Sum with 59049 terms: 
-1I-c†[2]*c†[6]*c†[9]*c[1]*c[3]*c[4]*c[7]*c[8]-c†[1]*c†[2]*c†[4]*c†[5]*c†[10]*c[6]*c[8]*c[9]-c†[5]*c†[8]*c[2]*c[7] + ...
+1I-c†[10]*c[1]-c†[10]*c[1]*c[2]*c[3]-c†[10]*c[1]*c[2]*c[3]*c[4]*c[5] + ...
 =#
 ```
 
@@ -247,7 +248,7 @@ Every term that `mul_effect(a, b)` returns must have the product of the grades o
 
 ## API overview
 
-No names are exported, so access them as `NonCommutativeProducts.name` or import them explicitly.
+The names below are public but not exported, so access them as `NonCommutativeProducts.name` or import them explicitly, e.g. `using NonCommutativeProducts: @nc, terms`.
 
 **Setting up types**
 * `@nc T1 T2 ...`: defines addition and multiplication for the given types, both within each type and between them.
@@ -265,12 +266,16 @@ No names are exported, so access them as `NonCommutativeProducts.name` or import
 * `check_grading(a, b)`: checks that every term of `mul_effect(a, b)` has the product of the grades of `a` and `b`.
 
 **Sorting**
-* `sort(x)`: sorts a product or sum by repeatedly applying `mul_effect`.
-* `enable_autosort!()` / `disable_autosort!()`: sets whether products are sorted automatically when they are formed. Override locally with `Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do ... end`.
+* `sort(x)`: sorts a product or sum by repeatedly applying `mul_effect`. The result is always a sum.
+* `enable_autosort!()` / `disable_autosort!()`: sets whether products are sorted automatically when they are formed. `autosort()` returns the current setting. Override locally with `with_autosort(false) do ... end` (or `with_autosort(true) do ... end`).
 
 **Expressions**
 * `NCMul`: a product, i.e. a coefficient times a list of factors.
-* `NCAdd`: a sum of `NCMul`s plus a scalar term.
-* `add!!(a, b)`: computes `a + b`, in place when possible.
+* `NCAdd`: a sum of `NCMul`s plus a scalar term. Its constructors are internal; create sums by adding atoms and products.
+* `terms(x)`: an iterator over the terms of `x`, each as an `NCMul` including its coefficient. A nonzero scalar part appears as a product without factors, so `sum(terms(x)) == x`. Works for sums, products, numbers and atoms.
+* `factors(m)`: the factors of the product `m` as a vector.
+* `coefficient(m)`: the coefficient of the product `m`.
+* `scalar(x)`: the number `x` equals if it is a scalar, and an error otherwise.
+* `add!!(a, b)` / `add!!(a, b, α, β)`: computes `a + b` or `β*a + α*b`, in place when possible. This is the package's own function, not `VectorInterface.add!!`: it also has the 2-argument form, and `α` and `β` default to `One()`.
 * `ncmap(f, x)`: applies `f` to every factor of `x`, e.g. `ncmap(f, 2*a*b + 1) == 2*f(a)*f(b) + 1`.
 * `ncmapreduce(f, (add, mul), x; scalarmap=identity)`: maps `f` over the factors and combines them with custom operations instead of `+` and `*`.

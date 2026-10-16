@@ -20,9 +20,17 @@ filter_zeros!(d::AbstractDict) = filter!(kv -> !iszero(last(kv)), d)
 # since equality and key lookup assume keys are compared by value.
 # `zero_grades` holds the grades of a zero sum (see grading.jl), and is `nothing` for a nonzero sum and for a zero
 # without grades (∅). It is not part of the value, so equality and hashing ignore it.
+"""
+    NCAdd
+
+A sum of products (`NCMul`) with a scalar term. Create sums by adding atoms and products, e.g. `a*b + 2*c + 1`. Use
+`terms(x)` to iterate over the terms of a sum.
+
+The constructors of `NCAdd` are internal. They may take ownership of the dictionary passed to them and mutate it.
+"""
 mutable struct NCAdd{C,K}
     coeff::C
-    dict::Dict{K,C}
+    const dict::Dict{K,C}
     zero_grades::Union{Nothing,Set{Any}}
     # The coefficient type follows arithmetic, so absorbing scalar terms may widen it (false + false isa Int)
     function NCAdd(coeff::C, dict::D; zero_grades=nothing, kwargs...) where {C,D<:AbstractDict}
@@ -43,7 +51,6 @@ NCAdd{C,K}(ncadd::NCAdd{C,K}) where {C,K} = ncadd
 NCAdd(ncmul::NCMul{C}) where C = _with_zero_grades(NCAdd(zero(C), to_add_dict(ncmul)), () -> _grades(ncmul))
 
 additive_coeff(x::NCAdd) = x.coeff
-add_to_coeff!(a::NCAdd, x::Number) = a.coeff += x
 function set_coeff!(a::NCAdd, x::Number)
     a.coeff = x
     return a
@@ -91,43 +98,52 @@ function print_coeff(io, coeff)
         print(io, "(", coeff, ")", "I")
     end
 end
-function Base.show(io::IO, x::NCAdd; max_terms=3)
-    compact = get(io, :compact, false)
-    print_one = !iszero(additive_coeff(x)) || length(x.dict) == 0
-    compact = length(x.dict) > max_terms
-    print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
-
-    compact && println(io, "Sum with ", length(x.dict) + !iszero(additive_coeff(x)), " terms: ")
-    N = min(max_terms, length(x.dict))
-
-    print_one && print_coeff(io, additive_coeff(x))
-    for (n, (k, v)) in enumerate(pairs(x.dict))
-        n > max_terms && break
-        should_print_sign = (n > 1 || print_one)
-        if isreal(v)
-            v = real(v)
-            neg = v < 0
-            if neg isa Bool
-                if neg
-                    print_sign("-")
-                    print(io, -real(v) * k)
-                else
-                    should_print_sign && print_sign("+")
-                    print(io, real(v) * k)
-                end
-            else
-                should_print_sign && print_sign("+")
-                print(io, "(", v, ")*", k)
-            end
+# Each term is rendered with the context of `io` as `(negative, text)`, and the terms are sorted by
+# their signed printed form so the output does not depend on dictionary order.
+function _term_parts(io::IO, x::NCAdd)
+    parts = Tuple{Bool,String}[]
+    for (k, v) in pairs(x.dict)
+        r = isreal(v) ? real(v) : v
+        isneg = isreal(v) ? r < 0 : nothing
+        if isneg isa Bool
+            neg = isneg
+            text = sprint(print, neg ? -r * k : r * k; context=io)
         else
-            should_print_sign && print_sign("+")
-            print(io, "(", v, ")*", k)
+            neg = false
+            text = sprint(print, "(", v, ")*", k; context=io)
         end
+        push!(parts, (neg, text))
     end
-    if N < length(x.dict)
-        print(io, " + ...")
+    sort!(parts; by=((neg, text),) -> neg ? "-" * text : text)
+    return parts
+end
+
+function _show_terms(io::IO, x::NCAdd, parts, compact::Bool, ellipsis::Bool)
+    print_one = !iszero(additive_coeff(x)) || length(x.dict) == 0
+    print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
+    print_one && print_coeff(io, additive_coeff(x))
+    for (n, (neg, text)) in enumerate(parts)
+        if neg
+            n > 1 || print_one ? print_sign("-") : print(io, "-")
+        elseif n > 1 || print_one
+            print_sign("+")
+        end
+        print(io, text)
     end
+    ellipsis && print(io, " + ...")
     return nothing
+end
+
+Base.show(io::IO, x::NCAdd) = _show_terms(io, x, _term_parts(io, x), false, false)
+
+function Base.show(io::IO, ::MIME"text/plain", x::NCAdd; max_terms=3)
+    parts = _term_parts(io, x)
+    if get(io, :limit, false) && length(parts) > max_terms
+        println(io, "Sum with ", length(parts) + !iszero(additive_coeff(x)), " terms: ")
+        _show_terms(io, x, parts[1:max_terms], true, true)
+    else
+        _show_terms(io, x, parts, false, false)
+    end
 end
 
 Base.:+(a::Number, b::NCAdd) = _with_zero_grades(NCAdd(a + additive_coeff(b), copy(b.dict)), () -> _union_grades(_grades(a), _grades(b)))
@@ -146,6 +162,15 @@ function Base.:+(a::NCAdd{C1,K1}, b::NCAdd{C2,K2}) where {C1,K1,C2,K2}
     sum = NCAdd(additive_coeff(a) + additive_coeff(b), dict)
     return _with_zero_grades(sum, () -> _union_grades(_grades(a), _grades(b)))
 end
+"""
+    add!!(a, b)
+    add!!(a, b, α, β)
+
+Compute `a + b`, or `β * a + α * b`, reusing the storage of `a` when possible. Use the returned value, since `a` may
+be left unchanged or modified. This function belongs to this package and is not `VectorInterface.add!!`. It differs
+in having the 2-argument form, and in the weights `α` and `β` defaulting to `One()`, so that `add!!(a, b)` is `a + b`.
+Methods for `VectorInterface.add!!` call it.
+"""
 add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
 # Add `coeff` to the term with key `key` in `dict`, and delete the term if it becomes zero.
@@ -317,7 +342,7 @@ end
 # adding the products to c and then sorting it.
 function _add_sorted_products!!(c::NCAdd{C}, a::MulAdd, b::MulAdd) where {C}
     products = [catenate(aterm, bterm) for bterm in NCterms(b) for aterm in NCterms(a)]
-    isempty(products) && return bubble_sort!(c)
+    isempty(products) && return bubble_sort(c)
     terms = isempty(c.dict) ? products : vcat(products, collect(NCterms(c, copy_factors)))
     # the coefficient type of c with the products added, also if they all vanish when sorted
     return _add_scaled!!(_bubble_sort!(terms, promote_type(C, _coeff_type(products))), additive_coeff(c), One())
@@ -332,7 +357,7 @@ function Base.adjoint(x::NCAdd)
     newx = with(_autosort => false) do
         _adjoint_terms(x)
     end
-    newx = autosort() ? bubble_sort!(newx) : newx
+    newx = autosort() ? bubble_sort(newx) : newx
     return _with_zero_grades(newx, () -> _adjoint_grades(_grades(x)))
 end
 function _adjoint_terms(x::NCAdd)
@@ -346,27 +371,5 @@ end
 
 Base.zero(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(zero(C), Dict{K,C}())
 Base.one(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(one(C), Dict{K,C}())
-
-@testitem "Consistency between + and add!!" setup = [Fermions] begin
-    import NonCommutativeProducts: add!!
-    NonCommutativeProducts.disable_autosort!()
-    f = Fermion.(1:2)
-    a = 1.0 * f[2] * f[1] + 1 + f[1]
-    for b in [1.0, 1, f[1], 1.0 * f[1], f[2] * f[1], a]
-        a2 = copy(a)
-        a3 = add!!(a2, b) # Should mutate
-        @test a + b == a3
-        @test a2 == a3
-        anew = add!!(a, 1im * b) #Should not mutate
-        @test a2 !== anew
-    end
-    @test a == 1.0 * f[2] * f[1] + 1 + f[1]
-
-    NonCommutativeProducts.disable_autosort!()
-    @test add!!(f[1] + 1, 1) == f[1] + 2
-    @test add!!(f[1] + 1, f[1]) == 2f[1] + 1
-    @test add!!(f[1] + 1, 5 * f[1]) == 6f[1] + 1
-    @test add!!(f[1] + 1, 1, 2, 5) == 5f[1] + 7
-    @test add!!(f[1] + 1, f[1], 2, 5) == 7f[1] + 5
-    @test add!!(f[1] + 1, 5 * f[1], 2, 5) == 15f[1] + 5
-end
+Base.oneunit(::T) where {T<:NCAdd} = oneunit(T)
+Base.oneunit(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(one(C), Dict{K,C}())

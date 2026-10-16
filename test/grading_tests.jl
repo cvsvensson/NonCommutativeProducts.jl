@@ -392,3 +392,12 @@ end
     @test NC.grades(z') == Set([BRA])
     NC.enable_autosort!()
 end
+
+@testitem "Grading: unregistered objects" setup = [Fermions] begin
+    import NonCommutativeProducts as NC
+    struct NotAnAtom end
+
+    @test_throws ArgumentError NC.grade(NotAnAtom())
+    @test_throws ArgumentError NC.grade("text")
+    @test NC.grade(Fermion(1)) === nothing
+end
