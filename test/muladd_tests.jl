@@ -13,3 +13,29 @@
         end
     end
 end
+
+@testitem "Multiplication with UniformScaling" setup = [Fermions] begin
+    using LinearAlgebra: I
+    a, b = Fermion(1), Fermion(2)
+    @test a * I == a
+    @test I * a == a
+    @test (2a) * I == 2a
+    @test I * (2a) == 2a
+    @test a * (2I) == 2a
+    @test (2I) * a == 2a
+    @test (a * b) * I == a * b
+    @test I * (a + b) == a + b
+    @test (a + b) * I == a + b
+    @test (a + 1) * (3I) == 3a + 3
+    @test iszero((0I) * a)
+end
+
+@testitem "Multiplication by a zero UniformScaling keeps the grade" setup = [GradedKets] begin
+    using LinearAlgebra: I
+    import NonCommutativeProducts as NC
+    z = (0I) * ket(1)
+    @test iszero(z)
+    @test NC.grades(z) == Set([KET])
+    @test NC.grades(ket(1) * (0I)) == Set([KET])
+    @test NC.grades((0I) * (ket(1) + ket(2))) == Set([KET])
+end

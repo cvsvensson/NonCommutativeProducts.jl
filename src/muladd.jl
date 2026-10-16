@@ -28,6 +28,8 @@ function Base.:+(a::A, b::NCMul{C}) where {A<:Number,C}
 end
 Base.:+(a::UniformScaling, b::NCMul) = a.λ + b
 Base.:+(a::NCMul, b::Union{Number,UniformScaling}) = b + a
+Base.:*(x::MulAdd, J::UniformScaling) = x * J.λ
+Base.:*(J::UniformScaling, x::MulAdd) = J.λ * x
 function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), K2)
