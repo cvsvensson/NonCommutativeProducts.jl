@@ -1,3 +1,10 @@
+"""
+    NonCommutativeProducts
+
+Symbolic arithmetic with atoms that do not commute. Atoms are registered with `@nc`. Products are `NCMul` values and
+sums are `NCAdd` values. The order of factors is set by defining `mul_effect` for the atom types, and autosorting
+during multiplication is controlled by `enable_autosort!`, `disable_autosort!` and `with_autosort`.
+"""
 module NonCommutativeProducts
 
 using Base.ScopedValues

@@ -215,7 +215,7 @@ function splice!!_and_add(ncmul::T, i, effect) where T<:NCMul
     return ncmul2, T[]
 end
 
-""" 
+"""
     mul_effect(a, b)
 
 When sorting a non-commutative expression, this function defines what a*b should be replaced by. 
