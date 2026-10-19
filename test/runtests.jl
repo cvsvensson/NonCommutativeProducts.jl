@@ -371,6 +371,7 @@ end
         @test valtype(((2 * f1 + 2 * f2) / 2).dict) == Float64
         @test (0.1 * f1 + 0.1) / 7.0 == 0.1 / 7.0 * f1 + 0.1 / 7.0 != inv(7.0) * 0.1 * f1 + inv(7.0) * 0.1
         @test (2 * f1 + 2) // 2 == f1 + 1 && valtype(((2 * f1 + 2) // 2).dict) == Rational{Int}
+        @test (2 * f1 * f2) // 2 == f1 * f2
         @test VectorInterface.scale!(copy(x), 0.5) == half
         @test VectorInterface.scale!!(copy(x), 0.5) == half
         @test VectorInterface.add(x, f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
@@ -707,6 +708,13 @@ end
     @test VectorInterface.scale!(s, 2) === s
     @test s == 2 * x
     @test VectorInterface.scale!!(copy(x), 2) == 2 * x
+    # products are immutable, so scale! throws
+    err = try
+        VectorInterface.scale!(f1 * f2, 2)
+    catch e
+        e
+    end
+    @test err isa ArgumentError && occursin("immutable", err.msg)
 
     @test VectorInterface.add(y, x, 2, 3) == 3 * y + 2 * x
     a = copy(y)

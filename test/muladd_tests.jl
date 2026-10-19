@@ -28,6 +28,7 @@ end
     @test (a + b) * I == a + b
     @test (a + 1) * (3I) == 3a + 3
     @test iszero((0I) * a)
+    @test (2I) + a * b == 2 + a * b
 end
 
 @testitem "Multiplication by a zero UniformScaling keeps the grade" setup = [GradedKets] begin

@@ -232,6 +232,7 @@ end
 
 @testitem "Grading: grade_part" setup = [GradedKets] begin
     import NonCommutativeProducts as NC
+    using LinearAlgebra: I
     NC.enable_autosort!()
     kb = ket(2) * bra(3)
 
@@ -251,6 +252,13 @@ end
     z0 = 0 * (ket(1) + kb)
     @test NC.grades(NC.grade_part(z0, KET)) == Set([KET])
     @test isempty(NC.grades(NC.grade_part(z0, BRA)))
+
+    # a product has only its own grade, and scalars and uniform scalings have only the grade nothing
+    @test NC.grade_part(kb, KETBRA) == kb
+    @test iszero(NC.grade_part(kb, KET))
+    @test NC.grade_part(3, nothing) == 3
+    @test iszero(NC.grade_part(3, KET))
+    @test iszero(NC.grade_part(2I, KET))
 end
 
 @testitem "Grading: fermion charge" setup = [ChargedFermions] begin

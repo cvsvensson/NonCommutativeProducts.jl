@@ -88,7 +88,7 @@ end
 end
 
 @testitem "factors and coefficient of numbers and atoms" setup = [Fermions] begin
-    import NonCommutativeProducts: NCMul, terms, factors, coefficient
+    import NonCommutativeProducts: NCMul, terms, factors, coefficient, scalar
     NonCommutativeProducts.disable_autosort!()
     a, b = Fermion(:a), Fermion(:b)
     @test coefficient(2) == 2
@@ -96,6 +96,13 @@ end
     @test coefficient(a) == 1
     @test factors(a) == [a]
     @test factors(a) isa Vector{typeof(a)}
+    @test scalar(NCMul(2, typeof(a)[])) == 2
+    err = try
+        scalar(a * b)
+    catch e
+        e
+    end
+    @test err isa ArgumentError && occursin("not a scalar", err.msg)
     # the accessors agree with the terms of a sum, including the scalar term and atom terms
     x = 2 * a * b + 3 * a + 1
     for t in terms(x)

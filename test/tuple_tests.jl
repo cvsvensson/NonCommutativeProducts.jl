@@ -142,6 +142,12 @@ end
         effect[] = NC.AddTerms((NC.Swap(1), 1))
         @test sort(x) == NC.NCMul(1, [Gamma(1), Gamma(2)]) + 1
     end
+    # a replacement without factors removes the pair, and one with three factors grows the vector of factors
+    x = NC.NCMul(1, [Gamma(2), Gamma(1)])
+    effect[] = NC.NCMul(2, Gamma[])
+    @test sort(x) == 2
+    effect[] = NC.NCMul(1, [Gamma(1), Gamma(2), Gamma(3)])
+    @test sort(x) == NC.NCMul(1, [Gamma(1), Gamma(2), Gamma(3)])
     # an atom of a type not registered with @nc can't be spliced in as a factor
     effect[] = Unregistered()
     @test_throws MethodError sort(NC.NCMul(1, [Gamma(2), Gamma(1)]))
