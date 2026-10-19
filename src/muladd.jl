@@ -96,6 +96,7 @@ macro nc_common(T)
         Base.:*(x::Union{Number,UniformScaling,NCAdd}, y::$(esc(T))) = x * NCMul(y)
         Base.:*(x::$(esc(T)), y::Union{Number,UniformScaling,NCAdd}) = NCMul(x) * y
         Base.:/(x::$(esc(T)), y::Number) = NCMul(x) / y
+        Base.://(x::$(esc(T)), y::Number) = NCMul(x) // y
 
         Base.:^(a::$(esc(T)), b) = NCMul(a)^b
         Base.literal_pow(::typeof(^), a::$(esc(T)), ::Val{p}) where {p} = NCMul(a)^p

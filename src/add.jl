@@ -148,7 +148,16 @@ Base.:+(a::Number, b::NCAdd) = _with_zero_grades(NCAdd(a + additive_coeff(b), co
 Base.:+(a::UniformScaling, b::NCAdd) = a.λ + b
 Base.:+(a::NCAdd, b::B) where B<:Union{Number,UniformScaling} = b + a
 Base.:+(a::NCAdd, b::B) where B<:NCMul = b + a
-Base.:/(a::MulAdd, b::Number) = inv(b) * a
+Base.:/(a::NCMul, b::Number) = NCMul(prefactor(a) / b, a.factors)
+Base.://(a::NCMul, b::Number) = NCMul(prefactor(a) // b, a.factors)
+Base.:/(a::NCAdd, b::Number) = _divide_coefficients(/, a, b)
+Base.://(a::NCAdd, b::Number) = _divide_coefficients(//, a, b)
+function _divide_coefficients(op, a::NCAdd{C,K}, b::Number) where {C,K}
+    coeff = op(additive_coeff(a), b)
+    dict = copy_dict(a, K, typeof(coeff))
+    map!(v -> op(v, b), values(dict))
+    return _with_zero_grades(NCAdd(coeff, dict), () -> _grades(a))
+end
 Base.:-(a::Union{Number,UniformScaling}, b::MulAdd) = a + (-b)
 Base.:-(a::MulAdd, b::Union{Number,MulAdd,UniformScaling}) = a + (-b)
 Base.:-(a::NCAdd) = (-1) * a
