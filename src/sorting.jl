@@ -150,7 +150,7 @@ function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
         _mysplice!(v, i, replacement)
         return v
     else
-        return Vector{T}(vcat(v[1:(i-1)], factors_vector(replacement), v[(i+2):end]))
+        return Vector{T}(vcat(v[firstindex(v):(i-1)], factors_vector(replacement), v[(i+2):lastindex(v)]))
     end
 end
 

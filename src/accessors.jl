@@ -29,8 +29,7 @@ end
 The factors of `x` as an `AbstractVector`, in order and without the coefficient. Works for products, numbers
 and atoms registered with `@nc`: a number has no factors, and an atom is its own single factor. A sum with exactly one
 term has the factors of that term. A sum with more terms throws an `ArgumentError`; use `terms` to get its products.
-The result is a copy, so modifying it does not change `x`, and for a product it is a `Vector` whether or not the
-product stores its factors in a `Tuple`.
+The result is a copy, so modifying it does not change `x`.
 
 # Example
 ```julia
