@@ -127,3 +127,38 @@ end
     show(limited, MIME"text/plain"(), short)
     @test String(take!(limited.io)) == string(short)
 end
+
+@testitem "NCAdd: outer and inner constructors agree" setup = [Fermions] begin
+    import NonCommutativeProducts as NC
+    f1, f2 = Fermion(1), Fermion(2)
+    base = (f1 + 2 * f2).dict
+    K = keytype(base)
+    scalar_key = K(1, empty(first(keys(base)).factors))
+    f1key = first(k for k in keys(base) if k == NC.NCMul(1, [f1]))
+    f2key = first(k for k in keys(base) if k == NC.NCMul(1, [f2]))
+
+    dicts = (
+        Dict(f1key => 1, f2key => 2),
+        Dict(f1key => 1, scalar_key => 3),
+        Dict(f1key => 1, f2key => 0),
+        Dict(f1key => 0, scalar_key => 0),
+    )
+    for d in dicts, c in (0, 5)
+        x = NC.NCAdd(c, copy(d))
+        T, K2 = typeof(x).parameters
+        y = NC.NCAdd{T,K2}(c, copy(d))
+        @test typeof(x) == typeof(y)
+        @test x == y
+        @test x.dict == y.dict
+        @test all(!iszero, values(x.dict))
+        @test all(!NC.isscalar, keys(x.dict))
+    end
+
+    # the scalar term is absorbed into the coefficient
+    @test NC.NCAdd(5, Dict(f1key => 1, scalar_key => 3)).coeff == 8
+
+    # the coefficient type follows arithmetic: false + false is an Int
+    z = NC.NCAdd(false, Dict(f1key => false, scalar_key => false))
+    @test z.coeff isa Int
+    @test z == NC.NCAdd{Int,K}(false, Dict(f1key => false, scalar_key => false))
+end

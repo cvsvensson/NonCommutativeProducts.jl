@@ -181,3 +181,12 @@ end
         @test result == sort(NC.NCMul(1, copy(factors)))
     end
 end
+
+@testitem "NCMul constructors" setup = [Fermions] begin
+    import NonCommutativeProducts: NCMul, coefficient
+    a = Fermion(1)
+    A = typeof(a)
+    @test NCMul(2, [a]) == NCMul{Int}(2, [a]) == NCMul{Int,A,Vector{A}}(2, [a])
+    @test coefficient(NCMul{Float64}(1, [a])) isa Float64
+    @test_throws ArgumentError NCMul{Int,Int,Vector{Float64}}(1, [1.0])
+end

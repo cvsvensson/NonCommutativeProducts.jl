@@ -80,6 +80,25 @@ end
     end
 end
 
+@testitem "factors and coefficient of numbers and atoms" setup = [Fermions] begin
+    import NonCommutativeProducts: NCMul, terms, factors, coefficient
+    NonCommutativeProducts.disable_autosort!()
+    a, b = Fermion(:a), Fermion(:b)
+    @test coefficient(2) == 2
+    @test factors(2) == []
+    @test coefficient(a) == 1
+    @test factors(a) == [a]
+    @test factors(a) isa Vector{typeof(a)}
+    # the accessors agree with the terms of a sum, including the scalar term and atom terms
+    x = 2 * a * b + 3 * a + 1
+    for t in terms(x)
+        @test factors(t) isa AbstractVector
+        @test t == coefficient(t) * prod(factors(t); init=1)
+    end
+    @test coefficient(first(terms(a))) == 1
+    @test factors(first(terms(a))) == [a]
+end
+
 @testitem "accessors on Tuple-backed products" setup = [Fermions] begin
     import NonCommutativeProducts: NCMul, NCAdd, terms, factors, coefficient
     NonCommutativeProducts.disable_autosort!()

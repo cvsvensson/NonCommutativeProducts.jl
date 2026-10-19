@@ -24,26 +24,35 @@ function _scalar_terms(x::NCAdd{C,<:NCMul{<:Any,S}}) where {C,S}
 end
 
 """
-    factors(m::NCMul)
+    factors(x)
 
-The factors of the product `m` as an `AbstractVector`, in order and without the coefficient. The result is a copy,
-so modifying it does not change `m`, and it is a `Vector` whether or not `m` stores its factors in a `Tuple`.
+The factors of `x` as an `AbstractVector`, in order and without the coefficient. Works for products, numbers
+and atoms registered with `@nc`: a number has no factors, and an atom is its own single factor. The result is a
+copy, so modifying it does not change `x`, and for a product it is a `Vector` whether or not the product stores its
+factors in a `Tuple`.
 
 # Example
 ```julia
 factors(2 * a * b) == [a, b]
+factors(2) == []
+factors(a) == [a]
 ```
 """
 factors(m::NCMul) = collect(eltype(m.factors), m.factors)
+factors(::Number) = Any[]
 
 """
-    coefficient(m::NCMul)
+    coefficient(x)
 
-The scalar coefficient of the product `m`.
+The scalar coefficient of `x`. Works for products, numbers and atoms registered with `@nc`: a number is its own
+coefficient, and an atom has coefficient `1`.
 
 # Example
 ```julia
 coefficient(2 * a * b) == 2
+coefficient(2) == 2
+coefficient(a) == 1
 ```
 """
 coefficient(m::NCMul) = prefactor(m)
+coefficient(x::Number) = x

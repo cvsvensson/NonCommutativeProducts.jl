@@ -39,3 +39,15 @@ end
     @test NC.grades(ket(1) * (0I)) == Set([KET])
     @test NC.grades((0I) * (ket(1) + ket(2))) == Set([KET])
 end
+
+@testitem "oneunit and one coefficient types" setup = [Fermions] begin
+    f = Fermion.(1:2)
+    m = 1.0 * f[1] * f[2]
+    s = 1.0 * f[1] + f[2]
+    @test oneunit(typeof(m)).coeff isa Float64
+    @test oneunit(typeof(s)).coeff isa Float64
+    @test oneunit(typeof(m)) == 1
+    @test oneunit(typeof(s)) == 1
+    @test one(typeof(m)).coeff isa Float64
+    @test one(typeof(s)) isa typeof(s)
+end

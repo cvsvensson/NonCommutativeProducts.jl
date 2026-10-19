@@ -32,20 +32,18 @@ mutable struct NCAdd{C,K}
     coeff::C
     const dict::Dict{K,C}
     zero_grades::Union{Nothing,Set{Any}}
-    # The coefficient type follows arithmetic, so absorbing scalar terms may widen it (false + false isa Int)
-    function NCAdd(coeff::C, dict::D; zero_grades=nothing, kwargs...) where {C,D<:AbstractDict}
-        _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
-        newcoeff = coeff + addcoeff
-        T = promote_type(typeof(newcoeff), valtype(D))
-        newdict = dict isa Dict{keytype(D),T} ? dict : Dict{keytype(D),T}(dict)
-        new{T,keytype(D)}(newcoeff, newdict, _as_grades(zero_grades))
-    end
     # Exactly NCAdd{C,K}, or an InexactError if the coefficients don't fit in C
     function NCAdd{C,K}(coeff, dict::AbstractDict; zero_grades=nothing, kwargs...) where {C,K}
         newdict = dict isa Dict{K,C} ? dict : Dict{K,C}(dict)
         _, addcoeff = filter_ncadd_dict!(newdict; kwargs...)
         new{C,K}(convert(C, coeff + addcoeff), newdict, _as_grades(zero_grades))
     end
+end
+function NCAdd(coeff, dict::AbstractDict; zero_grades=nothing, kwargs...)
+    _, addcoeff = filter_ncadd_dict!(dict; kwargs...)
+    newcoeff = coeff + addcoeff
+    T = promote_type(typeof(newcoeff), valtype(dict))
+    return NCAdd{T,keytype(dict)}(newcoeff, dict; zero_grades, filter_zeros=false, filter_scalars=false)
 end
 NCAdd{C,K}(ncadd::NCAdd{C,K}) where {C,K} = ncadd
 NCAdd(ncmul::NCMul{C}) where C = _with_zero_grades(NCAdd(zero(C), to_add_dict(ncmul)), () -> _grades(ncmul))
@@ -370,6 +368,9 @@ function _adjoint_terms(x::NCAdd)
 end
 
 Base.zero(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(zero(C), Dict{K,C}())
-Base.one(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(one(C), Dict{K,C}())
+function Base.one(::Type{NCAdd{C,K}}) where {C,K}
+    O = typeof(one(C))
+    return NCAdd{O,K}(one(C), Dict{K,O}())
+end
 Base.oneunit(::T) where {T<:NCAdd} = oneunit(T)
-Base.oneunit(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(one(C), Dict{K,C}())
+Base.oneunit(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(oneunit(C), Dict{K,C}())

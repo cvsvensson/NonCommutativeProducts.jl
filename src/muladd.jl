@@ -52,7 +52,7 @@ to_add_dict_type(::Type{NCAdd{C,K}}) where {C,K} = K
 to_add_dict_type(::Type{NCMul{C,S}}) where {C,S} = NCMul{Int,S}
 to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
-function Base.:^(a::Union{NCAdd,NCMul}, b::Int)
+function Base.:^(a::Union{NCAdd,NCMul}, b::Integer)
     ret = Base.power_by_squaring(a, b)
     # bubble_sort rather than bubble_sort!, so that a product keeps its factors for the grades of a zero result
     autosort() && return bubble_sort(ret)
@@ -73,6 +73,8 @@ macro nc_common(T)
         NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(NCMul(f))
         NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
         NonCommutativeProducts.terms(x::$(esc(T))) = terms(NCMul(x))
+        NonCommutativeProducts.factors(x::$(esc(T))) = [x]
+        NonCommutativeProducts.coefficient(x::$(esc(T))) = 1
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
         Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) + y

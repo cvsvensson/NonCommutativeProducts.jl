@@ -898,7 +898,7 @@ end
     @test norm(x, 2) == norm(x) ≈ sqrt(5)
     @test_throws ArgumentError norm(x, 1)
 
-  
+
     # atoms of different types are converted to products, so they can be combined
     struct KetA
         bra::Bool
@@ -1035,5 +1035,6 @@ end
             :apply, :apply_normal, :apply_adjoint, :MulAdd)),
         # qualified names in macro-generated code
         no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
-            :mul_effect, :ncmapreduce, :terms)))
+            :mul_effect, :ncmapreduce, :terms, :coefficient, :factors)),
+    )
 end
