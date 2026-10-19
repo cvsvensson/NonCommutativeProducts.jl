@@ -18,6 +18,7 @@
     # Test ncmapreduce with custom operations, here by interchangin + and *.
     fermion_weight(x::Fermion) = x.creation ? 2 : 1
     @test ncmapreduce(fermion_weight, (*, +), 2 * f' * f + 6; scalarmap=x -> x + 1) == (3 + 2 + 1) * 7
+    @test ncmapreduce(fermion_weight, (-, -), 2 * f' * f + 6) == 7
 
     scale_fermion_and_boson(x::Fermion) = 2 * x
     scale_fermion_and_boson(x::Boson) = 3 * x

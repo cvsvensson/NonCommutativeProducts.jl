@@ -68,7 +68,7 @@ function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
 end
 function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C}
     if length(sorted_terms) == 0
-        return NCAdd(zero(C), Dict{to_add_dict_type(T),Int}())
+        return NCAdd(zero(C), Dict{to_add_dict_type(T),C}())
     end
     newadd = NCAdd(zero(C), to_add_dict(first(sorted_terms)))
     for term in Iterators.drop(sorted_terms, 1)

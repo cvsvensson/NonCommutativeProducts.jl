@@ -5,9 +5,9 @@ Map `f` over the noncommutative factors in `expr` and combine terms with
 custom binary operations in `ops = (add, mul)`. Scalars are transformed with `scalarmap`. Each term is reduced with `mul` and then the terms are reduced with `add`. Uses foldl for the ordering of operations.
 
 # Example 
-(using infix notation for op1 and op2)
+(using infix notation for add and mul)
 ```julia
-ncmapreduce(f, (op1, op2), 2*a*b + 1; scalarmap=g) == ((g(2) op1 f(a)) op1 f(b)) op2 g(1)
+ncmapreduce(f, (add, mul), 2*a*b + 1; scalarmap=g) == g(1) add ((g(2) mul f(a)) mul f(b))
 ```
 """
 function ncmapreduce(f, (add, mul), x::NCMul; scalarmap=identity)
