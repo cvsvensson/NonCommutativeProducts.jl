@@ -51,3 +51,19 @@ end
     @test one(typeof(m)).coeff isa Float64
     @test one(typeof(s)) isa typeof(s)
 end
+
+@testitem "Powers with any Integer exponent" setup = [Bosons] begin
+    b = Boson()
+    for x in (b, 2 * b' * b, b + b')
+        for p in (Int8(3), Int32(3), UInt8(3), big(3))
+            @test x^p == x^3
+        end
+        @test x^2 == x * x
+        @test x^0 == 1
+        n = -1
+        @test_throws DomainError x^n
+        @test_throws DomainError x^big(-2)
+        @test_throws DomainError x^-1
+        @test_throws DomainError x^-2
+    end
+end

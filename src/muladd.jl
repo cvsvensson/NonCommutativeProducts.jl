@@ -53,11 +53,14 @@ to_add_dict_type(::Type{NCMul{C,S}}) where {C,S} = NCMul{Int,S}
 to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Integer)
+    b < 0 && throw(DomainError(b, "products and sums have no inverse, so the exponent must be non-negative"))
     ret = Base.power_by_squaring(a, b)
     # bubble_sort rather than bubble_sort!, so that a product keeps its factors for the grades of a zero result
     autosort() && return bubble_sort(ret)
     return ret
 end
+# Base rewrites a negative literal power `x^-n` as `inv(x)^n`. Forward it to `^` instead.
+Base.literal_pow(::typeof(^), a::Union{NCAdd,NCMul}, ::Val{p}) where {p} = a^p
 
 # The product `ncmul` of the atoms or products `x` and `y`, sorted if autosort is enabled. Used by @nc.
 function _autosort_product(ncmul::NCMul, x, y)
@@ -95,6 +98,7 @@ macro nc_common(T)
         Base.:/(x::$(esc(T)), y::Number) = NCMul(x) / y
 
         Base.:^(a::$(esc(T)), b) = NCMul(a)^b
+        Base.literal_pow(::typeof(^), a::$(esc(T)), ::Val{p}) where {p} = NCMul(a)^p
 
         Base.:(==)(a::$(esc(T)), b::Union{NCMul,NCAdd}) = NCMul(a) == b
         Base.:(==)(a::Union{NCMul,NCAdd}, b::$(esc(T))) = b == a
