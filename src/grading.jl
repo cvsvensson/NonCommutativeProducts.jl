@@ -22,7 +22,7 @@ none.
 # Example
 ```julia
 # Fermions with charge as the grade
-NonCommutativeProducts.grade(f::Fermion) = f.creation ? 1 : -1
+NonCommutativeProducts.grade(f::Fermion) = f.dagger ? 1 : -1
 NonCommutativeProducts.mul_grade(g::Int, h::Int) = iszero(g + h) ? nothing : g + h
 NonCommutativeProducts.adjoint_grade(g::Int) = -g
 ```
@@ -132,7 +132,7 @@ multiplied without defining `mul_grade(::Charge, ::Bicyclic)`, once both types d
 Products involving a `ProductGrade` are computed componentwise:
 - components of the same grading are multiplied with [`mul_grade`](@ref), in order, so the product is associative;
 - components that become `nothing` are dropped, and a single remaining component is returned unwrapped, so the
-  product of the grades `Charge(1)`, `KET` and `Charge(-1)` is `KET`.
+  product of the grades `Charge(1)`, `Bicyclic(1, 0)` and `Charge(-1)` is `Bicyclic(1, 0)`.
 
 Components are matched by grading regardless of their order, so `f * k` and `k * f` have the same grade.
 [`adjoint_grade`](@ref) acts componentwise. `mul_grade` and `adjoint_grade` within one grading must return a grade of
@@ -149,7 +149,7 @@ spin(s) = iszero(s) ? nothing : Spin(s)
 NonCommutativeProducts.grading(::Type{Spin}) = Spin # and likewise for Charge
 NonCommutativeProducts.mul_grade(a::Spin, b::Spin) = spin(a.s + b.s)
 NonCommutativeProducts.adjoint_grade(a::Spin) = spin(-a.s)
-NonCommutativeProducts.grade(f::SpinFermion) = ProductGrade(Charge(f.dagger ? 1 : -1), Spin(f.up == f.dagger ? 1 : -1))
+NonCommutativeProducts.grade(f::SpinfulFermion) = ProductGrade(Charge(f.dagger ? 1 : -1), Spin(f.up == f.dagger ? 1 : -1))
 ```
 """
 struct ProductGrade
