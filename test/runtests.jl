@@ -862,7 +862,7 @@ end
     vecs = (x, H * x, 1im * Ket(0) + 2 * Ket(1), Ket(1))
     @test all(inner(a, b) ≈ NonCommutativeProducts.scalar(a' * b) for a in vecs, b in vecs)
 
-    # an atom whose overlap with itself is complex still has a real norm
+    # an atom whose overlap with itself is a complex number with zero imaginary part has a real norm
     struct CKet
         bra::Bool
     end

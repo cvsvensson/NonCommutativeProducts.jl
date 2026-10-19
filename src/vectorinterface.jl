@@ -87,7 +87,8 @@ LinearAlgebra.norm(x::MulAdd) = _norm_from_inner(VectorInterface.inner(x, x))
 LinearAlgebra.norm(x::MulAdd, p::Real) = _norm_p(x, p)
 _norm_p(x, p::Real) = p == 2 ? LinearAlgebra.norm(x) : throw(ArgumentError("norm(x, p) is only supported for p = 2, the norm induced by inner"))
 function _norm_from_inner(z::Number)
-    return sqrt(real(z))
+    r = real(z)
+    return sqrt(max(r, zero(r)))
 end
 LinearAlgebra.dot(x::MulAdd, y::MulAdd) = VectorInterface.inner(x, y)
 
