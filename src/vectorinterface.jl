@@ -70,14 +70,14 @@ VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β
 VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β)
 
 VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
-# The result is promoted to the type of the product of the scalar types, so that it doesn't depend on which terms
-# happen to vanish, or on whether autosort is enabled.
+# x' * y is formed with autosort enabled, so the result doesn't depend on the autosort setting. The result is promoted
+# to the type of the product of the scalar types, so that it doesn't depend on which terms happen to vanish.
 function _inner(x, y)
-    z = x' * y
+    z = with_autosort(() -> x' * y)
     _reduces_to_scalar(z) || throw(_inner_error())
     return zero(_scalartype(x))' * zero(_scalartype(y)) + scalar(z)
 end
-_inner_error() = ArgumentError("inner(x, y) requires x' * y to reduce to a scalar; check that adjoint and mul_effect are defined and autosort is enabled")
+_inner_error() = ArgumentError("inner(x, y) requires x' * y to reduce to a scalar; check that adjoint and mul_effect are defined")
 _reduces_to_scalar(::Number) = true
 _reduces_to_scalar(z::MulAdd) = isscalar(z)
 _reduces_to_scalar(z) = false

@@ -926,9 +926,11 @@ end
     end
     # products that don't reduce to scalars, but cancel: ⟨0|0⟩|2⟩ - ⟨1|1⟩|2⟩ = 0
     @test inner(k0 + k1, k0 * k2 - k1 * k2) == 0
-    # without autosort, mul_effect is not applied, so ⟨0|0⟩ stays a product
+    # inner sorts x' * y whether or not autosort is enabled
     NonCommutativeProducts.with_autosort(false) do
-        @test_throws ArgumentError norm(k0)
+        @test norm(k0 + 2k1) ≈ sqrt(5)
+        @test inner(k0 + k1, k1) == dot(k0 + k1, k1) == 1
+        @test_throws ArgumentError inner(k0, k0 * k1')
     end
     NonCommutativeProducts.disable_autosort!()
 end

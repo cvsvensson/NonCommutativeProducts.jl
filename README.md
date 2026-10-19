@@ -169,7 +169,7 @@ end
 
 ## Linear algebra
 
-Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types and autosort to be enabled, and `x' * y` must sort to an expression with no factors left, so that `scalar` can extract its value. With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. 
+Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left, so that `scalar` can extract its value. `inner` sorts `x' * y` whether or not autosort is enabled. With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. 
 
 
 Example: Let's define kets and bras and exponentiate a hamiltonian:
