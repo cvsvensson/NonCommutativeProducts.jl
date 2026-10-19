@@ -27,9 +27,10 @@ end
     factors(x)
 
 The factors of `x` as an `AbstractVector`, in order and without the coefficient. Works for products, numbers
-and atoms registered with `@nc`: a number has no factors, and an atom is its own single factor. The result is a
-copy, so modifying it does not change `x`, and for a product it is a `Vector` whether or not the product stores its
-factors in a `Tuple`.
+and atoms registered with `@nc`: a number has no factors, and an atom is its own single factor. A sum with exactly one
+term has the factors of that term. A sum with more terms throws an `ArgumentError`; use `terms` to get its products.
+The result is a copy, so modifying it does not change `x`, and for a product it is a `Vector` whether or not the
+product stores its factors in a `Tuple`.
 
 # Example
 ```julia
@@ -40,12 +41,14 @@ factors(a) == [a]
 """
 factors(m::NCMul) = collect(eltype(m.factors), m.factors)
 factors(::Number) = Any[]
+factors(x::NCAdd) = factors(_only_term(x, "factors"))
 
 """
     coefficient(x)
 
 The scalar coefficient of `x`. Works for products, numbers and atoms registered with `@nc`: a number is its own
-coefficient, and an atom has coefficient `1`.
+coefficient, and an atom has coefficient `1`. A sum with exactly one term has the coefficient of that term. A sum with
+more terms throws an `ArgumentError`; use `terms` to get its products.
 
 # Example
 ```julia
@@ -56,3 +59,11 @@ coefficient(a) == 1
 """
 coefficient(m::NCMul) = prefactor(m)
 coefficient(x::Number) = x
+coefficient(x::NCAdd) = coefficient(_only_term(x, "coefficient"))
+
+# The only term of a sum, as a product that includes its coefficient
+function _only_term(x::NCAdd, name::AbstractString)
+    ts = collect(terms(x))
+    length(ts) == 1 || throw(ArgumentError("`$name` needs a sum with exactly one term, but this sum has $(length(ts)) terms: $x. Use `terms(x)` to get its products."))
+    return only(ts)
+end

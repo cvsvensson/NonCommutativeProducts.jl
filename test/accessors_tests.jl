@@ -78,6 +78,13 @@ end
     for t in terms(2 * a * b + 5 * b)
         @test t == coefficient(t) * prod(factors(t))
     end
+    # a sum with one term has the factors and coefficient of that term
+    @test factors(a + b - b) == [a]
+    @test coefficient(a + b - b) == 1
+    @test coefficient(2 * a + 2 * b - 2 * b) == 2
+    @test_throws ArgumentError factors(a + b)
+    @test_throws ArgumentError coefficient(a + b)
+    @test_throws "terms" NCMul(a + b)
 end
 
 @testitem "factors and coefficient of numbers and atoms" setup = [Fermions] begin

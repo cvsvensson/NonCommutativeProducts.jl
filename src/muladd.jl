@@ -1,4 +1,4 @@
-NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul: $f"))
+NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul, since the sum is not a single product. Use `terms` to get its products, or `scalar` if it has no factors: $f"))
 
 # zero(x) keeps the grades of x (see grading.jl): the zero of a sum stores them, and the zero of a product keeps its
 # factors, with the same Vector-backed type as zero(typeof(x)). The factors may be shared, since they are never mutated.
