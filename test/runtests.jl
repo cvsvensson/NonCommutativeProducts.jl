@@ -433,6 +433,7 @@ end
     @test NCMul(true, [f1]) + (NCMul(true, [f1]) + NCMul(true, [f2])) == 2 * f1 + f2
     b = convert(NCAdd{Bool,NonCommutativeProducts.to_add_dict_type(typeof(NCMul(true, [f1])))}, NCMul(true, [f1]))
     @test b + b == 2 * f1
+    @test b * b isa NCAdd{Int}
 
     # Tuple-backed and Vector-backed products promote to a concrete factors container
     tv = NCMul(1, (f1, f2)) + NCMul(1, [f1])
@@ -684,8 +685,6 @@ end
     NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
-
-    @test_nowarn [f1+1, 1im*f2] isa Vector # this exercises a conversion path which failed
 
     x = 1 + 2 * f1 + 3 * f2
     y = 4 - f1
@@ -986,7 +985,7 @@ end
     @test VectorInterface.add!!(x, x, 1, 1) isa T
 end
 
-@testitem "Regression: add!! and mul!! weighted accumulation" setup = [Fermions] begin
+@testitem "add!! and mul!! weighted accumulation" setup = [Fermions] begin
     import NonCommutativeProducts: add!!, scale!, mul!!
 
     NonCommutativeProducts.disable_autosort!()

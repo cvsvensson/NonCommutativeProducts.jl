@@ -89,7 +89,7 @@ function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C
     for term in Iterators.drop(sorted_terms, 1)
         newadd = _add_scaled!!(newadd, term, One())
     end
-    return filter_ncadd!!(newadd; filter_zeros=true, filter_scalars=true)
+    return newadd
 end
 
 # Sorts terms[n:end]. The optional arguments let the recursive call resume: `start` is the factor position in
@@ -162,9 +162,18 @@ function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
     if T <: eltype(V)
         _mysplice!(v, i, replacement)
         return v
-    else
-        return Vector{T}(vcat(v[firstindex(v):(i-1)], factors_vector(replacement), v[(i+2):lastindex(v)]))
     end
+    # a new vector of the n factors before v[i:i+1], the replacement, and the factors after v[i:i+1]
+    n = i - firstindex(v)
+    m = length(replacement)
+    nafter = lastindex(v) - i - 1
+    newv = Vector{T}(undef, n + m + nafter)
+    copyto!(newv, 1, v, firstindex(v), n)
+    for (k, x) in enumerate(replacement)
+        newv[n+k] = x
+    end
+    copyto!(newv, n + m + 1, v, i + 2, nafter)
+    return newv
 end
 
 function _mysplice!(a::Vector, i::Integer, ins)
@@ -229,10 +238,10 @@ end
 """
     mul_effect(a, b)
 
-When sorting a non-commutative expression, this function defines what a*b should be replaced by. 
+When sorting a non-commutative expression, `mul_effect(a, b)` gives the replacement for `a*b`. 
 It must have a branch that returns `nothing` in order for the sorting to terminate. 
 
-No methods for `mul_effect` are defined in this package, so you need to define them for your types.
+This package defines no methods for `mul_effect`, so define them for your types.
 
 The return value can be `nothing`, a number, an object, a sum or product of these, or one of the helper types `Swap(λ)`
 (replace `a*b` by `λ*b*a`) and `AddTerms(terms)` (replace `a*b` by a sum of `terms`). `Swap` and `AddTerms` are

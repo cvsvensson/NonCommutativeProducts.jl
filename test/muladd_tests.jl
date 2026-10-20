@@ -8,7 +8,7 @@
         for y in nums
             @test x + y*f1 == y*f1 + x
             for z in nums
-                @test z*(x+y*f1) isa NonCommutativeProducts.NCAdd #throws error on v0.4.4
+                @test z*(x+y*f1) isa NonCommutativeProducts.NCAdd
             end
         end
     end
