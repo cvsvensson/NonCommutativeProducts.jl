@@ -51,4 +51,4 @@ Fermion(1)*Fermion(1)' |> sort
 
 ## Documentation
 
-See the [stable](https://cvsvensson.github.io/NonCommutativeProducts.jl/stable/) or [development](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/) documentation for automatic sorting, multiple types, traversing expressions, linear algebra with [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl), gradings, performance tips and the API reference.
+See the [stable](https://cvsvensson.github.io/NonCommutativeProducts.jl/stable/) or [development](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/) documentation for automatic sorting, multiple types, traversing expressions, linear algebra, gradings, performance tips and the API reference.
