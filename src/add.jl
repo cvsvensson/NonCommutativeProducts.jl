@@ -59,11 +59,6 @@ end
 anyadd(x::Union{NCMul{C},NCAdd{C}}) where {C} = convert(NCAdd{C,NCMul{Int,Any,Vector{Any}}}, x)
 
 const MulAdd = Union{NCMul,NCAdd}
-# Doesn't maintain the grades of a zero result (see _with_zero_grades).
-function filter_ncadd!!(x::NCAdd; kwargs...)
-    dict, coeff = filter_ncadd_dict!(x.dict; kwargs...)
-    _add_scaled!!(x, coeff, One())
-end
 Base.iszero(x::NCAdd) = iszero(additive_coeff(x)) && all(iszero, values(x.dict))
 Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && a.dict == b.dict
 Base.:(==)(a::NCAdd, b::Number) = additive_coeff(a) == b && isempty(a.dict)
@@ -166,6 +161,7 @@ function Base.:+(a::NCAdd{C1,K1}, b::NCAdd{C2,K2}) where {C1,K1,C2,K2}
 end
 """
     add!!(a, b)
+    add!!(a, b, α)
     add!!(a, b, α, β)
 
 Compute `a + b`, or `β * a + α * b`, reusing the storage of `a` when possible. Use the returned value, since `a` may
@@ -293,13 +289,13 @@ function Base.:*(x::Number, a::NCAdd{C,K}) where {C,K}
 end
 Base.:*(a::NCAdd, x::Number) = x * a
 
-# zero(typeof(a)) rather than zero(a), which would compute the grades of a
-Base.:*(a::NCAdd, b::NCMul) = _mul_sums(zero(typeof(a)), a, b)
-Base.:*(a::NCMul, b::NCAdd) = _mul_sums(zero(typeof(b)), a, b)
-Base.:*(a::NCAdd, b::NCAdd) = _mul_sums(zero(typeof(a)), a, b)
-# a * b accumulated in the fresh zero `c`, so a zero result has the grades of a and b only
-function _mul_sums(c::NCAdd, a::MulAdd, b::MulAdd)
-    product = filter_ncadd!!(_mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
+Base.:*(a::NCAdd, b::NCMul) = _mul_sums(typeof(a), a, b)
+Base.:*(a::NCMul, b::NCAdd) = _mul_sums(typeof(b), a, b)
+Base.:*(a::NCAdd, b::NCAdd) = _mul_sums(typeof(a), a, b)
+# a * b accumulated in a fresh zero sum without grades, so a zero result has the grades of a and b only. The outer
+# constructor gives the zero the coefficient type of a sum of coefficients (Bool + Bool isa Int).
+function _mul_sums(::Type{NCAdd{C,K}}, a::MulAdd, b::MulAdd) where {C,K}
+    product = _mul!!(NCAdd(zero(C), Dict{K,C}()), a, b)
     return _with_zero_grades(product, () -> _mul_grades(_grades(a), _grades(b)))
 end
 # Computes c + a * b. A zero result has the stored grades of c and the products of the grades of a and b.

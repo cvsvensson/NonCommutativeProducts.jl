@@ -1,8 +1,10 @@
 """
     ncmapreduce(f, ops, expr; scalarmap=identity)
 
-Map `f` over the noncommutative factors in `expr` and combine terms with
-custom binary operations in `ops = (add, mul)`. Scalars are transformed with `scalarmap`. Each term is reduced with `mul` and then the terms are reduced with `add`. Uses foldl for the ordering of operations.
+Map `f` over the noncommutative factors of `expr`, then reduce them with the binary operations `ops = (add, mul)`.
+`mul` combines the factors of each term, starting from the term's prefactor. `add` combines the terms, starting from
+the additive constant. Each reduction is a left fold. `scalarmap` is applied to each prefactor, to the additive
+constant, and to a bare number `expr`. Returns the single value produced by the reduction.
 
 # Example 
 (using infix notation for add and mul)
@@ -22,9 +24,11 @@ end
 ncmapreduce(f, (add, mul), x::Number; scalarmap=identity) = scalarmap(x)
 
 """
-    ncmap(f, expr)
+    ncmap(f, expr; scalarmap=identity)
 
-Map `f` over the noncommutative factors in `expr`.
+Map `f` over the noncommutative factors in `expr`, keeping the sums and products of `expr`. `scalarmap` is applied to
+the scalar coefficients: the prefactor of each term and the additive constant. It defaults to `identity`.
+Equivalent to `ncmapreduce(f, (+, *), expr; scalarmap)`.
 
 # Example
 If `a` and `b` are of types registered with @nc then 

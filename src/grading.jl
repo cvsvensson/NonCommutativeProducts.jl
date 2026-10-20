@@ -141,7 +141,7 @@ with distinct declared gradings, none of them `nothing` or a `ProductGrade`.
 
 # Example
 ```julia
-# Fermions with spin, graded by charge and by spin, using `Charge` from the example in the README
+# Fermions with spin, graded by charge and by spin
 struct Spin
     s::Int
 end

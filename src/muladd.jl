@@ -1,4 +1,10 @@
-NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul, since the sum is not a single product. Use `terms` to get its products, or `scalar` if it has no factors: $f"))
+function NCMul(f::NCAdd)
+    if length(f.dict) == 1 && iszero(additive_coeff(f))
+        key, coeff = only(f.dict)
+        return key * coeff
+    end
+    throw(ArgumentError("Cannot convert NCAdd to NCMul, since the sum is not a single product. Use `terms` to get its products, or `scalar` if it has no factors: $f"))
+end
 
 # zero(x) keeps the grades of x: the zero of a product keeps its factors, with the same type as zero(typeof(x)).
 # zero of a type has no grades.
@@ -137,6 +143,8 @@ const _autosort = ScopedValue{Bool}()
 
 Whether products are sorted with `mul_effect` as they are formed. Set the global default with `enable_autosort!` and
 `disable_autosort!`, or override it for a block of code with `with_autosort`. Autosorting is off by default.
+
+Returns the current setting as a `Bool`: the value set by the innermost `with_autosort` if one is active, otherwise the global default.
 """
 function autosort()
     v = ScopedValues.get(_autosort)
@@ -158,7 +166,8 @@ disable_autosort!() = _DEFAULT_AUTOSORT[] = false
 """
     with_autosort(f, enabled::Bool=true)
 
-Call `f()` with autosorting set to `enabled`, overriding the global setting from `enable_autosort!` and `disable_autosort!` for the duration of the call. Works with a `do` block:
+Call `f()` with autosorting set to `enabled`, overriding the global setting from `enable_autosort!` and `disable_autosort!` for the duration of the call. Returns the
+value of `f()`. Works with a `do` block:
 
     with_autosort(false) do
         a * b

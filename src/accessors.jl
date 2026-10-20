@@ -62,7 +62,7 @@ coefficient(x::NCAdd) = coefficient(_only_term(x, "coefficient"))
 
 # The only term of a sum, as a product that includes its coefficient
 function _only_term(x::NCAdd, name::AbstractString)
-    ts = collect(terms(x))
-    length(ts) == 1 || throw(ArgumentError("`$name` needs a sum with exactly one term, but this sum has $(length(ts)) terms: $x. Use `terms(x)` to get its products."))
-    return only(ts)
+    n = count(Returns(true), terms(x))
+    n == 1 || throw(ArgumentError("`$name` needs a sum with exactly one term, but this sum has $n terms: $x. Use `terms(x)` to get its products."))
+    return first(terms(x))
 end
