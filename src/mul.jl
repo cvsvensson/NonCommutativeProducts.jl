@@ -1,19 +1,27 @@
 
 # The factors of an NCMul may be shared with other products and with the keys of sums, e.g. by `2 * x` or `x + y`.
 # They must therefore never be mutated, except by bubble_sort! on a product whose factors were just created.
+"""
+    NCMul
+
+A product: a coefficient times an ordered list of factors. Create products by multiplying atoms registered with
+`@nc`, e.g. `2 * a * b`. Use `coefficient(x)` and `factors(x)` to read the parts of a product.
+"""
 struct NCMul{C,S,F}
     coeff::C
     factors::F
+    function NCMul{C,S,F}(coeff, factors) where {C,S,F}
+        S === eltype(F) || throw(ArgumentError("the factor type S = $S of NCMul must be eltype(F) = $(eltype(F))"))
+        new{C,S,F}(coeff, factors)
+    end
 end
 NCMul{C,S,F}(ncmul::NCMul{C,S,F}) where {C,S,F} = ncmul
-
-function NCMul(coeff::C, factors::F) where {C,F}
-    NCMul{C,eltype(factors),F}(coeff, factors)
-end
+NCMul{C}(coeff, factors) where C = NCMul{C,eltype(factors),typeof(factors)}(coeff, factors)
+NCMul(coeff, factors) = NCMul{typeof(coeff)}(coeff, factors)
 
 # Tuple factors are meant for small products that are cheap to construct. Only cheap operations such as
 # equality, hashing and adjoint accept them as they are. Operations that multiply, sort or mutate collect
-# the factors into a Vector first, so their results, as well as zero and one, are Vector-backed.
+# the factors into a Vector first, so their results, as well as zero, one and oneunit, are Vector-backed.
 factors_vector(factors::AbstractVector) = factors
 factors_vector(factors::Tuple) = collect(eltype(factors), factors)
 copy_factors(factors) = copy(factors)
@@ -22,10 +30,16 @@ copy_factors(factors::Tuple) = factors_vector(factors)
 Base.zero(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul(zero(C), S[])
 Base.one(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul(one(C), S[])
 Base.oneunit(::T) where {T<:NCMul} = oneunit(T)
-Base.oneunit(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul(one(C), S[])
+Base.oneunit(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul(oneunit(C), S[])
 Base.copy(x::NCMul) = NCMul(copy(prefactor(x)), copy_factors(x.factors))
 # By value: a zero product is the scalar 0, whatever factors it still carries
 isscalar(x::NCMul) = isempty(x.factors) || iszero(x)
+"""
+    scalar(x)
+
+The number that `x` equals if `x` is a scalar, i.e. a number or a product or sum without factors. Throws an
+`ArgumentError` for other products and sums.
+"""
 scalar(x::NCMul) = isscalar(x) ? prefactor(x) : throw(ArgumentError("NCMul is not a scalar"))
 scalar(x::Number) = x
 additive_coeff(::NCMul{C}) where C = zero(C)

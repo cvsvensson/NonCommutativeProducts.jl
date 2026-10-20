@@ -5,17 +5,6 @@ struct Swap{T}
     λ::T
 end
 
-function splice!!(ncmul::NCMul, i::UnitRange, swap::Swap)
-    i1, i2 = first(i), last(i)
-    i2 == i1 + 1 && length(i) == 2 || throw(ArgumentError("Invalid index for swap"))
-    factors = ncmul.factors
-    a = factors[i1]
-    b = factors[i2]
-    factors[i1] = b
-    factors[i2] = a
-    coeff = prefactor(ncmul) * swap.λ
-    return NCMul(coeff, factors)
-end
 function splice!!(ncmul::NCMul, i::Integer, swap::Swap)
     factors = ncmul.factors
     a = factors[i]
@@ -48,9 +37,11 @@ function _splice!!_and_add_flatten(ncmul::NCMul, i, terms)
     return ncmul2, identity.(newterms)
 end
 
-Base.sort(a::NCMul) = bubble_sort(a)
+# Sorting returns a sum for products too, also when the sorted product is a single term.
+Base.sort(a::NCMul) = bubble_sort(a) |> _as_ncadd
 Base.sort(a::NCAdd) = bubble_sort(a)
-bubble_sort!(a::NCAdd) = bubble_sort(a)
+_as_ncadd(a::NCAdd) = a
+_as_ncadd(a::NCMul) = NCAdd(a)
 function bubble_sort(a::NCMul)
     return _with_zero_grades(bubble_sort!(copy(a)), () -> _grades(a))
 end
@@ -77,7 +68,7 @@ function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
 end
 function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C}
     if length(sorted_terms) == 0
-        return NCAdd(zero(C), Dict{to_add_dict_type(T),Int}())
+        return NCAdd(zero(C), Dict{to_add_dict_type(T),C}())
     end
     newadd = NCAdd(zero(C), to_add_dict(first(sorted_terms)))
     for term in Iterators.drop(sorted_terms, 1)
@@ -153,62 +144,25 @@ function _add_newterms!!(terms::Vector{T}, newterms) where {T}
 end
 
 
-function mysplice!!(v::V, i::UnitRange, replacement::W) where {V,W}
-    T = promote_type(eltype(W), eltype(V))
-    if T <: eltype(V)
-        _mysplice!(v, i, replacement)
-        return v
-    else
-        return Vector{T}(vcat(v[1:(first(i)-1)], factors_vector(replacement), v[(last(i)+1):end]))
-    end
-end
 function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
     T = promote_type(eltype(W), eltype(V))
     if T <: eltype(V)
         _mysplice!(v, i, replacement)
         return v
     else
-        return Vector{T}(vcat(v[1:(i-1)], factors_vector(replacement), v[(i+2):end]))
+        return Vector{T}(vcat(v[firstindex(v):(i-1)], factors_vector(replacement), v[(i+2):lastindex(v)]))
     end
 end
 
-function _mysplice!(a::Vector, r::AbstractUnitRange{<:Integer}, ins)
-    # this is a copy of the splice! in base, except that it does not return the deleted elements,
-    # in order to avoid allocations
-    m = length(ins)
-    if m == 0
-        deleteat!(a, r)
-        return nothing
-    end
-
-    n = length(a)
-    f = first(r)
-    l = last(r)
-    d = length(r)
-
-    if m < d
-        delta = d - m
-        Base._deleteat!(a, (f - 1 < n - l) ? f : (l - delta + 1), delta)
-    elseif m > d
-        Base._growat!(a, (f - 1 < n - l) ? f : (l + 1), m - d)
-    end
-
-    k = 1
-    for x in ins
-        a[f+k-1] = x
-        k += 1
-    end
-    return nothing
-end
 function _mysplice!(a::Vector, i::Integer, ins)
     m = length(ins)
     if m == 0
-        Base._deleteat!(a, i, 2)
+        deleteat!(a, i:(i+1))
         return nothing
     end
     left = 2i < length(a)
     if m == 1
-        Base._deleteat!(a, left ? i : i + 1, 1)
+        deleteat!(a, left ? i : i + 1)
     elseif m > 2
         Base._growat!(a, left ? i : i + 2, m - 2)
     end
@@ -220,10 +174,6 @@ function _mysplice!(a::Vector, i::Integer, ins)
 end
 
 
-function splice!!(ncmul::NCMul, i::UnitRange)
-    splice!(ncmul.factors, i)
-    return ncmul
-end
 function splice!!(ncmul::NCMul, i, term::NCMul)
     coeff = prefactor(term) * prefactor(ncmul)
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
@@ -244,10 +194,6 @@ end
 _check_atom_effect(term) = nothing
 # `nothing` inside AddTerms would keep a*b as a term, which gives the same effect again and never terminates
 _check_atom_effect(::Nothing) = throw(ArgumentError("unsupported mul_effect value: `nothing` can only be returned as the whole result of mul_effect, not inside AddTerms."))
-function splice!!(ncmul::NCMul, i::UnitRange, coeff::Number)
-    deleteat!(ncmul.factors, i)
-    return NCMul(coeff * prefactor(ncmul), ncmul.factors)
-end
 function splice!!(ncmul::NCMul, i::Integer, coeff::Number)
     deleteat!(ncmul.factors, i:(i+1))
     return NCMul(coeff * prefactor(ncmul), ncmul.factors)
@@ -269,13 +215,17 @@ function splice!!_and_add(ncmul::T, i, effect) where T<:NCMul
     return ncmul2, T[]
 end
 
-""" 
+"""
     mul_effect(a, b)
 
 When sorting a non-commutative expression, this function defines what a*b should be replaced by. 
 It must have a branch that returns `nothing` in order for the sorting to terminate. 
 
 No methods for `mul_effect` are defined in this package, so you need to define them for your types.
+
+The return value can be `nothing`, a number, an object, a sum or product of these, or one of the helper types `Swap(λ)`
+(replace `a*b` by `λ*b*a`) and `AddTerms(terms)` (replace `a*b` by a sum of `terms`). `Swap` and `AddTerms` are
+available as `NonCommutativeProducts.Swap` and `NonCommutativeProducts.AddTerms`, but are not yet public.
 
 # Example
 ```julia
@@ -289,35 +239,3 @@ NonCommutativeProducts.enable_autosort!()
 ```
 """
 function mul_effect end
-
-@testitem "Collecting powers, signed swap" begin
-    import NonCommutativeProducts: bubble_sort, @nc, NCMul, mul_effect
-    NonCommutativeProducts.disable_autosort!()
-    struct NCInt
-        n::Int
-        exp::Int
-    end
-    NCInt(n::Int) = NCInt(n, 1)
-    Base.show(io::IO, x::NCInt) = print(io, "[$(x.n)^$(x.exp)]")
-    Base.:(==)(a::NCInt, b::NCInt) = a.n == b.n
-    @nc NCInt
-    function mul_effect(a::NCInt, b::NCInt)
-        (a.n == b.n && return NCInt(a.n, a.exp + b.exp)) # Collect powers
-        a.n > b.n && return -b * a # swap and multiply by -1
-        return nothing # Do nothing
-    end
-
-    a, b, c, d = NCInt.(1:4)
-    ab = a * b
-    @test ab == NCMul(1, [a, b])
-    ab2 = bubble_sort(ab)
-    ab3 = bubble_sort(b * a)
-    @test ab == ab2 == -ab3
-    @test hash(ab) == hash(ab2)
-    @test bubble_sort(ab * a) == -1 * bubble_sort((a * ab))
-
-    op = bubble_sort(prod([a, b, c, d, a, b, c, d, a, b]))
-    @test length(op.dict) == 1
-    @test map(x -> x.n, only(keys(op.dict)).factors) == 1:4
-    @test sum(x -> x.exp, only(keys(op.dict)).factors) == 10
-end

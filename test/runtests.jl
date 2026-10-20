@@ -27,7 +27,6 @@ end
 end
 
 @testitem "Fermions" setup = [Fermions] begin
-    import NonCommutativeProducts: bubble_sort
     using Symbolics, LinearAlgebra
     using Random: seed!
     seed!(1)
@@ -36,7 +35,7 @@ end
     f2 = Fermion(:b)
     f3 = Fermion((1, :↑))
     NonCommutativeProducts.disable_autosort!()
-    ord(op) = bubble_sort(op)
+    ord(op) = sort(op)
     ord_equals(a, b) = iszero(ord(a - b))
     ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
 
@@ -164,10 +163,10 @@ end
     @test f1 - 1 == (1 * f1) - 1 == (0.5 + f1) - 1.5
 
     bigprod = prod(Majorana(rand(1:15)) for k in 1:20)
-    @test NonCommutativeProducts.bubble_sort(bigprod) == bigprod
+    @test sort(bigprod) == bigprod
     bigprod2 = prod(Majorana(rand(1:15)) + Majorana(rand(1:15)) for k in 1:10)
-    @test NonCommutativeProducts.bubble_sort(bigprod2) == bigprod2
-    @test NonCommutativeProducts.bubble_sort(bigprod2') == bigprod2'
+    @test sort(bigprod2) == bigprod2
+    @test sort(bigprod2') == bigprod2'
 end
 
 @testitem "Autosort local override with ScopedValue" setup = [Majoranas] begin
@@ -184,15 +183,49 @@ end
         γ2 * γ1
     end
     @test local_unsorted != canonical
-    @test NonCommutativeProducts.bubble_sort(local_unsorted) == canonical
+    @test sort(local_unsorted) == canonical
 
     # Global setting remains unchanged outside the local override.
     @test NonCommutativeProducts.autosort()
 end
 
+@testitem "with_autosort overrides the global setting" setup = [Majoranas] begin
+    γ1, γ2 = Majorana.(1:2)
+    was_enabled = NonCommutativeProducts.autosort()
+    try
+        NonCommutativeProducts.disable_autosort!()
+        @test !NonCommutativeProducts.autosort()
+
+        # The default argument enables autosort inside the block.
+        sorted_product = NonCommutativeProducts.with_autosort() do
+            @test NonCommutativeProducts.autosort()
+            γ2 * γ1
+        end
+        @test sorted_product == -γ1 * γ2
+        @test !NonCommutativeProducts.autosort()
+
+        NonCommutativeProducts.enable_autosort!()
+        unsorted_product = NonCommutativeProducts.with_autosort(false) do
+            @test !NonCommutativeProducts.autosort()
+            γ2 * γ1
+        end
+        @test unsorted_product != sorted_product
+        @test sort(unsorted_product) == sorted_product
+
+        # The global setting is restored after the block.
+        @test NonCommutativeProducts.autosort()
+        NonCommutativeProducts.with_autosort(true) do
+            @test NonCommutativeProducts.autosort()
+        end
+        @test NonCommutativeProducts.autosort()
+    finally
+        was_enabled ? NonCommutativeProducts.enable_autosort!() : NonCommutativeProducts.disable_autosort!()
+    end
+end
+
 
 @testitem "Fermions+Bosons" setup = [Fermions, Bosons] begin
-    import NonCommutativeProducts: bubble_sort, @nc, add!!
+    import NonCommutativeProducts: @nc, add!!
     using LinearAlgebra
     using Random: seed!
     NonCommutativeProducts.enable_autosort!()
@@ -334,6 +367,11 @@ end
         @test valtype(x.dict) == Float64
         @test 0.5 * x == half
         @test x / 2 == half
+        # / divides each coefficient, as [c] / b does
+        @test valtype(((2 * f1 + 2 * f2) / 2).dict) == Float64
+        @test (0.1 * f1 + 0.1) / 7.0 == 0.1 / 7.0 * f1 + 0.1 / 7.0 != inv(7.0) * 0.1 * f1 + inv(7.0) * 0.1
+        @test (2 * f1 + 2) // 2 == f1 + 1 && valtype(((2 * f1 + 2) // 2).dict) == Rational{Int}
+        @test (2 * f1 * f2) // 2 == f1 * f2
         @test VectorInterface.scale!(copy(x), 0.5) == half
         @test VectorInterface.scale!!(copy(x), 0.5) == half
         @test VectorInterface.add(x, f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
@@ -549,7 +587,6 @@ end
 end
 
 @testitem "Paulis" setup = [Paulis] begin
-    import NonCommutativeProducts: bubble_sort
     using Symbolics
 
     @variables a::Real
@@ -557,7 +594,7 @@ end
     σy = Pauli(2)
     σz = Pauli(3)
 
-    ord(op) = bubble_sort(op)
+    ord(op) = sort(op)
     ord_equals(x, y) = iszero(ord(x - y))
 
     # Basic algebraic properties
@@ -609,14 +646,13 @@ end
 
 
 @testitem "SpinOperators" setup = [SpinOperators] begin
-    import NonCommutativeProducts: bubble_sort
     using Symbolics
 
     Sz = SpinOp(0, :z)
     Sp = SpinOp(0, :+)
     Sm = SpinOp(0, :-)
 
-    ord(op) = bubble_sort(op)
+    ord(op) = sort(op)
     ord_equals(x, y) = iszero(ord(x - y))
 
     # Commutation relations
@@ -672,6 +708,13 @@ end
     @test VectorInterface.scale!(s, 2) === s
     @test s == 2 * x
     @test VectorInterface.scale!!(copy(x), 2) == 2 * x
+    # products are immutable, so scale! throws
+    err = try
+        VectorInterface.scale!(f1 * f2, 2)
+    catch e
+        e
+    end
+    @test err isa ArgumentError && occursin("immutable", err.msg)
 
     @test VectorInterface.add(y, x, 2, 3) == 3 * y + 2 * x
     a = copy(y)
@@ -831,7 +874,7 @@ end
     vecs = (x, H * x, 1im * Ket(0) + 2 * Ket(1), Ket(1))
     @test all(inner(a, b) ≈ NonCommutativeProducts.scalar(a' * b) for a in vecs, b in vecs)
 
-    # an atom whose overlap with itself is complex still has a real norm
+    # an atom whose overlap with itself is a complex number with zero imaginary part has a real norm
     struct CKet
         bra::Bool
     end
@@ -867,7 +910,7 @@ end
     @test norm(x, 2) == norm(x) ≈ sqrt(5)
     @test_throws ArgumentError norm(x, 1)
 
-  
+
     # atoms of different types are converted to products, so they can be combined
     struct KetA
         bra::Bool
@@ -895,9 +938,11 @@ end
     end
     # products that don't reduce to scalars, but cancel: ⟨0|0⟩|2⟩ - ⟨1|1⟩|2⟩ = 0
     @test inner(k0 + k1, k0 * k2 - k1 * k2) == 0
-    # without autosort, mul_effect is not applied, so ⟨0|0⟩ stays a product
-    Base.ScopedValues.with(NonCommutativeProducts._autosort => false) do
-        @test_throws ArgumentError norm(k0)
+    # inner sorts x' * y whether or not autosort is enabled
+    NonCommutativeProducts.with_autosort(false) do
+        @test norm(k0 + 2k1) ≈ sqrt(5)
+        @test inner(k0 + k1, k1) == dot(k0 + k1, k1) == 1
+        @test_throws ArgumentError inner(k0, k0 * k1')
     end
     NonCommutativeProducts.disable_autosort!()
 end
@@ -974,3 +1019,36 @@ end
     @test got_prod == expected_prod
 end
 
+
+@testitem "Public API" begin
+    using NonCommutativeProducts
+    public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :enable_autosort!,
+        :disable_autosort!, :autosort, :with_autosort, :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors,
+        :coefficient]
+    for name in public_names
+        @test Base.ispublic(NonCommutativeProducts, name)
+        @test Base.Docs.hasdoc(NonCommutativeProducts, name)
+    end
+    for name in [:Swap, :AddTerms, :bubble_sort, :MulAdd, :_autosort, :grade, :mul!!, :anyadd, :isscalar]
+        @test !Base.ispublic(NonCommutativeProducts, name)
+    end
+    @test !Base.isexported(NonCommutativeProducts, :NCMul)
+end
+
+@testitem "Aqua" begin
+    using Aqua
+    Aqua.test_all(NonCommutativeProducts)
+end
+
+@testitem "ExplicitImports" begin
+    using ExplicitImports
+    using KrylovKit: KrylovKit  # loads the extension so that it is checked too
+    test_explicit_imports(NonCommutativeProducts;
+        # Base internals without a public equivalent, KrylovKit operator hooks, and package internals used by the extension
+        all_qualified_accesses_are_public=(; ignore=(:_growat!, :inferencebarrier, :literal_pow, :power_by_squaring, :promote_op,
+            :apply, :apply_normal, :apply_adjoint, :MulAdd)),
+        # qualified names in macro-generated code
+        no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
+            :mul_effect, :ncmapreduce, :terms, :coefficient, :factors)),
+    )
+end
