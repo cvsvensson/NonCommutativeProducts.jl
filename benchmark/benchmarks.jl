@@ -1,27 +1,103 @@
 using BenchmarkTools
 using NonCommutativeProducts
+using NonCommutativeProducts: with_autosort
+using LinearAlgebra: norm
 using Random
 BenchmarkTools.DEFAULT_PARAMETERS.seconds = 1
 const SUITE = BenchmarkGroup()
 Random.seed!(1)
+const VI = NonCommutativeProducts.VectorInterface
 
 include("../test/rules/fermions.jl")
-NonCommutativeProducts.enable_autosort!()
-SUITE["symbolic_sum"] = @benchmarkable sum(Fermion(n)' * Fermion(n) + Fermion(n) * Fermion(n + 1)' for n in 1:1000)
-SUITE["symbolic_sum_square"] = @benchmarkable sum(Fermion(n)' * Fermion(n) + Fermion(n) * Fermion(n + 1)' for n in 1:10)^3
-
-labels = shuffle(1:10)
-SUITE["symbolic_deep_product"] = @benchmarkable prod(Fermion(l) for l in $labels) * prod(Fermion(l)' for l in $labels)
-
 include("../test/rules/bosons.jl")
 NonCommutativeProducts.@commutative Boson Fermion
-# Boson is a single mode, and Boson() * Boson()' is the only boson pair that adds a term when reordered (b b† = b† b + 1).
-# The Boson in the middle of the last term is moved to the left of the Fermion, which is a plain swap.
+NonCommutativeProducts.enable_autosort!()
+
+# Building sums: each `+` of two sums copies the terms of the left one
+SUITE["construct"] = BenchmarkGroup()
+SUITE["construct"]["sum"] = @benchmarkable sum(Fermion(n)' * Fermion(n) + Fermion(n) * Fermion(n + 1)' for n in 1:1000)
+
+# Products of sums and atoms, sorted as they are formed
+SUITE["multiply"] = BenchmarkGroup()
+const h = sum(Fermion(n)' * Fermion(n) + Fermion(n) * Fermion(n + 1)' for n in 1:10)
+SUITE["multiply"]["sum_cube"] = @benchmarkable $h^3
+
+labels = shuffle(1:10)
+SUITE["multiply"]["deep_product"] = @benchmarkable prod(Fermion(l) for l in $labels) * prod(Fermion(l)' for l in $labels)
+
+# Normal ordering of a single bosonic mode, where every b b† gives an AddTerms with a Swap
+SUITE["multiply"]["boson_power"] = @benchmarkable (Boson() + Boson()')^12
+
+# Products of bosons and fermions have factors in a Vector{Any}. Boson is a single mode, and Boson() * Boson()' is the
+# only boson pair that adds a term when reordered (b b† = b† b + 1). The Boson in the middle of the last term is moved
+# to the left of the Fermion, which is a plain swap.
 mixed_term(n) = Fermion(n)' * Fermion(n) + Fermion(n) * Fermion(n + 1)' + Boson()' * Fermion(n) * Boson()
-SUITE["symbolic_sum_mixed"] = @benchmarkable sum(mixed_term(n) for n in 1:1000)
-SUITE["symbolic_sum_square_mixed"] = @benchmarkable sum(mixed_term(n) for n in 1:8)^3
+const h_mixed = sum(mixed_term(n) for n in 1:8)
+SUITE["multiply"]["mixed_sum_cube"] = @benchmarkable $h_mixed^3
 
 # A single product with lots of reordering but few additions: fermions with distinct labels only swap, and bosons
 # only swap past fermions, so the extra terms come from the three b b† pairs.
 mixed_ops = shuffle([Fermion.(1:6); adjoint.(Fermion.(7:12)); fill(Boson(), 3); fill(Boson()', 3)])
-SUITE["symbolic_deep_product_mixed"] = @benchmarkable prod($mixed_ops)
+SUITE["multiply"]["mixed_deep_product"] = @benchmarkable prod($mixed_ops)
+
+# Without autosort, the default: products are added up unsorted, and sorted only by an explicit `sort`
+SUITE["unsorted"] = BenchmarkGroup()
+SUITE["unsorted"]["sum_cube"] = @benchmarkable with_autosort(() -> $h^3, false)
+const h3_unsorted = with_autosort(() -> h^3, false)
+SUITE["unsorted"]["sort"] = @benchmarkable sort($h3_unsorted)
+
+# The commutator of an interacting chain with the position operator. The density and interaction terms cancel, and
+# the current terms remain.
+SUITE["operators"] = BenchmarkGroup()
+const H_int = sum(Fermion(n)' * Fermion(n + 1) + Fermion(n + 1)' * Fermion(n) +
+    0.5 * Fermion(n)' * Fermion(n) * Fermion(n + 1)' * Fermion(n + 1) for n in 1:30)
+const X = sum(n * Fermion(n)' * Fermion(n) for n in 1:30)
+SUITE["operators"]["commutator"] = @benchmarkable $H_int * $X - $X * $H_int
+
+# Expressions as vectors: a tight-binding chain, with states as sums of kets and the Hamiltonian as a sum of |n⟩⟨m|.
+# Applying it to a state reduces each ⟨m|k⟩ to a scalar.
+struct Ket
+    n::Int
+    bra::Bool
+end
+Ket(n) = Ket(n, false)
+Base.adjoint(k::Ket) = Ket(k.n, !k.bra)
+Base.hash(k::Ket, h::UInt) = hash(k.n, hash(k.bra, hash(0x13198a2e03707344, h)))
+NonCommutativeProducts.@nc Ket
+NonCommutativeProducts.mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+# A bicyclic grade, so that zero sums of kets are zero kets
+struct Bicyclic
+    m::Int
+    n::Int
+end
+NonCommutativeProducts.grade(k::Ket) = k.bra ? Bicyclic(0, 1) : Bicyclic(1, 0)
+function NonCommutativeProducts.mul_grade(g::Bicyclic, h::Bicyclic)
+    c = max(g.n, h.m)
+    r = Bicyclic(g.m - g.n + c, h.n - h.m + c)
+    return r == Bicyclic(0, 0) ? nothing : r
+end
+NonCommutativeProducts.adjoint_grade(g::Bicyclic) = Bicyclic(g.n, g.m)
+
+const N_chain = 50
+const H_chain = sum(Ket(n) * Ket(n + 1)' + Ket(n + 1) * Ket(n)' for n in 1:(N_chain-1)) + sum(0.1n * Ket(n) * Ket(n)' for n in 1:N_chain)
+const x_chain = sum(randn() * Ket(n) for n in 1:N_chain)
+const y_chain = sum(randn() * Ket(n) for n in 1:N_chain)
+
+# An orthonormal Krylov basis, built with the VectorInterface operations that iterative solvers use
+function arnoldi(H, x, n)
+    basis = [VI.scale(x, inv(norm(x)))]
+    for _ in 2:n
+        w = H * basis[end]
+        for v in basis
+            w = VI.add!!(w, v, -VI.inner(v, w), VI.One())
+        end
+        push!(basis, VI.scale!!(w, inv(norm(w))))
+    end
+    return basis
+end
+
+SUITE["vector"] = BenchmarkGroup()
+SUITE["vector"]["apply"] = @benchmarkable $H_chain * $x_chain
+SUITE["vector"]["inner"] = @benchmarkable VI.inner($x_chain, $y_chain)
+SUITE["vector"]["arnoldi"] = @benchmarkable arnoldi($H_chain, $x_chain, 10)
