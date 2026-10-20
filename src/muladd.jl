@@ -1,8 +1,7 @@
 NCMul(f::NCAdd) = (length(f.dict) == 1 && iszero(additive_coeff(f)) && return prod(only(f.dict))) || throw(ArgumentError("Cannot convert NCAdd to NCMul, since the sum is not a single product. Use `terms` to get its products, or `scalar` if it has no factors: $f"))
 
-# zero(x) keeps the grades of x (see grading.jl): the zero of a sum stores them, and the zero of a product keeps its
-# factors, with the same Vector-backed type as zero(typeof(x)). The factors may be shared, since they are never mutated.
-# zero of a type carries no derivation, so it is a bare zero without grades.
+# zero(x) keeps the grades of x: the zero of a product keeps its factors, with the same type as zero(typeof(x)).
+# zero of a type has no grades.
 Base.zero(nc::NCMul{C,S}) where {C,S} = NCMul(zero(C), convert(Vector{S}, factors_vector(nc.factors)))
 Base.zero(nc::NCAdd) = _set_zero_grades!(zero(typeof(nc)), _grades(nc))
 Base.one(nc::Union{<:NCAdd,<:NCMul}) = one(typeof(nc))
@@ -18,7 +17,7 @@ Base.:(==)(a::NCMul, b::NCAdd) = b == a
 function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), to_add_dict_type(typeof(b)))
-    # convert the keys up front so that the Dict has a single concrete key type, e.g. when one term is Tuple-backed and the other Vector-backed
+    # convert the keys first so that the Dict has a single concrete key type, e.g. for Tuple- and Vector-backed terms
     dict = add_term!!(Dict{K,C}(term_key(K, a) => prefactor(a)), term_key(K, b), prefactor(b))
     return _with_zero_grades(NCAdd(zero(C), dict), () -> _union_grades(_grades(a), _grades(b)))
 end
@@ -39,13 +38,11 @@ end
 
 to_add_dict(a::NCMul{C}) where C = to_add_dict(C, a)
 to_add_dict(::Type{T}, a::NCMul) where {T<:Number} = Dict(term_key(a) => convert(T, prefactor(a)))
-# The key of the term `a` in a sum. It may share its factors with `a`, since factors are never mutated once they
-# are part of an NCMul that escapes the package (see the comment on NCMul).
+# The key of the term `a` in a sum, which may share its factors with `a` (see the comment on NCMul)
 term_key(a::NCMul) = term_key(to_add_dict_type(typeof(a)), a)
 term_key(::Type{K}, a::NCMul) where {K} = convert(K, NCMul(1, a.factors))
-# The key type of a sum with the term `a`, or of the sum `a`. Every key of a sum built from products is derived
-# from this. Like zero and one (see mul.jl), keys built from Tuple-backed products are Vector-backed, so that the
-# sum can hold products of any length.
+# The key type of a sum with the term `a`, or of the sum `a`. Keys of Tuple-backed products are Vector-backed, so that
+# a sum can hold products of any length.
 to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F} = NCMul{Int,S,F}
 to_add_dict_type(::Type{NCMul{C,S,F}}) where {C,S,F<:Tuple} = NCMul{Int,S,Vector{S}}
 to_add_dict_type(::Type{NCAdd{C,K}}) where {C,K} = K

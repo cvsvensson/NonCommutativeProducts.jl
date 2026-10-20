@@ -1,15 +1,11 @@
-# Promotion and conversion between NCMul, NCAdd, and the atoms registered with @nc.
-#
 # The rules rely on two invariants:
 #   NCMul{C,S,F}: S == eltype(F)
 #   NCAdd{C,K}: the keys K are NCMul{Int,S,F}, and the terms are a Dict{K,C}
-#
-# Coefficient types and factor types are promoted independently. A product promotes with a sum as the sum
-# with the product as a key (see to_add_dict_type), and an atom of type W promotes as the product NCMul{Int,W,Vector{W}}
-# (see @nc_common). Each rule is defined for one argument order only, since promote_type tries both.
+# Coefficient and factor types are promoted independently. Each rule is defined for one argument order only, since
+# promote_type tries both.
 
-# promote_type(Vector{A}, Vector{B}) typejoins to the abstract `Vector` when A and B promote to Any, so build the container type explicitly.
-# Other mixes, such as a Tuple with a Vector or Tuples of different lengths, also fall back to Vector{S}.
+# promote_type(Vector{A}, Vector{B}) is the abstract `Vector` when A and B promote to Any, so build the type explicitly.
+# Other mixes, such as a Tuple with a Vector, also give Vector{S}.
 promote_factors_type(::Type{S}, ::Type{<:Vector}, ::Type{<:Vector}) where {S} = Vector{S}
 function promote_factors_type(::Type{S}, ::Type{F1}, ::Type{F2}) where {S,F1,F2}
     F = promote_type(F1, F2)

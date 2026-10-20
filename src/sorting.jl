@@ -26,15 +26,14 @@ function splice!!(ncmul::NCMul, i::Integer, swap::Swap)
     return NCMul(coeff, factors)
 end
 function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
-    # for tuples this check is resolved at compile time, so the common case below stays type stable
+    # resolved at compile time for tuples, which keeps the common case type stable
     any(term -> term isa Union{NCAdd,AddTerms}, terms.terms) && return _splice!!_and_add_flatten(ncmul, i, terms.terms)
     firstterm, state = iterate(terms.terms)
     newterms = map(term -> splice!!(copy(ncmul), i, term), Base.rest(terms.terms, state))
     ncmul2 = splice!!(ncmul, i, firstterm)
     return ncmul2, newterms
 end
-# Elements that are sums expand to several terms each. ncmul is copied for every element but the first, which is
-# spliced into ncmul last since that mutates it.
+# Elements that are sums expand to several terms. The first element is spliced last, since that mutates ncmul.
 function _splice!!_and_add_flatten(ncmul::NCMul, i, terms)
     firstterm, state = iterate(terms)
     newterms = Any[]
@@ -62,8 +61,7 @@ _as_ncadd(a::NCMul) = NCAdd(a)
 function bubble_sort(a::NCMul)
     return _with_zero_grades(bubble_sort!(copy(a)), () -> _grades(a))
 end
-# Sorts the factors of `a` in place. Only for products whose factors were just created and aren't shared.
-# Tuple factors can't be sorted in place, so they are collected into a Vector first.
+# Sorts `a` in place, so its factors must not be shared.
 function bubble_sort!(a::NCMul{C}) where C
     if length(a.factors) <= 1
         return a
@@ -94,8 +92,8 @@ function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C
     return filter_ncadd!!(newadd; filter_zeros=true, filter_scalars=true)
 end
 
-# Sorts terms[n:end] one term at a time. The optional arguments let the recursive call below resume where it left off:
-# `n` is the term being sorted, `start` the factor position to continue from, and `done` whether terms[n] is sorted.
+# Sorts terms[n:end]. The optional arguments let the recursive call resume: `start` is the factor position in
+# terms[n] and `done` whether terms[n] is sorted.
 function __bubble_sort!(terms::Vector{T}, n::Int=1, start::Int=1, done::Bool=false) where {T<:NCMul}
     while n <= length(terms)
         while !done && n <= length(terms)
@@ -133,9 +131,8 @@ function __bubble_sort_step!(terms, index, start)
 end
 # Replaces the factors i and i+1 of `ncmul == terms[index]` according to `effect`, adding any new terms to `terms`
 function _apply_effect!!(terms, index, ncmul, i, effect)
-    # effect is often only known at runtime, and then the results below are inferred as ::Any. The conversions that
-    # follow would then be compiled for ::Any, which every downstream convert method for an atom type can invalidate.
-    # The type assertion here and the one in _add_newterms!! prevent that.
+    # When effect is only known at runtime, these results infer as Any, and code compiled for Any is invalidated by
+    # downstream convert methods. The type assertions here and in _add_newterms!! prevent that.
     newncmul, newterms = splice!!_and_add(ncmul, i, effect)
     newncmul::NCMul
 
@@ -146,17 +143,16 @@ function _apply_effect!!(terms, index, ncmul, i, effect)
     end
     return setindex!!(terms_with_newterms, newncmul, index), false, i - 1
 end
-# The factors of a mixed-type product are a Vector{Any}, so mul_effect is dispatched at runtime anyway. Hiding it from
-# inference there means the compiled sorting loop doesn't depend on which mul_effect methods exist, so the code cached
-# by the precompile workload isn't invalidated when downstream packages add their rules.
+# Mixed-type products dispatch mul_effect at runtime anyway. The inference barrier keeps the compiled sorting loop
+# independent of the mul_effect methods, so downstream methods don't invalidate the precompiled code.
 _mul_effect(::Vector{Any}, a, b) = Base.inferencebarrier(mul_effect)(a, b)
 _mul_effect(factors, a, b) = mul_effect(a, b)
 
 function _add_newterms!!(terms::Vector{T}, newterms) where {T}
     isempty(newterms) && return terms
     newterms isa Union{Vector{T},Tuple{Vararg{T}}} && return append!(terms, newterms)
-    # the new terms widen the element type of terms. When newterms is only known at runtime, append!! would be compiled
-    # for ::Any, which every downstream convert method for an atom type can invalidate (see _apply_effect!!).
+    # the new terms widen the element type. The inference barrier keeps append!! from being compiled for Any, which
+    # downstream convert methods would invalidate.
     return Base.inferencebarrier(append!!)(terms, newterms)::Vector
 end
 
@@ -183,7 +179,7 @@ function _mysplice!(a::Vector, i::Integer, ins)
     elseif m > 2
         Base._growat!(a, left ? i : i + 2, m - 2)
     end
-    # m == 2: no resize, just overwrite
+    # m == 2 needs no resize
     for (k, x) in enumerate(ins)
         a[i+k-1] = x
     end
@@ -196,14 +192,12 @@ function splice!!(ncmul::NCMul, i, term::NCMul)
     newfactors = mysplice!!(ncmul.factors, i, term.factors)
     return NCMul(coeff, newfactors)
 end
-# a single atom of the element type of the factors. For mixed products (S == Any) this matches any value, so values that
-# can't be a factor are rejected explicitly.
+# an atom of the factor type. For mixed products (S == Any) this matches any value, so non-factors are rejected here.
 function splice!!(ncmul::NCMul{C,S}, i, term::S) where {C,S}
     _check_atom_effect(term)
     splice!!(ncmul, i, NCMul(one(C), (term,)))
 end
-# a single atom of another type than the factors, e.g. when mul_effect fuses two atoms into an atom of a new type.
-# NCMul(term) is defined by @nc, so only registered atoms are accepted.
+# an atom of another type than the factors. NCMul(term) is defined by @nc, so only registered atoms are accepted.
 function splice!!(ncmul::NCMul, i, term)
     _check_atom_effect(term)
     splice!!(ncmul, i, NCMul(term)::NCMul)

@@ -1,6 +1,5 @@
 _scalartype(x) = VectorInterface.scalartype(typeof(x))
-# The in-place methods below compute the result out of place and then store it with _set_ncadd! (see add.jl), which
-# converts everything before it mutates `y`, so that `y` is left unchanged if the result doesn't fit in it.
+# The in-place methods store an out-of-place result with _set_ncadd!, which leaves `y` unchanged if it doesn't fit.
 
 VectorInterface.scalartype(::Type{<:NCMul{C}}) where {C<:Number} = C
 VectorInterface.scalartype(::Type{<:NCAdd{C}}) where {C<:Number} = C
@@ -70,8 +69,8 @@ VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β
 VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β)
 
 VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
-# x' * y is formed with autosort enabled, so the result doesn't depend on the autosort setting. The result is promoted
-# to the type of the product of the scalar types, so that it doesn't depend on which terms happen to vanish.
+# Autosort is enabled so the result doesn't depend on the setting. The result is promoted to the product of the scalar
+# types, so its type doesn't depend on which terms vanish.
 function _inner(x, y)
     z = with_autosort(() -> x' * y)
     _reduces_to_scalar(z) || throw(_inner_error())
@@ -98,14 +97,14 @@ function _has_scalartype(T::Type)
     return m.sig !== Tuple{typeof(VectorInterface.scalartype),Type}
 end
 
-# An atom x as the product with it as the only factor, with coefficient one(scalartype(x)), so that the methods below
-# return the same type as zerovector(x) when scalartype is defined for the atom type. Other vectors are returned as is.
+# An atom x as a single-factor product with coefficient one(scalartype(x)), so that the methods below return the same
+# type as zerovector(x)
 _atom_as_muladd(x::MulAdd) = x
 _atom_as_muladd(x) = NCMul(one(_scalartype(x)), [x])
 
-# The VectorInterface methods for an atom type T, which act on it as the product with it as the only factor.
-# Called by @nc_common. The methods with an atom in the first argument take any second argument, so that they cover
-# atoms of other types too (e.g. inner(A(), B()) after @nc A B), without ambiguities between the methods of the types.
+# VectorInterface methods for an atom type T, treating an atom as a single-factor product. Methods with an atom as
+# the first argument accept any second argument, so they cover atoms of other types (e.g. inner(A(), B()) after
+# @nc A B) without ambiguities.
 macro nc_vectorinterface(T)
     T = esc(T)
     quote

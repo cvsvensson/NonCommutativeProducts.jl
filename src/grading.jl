@@ -1,11 +1,11 @@
 # Grades are metadata and never affect the value. A nonzero expression has the grades of its terms, while a zero has
 # the grades of how it was computed (see `grades`). A zero sum stores these in `zero_grades`, with `nothing` for ∅.
 # Invariant: every NCAdd returned or mutated by a public operation has correct `zero_grades` if it is zero, and
-# `zero_grades === nothing` otherwise. Public operations restore it at exit with _with_zero_grades; internal helpers
-# don't maintain it. Grade sets are Set{Any} and never mutated once stored.
+# `zero_grades === nothing` otherwise. Public operations restore it with _with_zero_grades; internal helpers don't.
+# Stored grade sets are never mutated.
 #
 # The grades of a nonzero destination of add!!/mul!! are ignored when the result is zero. This is sound if mul_effect
-# respects the grading (see check_grading): c + v == 0 with c != 0 implies that the grades of c are among those of v.
+# respects the grading (see check_grading), since then the grades of the destination are among those of the addend.
 
 """
     grade(atom)
@@ -356,9 +356,8 @@ function _set_zero_grades!(x::NCAdd, gs)
     return x
 end
 
-# Restores the invariant at the exit of a public operation: stores `grades()` if `result` is zero, and clears stale
-# grades otherwise. `grades` is only called for a zero result, behind an inference barrier so that compiled code
-# doesn't depend on downstream grade methods (see _mul_effect in sorting.jl).
+# Restores the invariant at the top of this file. `grades()` is called only for a zero result, behind an inference
+# barrier so that compiled code doesn't depend on downstream grade methods and isn't invalidated by them.
 @inline function _with_zero_grades(result, grades)
     result isa NCAdd || return result
     if iszero(result)

@@ -19,9 +19,8 @@ NCMul{C,S,F}(ncmul::NCMul{C,S,F}) where {C,S,F} = ncmul
 NCMul{C}(coeff, factors) where C = NCMul{C,eltype(factors),typeof(factors)}(coeff, factors)
 NCMul(coeff, factors) = NCMul{typeof(coeff)}(coeff, factors)
 
-# Tuple factors are meant for small products that are cheap to construct. Only cheap operations such as
-# equality, hashing and adjoint accept them as they are. Operations that multiply, sort or mutate collect
-# the factors into a Vector first, so their results, as well as zero, one and oneunit, are Vector-backed.
+# Tuple factors are for small products that are cheap to construct. Operations that multiply, sort or mutate collect
+# them into a Vector, so their results, as well as zero, one and oneunit, are Vector-backed.
 factors_vector(factors::AbstractVector) = factors
 factors_vector(factors::Tuple) = collect(eltype(factors), factors)
 copy_factors(factors) = copy(factors)
@@ -80,8 +79,7 @@ factors_equal(a::F, b::F) where {F} = a == b
 factors_equal(a, b) = length(a) == length(b) && all(splat(==), zip(a, b))
 hash_factors(factors, h::UInt) = foldl((h, f) -> hash(f, h), factors; init=hash(length(factors), h))
 function Base.hash(a::NCMul, h::UInt)
-    # hashing is by value like ==: a zero product hashes like 0 whatever its factors, and a scalar product like its
-    # coefficient
+    # by value, consistent with ==
     iszero(a) && return hash(zero(prefactor(a)), h)::UInt
     isscalar(a) && return hash(prefactor(a), h)::UInt
     single_term = isone(prefactor(a)) && length(a.factors) == 1

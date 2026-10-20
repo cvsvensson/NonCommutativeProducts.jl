@@ -16,10 +16,8 @@ end
 
 filter_zeros!(d::AbstractDict) = filter!(kv -> !iszero(last(kv)), d)
 
-# The terms are always a Dict{K,C}: they share the coefficient type of the sum, and Dict is the only container,
-# since equality and key lookup assume keys are compared by value.
-# `zero_grades` holds the grades of a zero sum (see grading.jl), and is `nothing` for a nonzero sum and for a zero
-# without grades (∅). It is not part of the value, so equality and hashing ignore it.
+# The terms are a Dict, since equality and key lookup assume keys are compared by value.
+# `zero_grades` holds the grades of a zero sum, or `nothing` (see grading.jl). Equality and hashing ignore it.
 """
     NCAdd
 
@@ -32,7 +30,7 @@ mutable struct NCAdd{C,K}
     coeff::C
     const dict::Dict{K,C}
     zero_grades::Union{Nothing,Set{Any}}
-    # Exactly NCAdd{C,K}, or an InexactError if the coefficients don't fit in C
+    # throws an InexactError if the coefficients don't fit in C
     function NCAdd{C,K}(coeff, dict::AbstractDict; zero_grades=nothing, kwargs...) where {C,K}
         newdict = dict isa Dict{K,C} ? dict : Dict{K,C}(dict)
         _, addcoeff = filter_ncadd_dict!(newdict; kwargs...)
@@ -54,16 +52,14 @@ function set_coeff!(a::NCAdd, x::Number)
     return a
 end
 function set_coeff!!(a::NCAdd{C}, x::Number) where {C}
-    # decide up front, like scale!!, so that set_coeff! is only used where it can't fail
+    # use set_coeff! only where it can't fail
     promote_type(typeof(x), C) <: C ? set_coeff!(a, x) : NCAdd(x, a.dict)
 end
-# anyadd converts an NCAdd with any key type to an NCAdd whose keys hold their factors in a Vector{Any}.
-# Every key type promotes to that one, so it is a closed type for KrylovKit.
+# Every key type promotes to keys with Vector{Any} factors, so solvers such as KrylovKit can use this type throughout.
 anyadd(x::Union{NCMul{C},NCAdd{C}}) where {C} = convert(NCAdd{C,NCMul{Int,Any,Vector{Any}}}, x)
 
 const MulAdd = Union{NCMul,NCAdd}
-# Like the other helpers, this doesn't maintain the grades of a zero result, which is left to the public operation that
-# calls it (see _with_zero_grades).
+# Doesn't maintain the grades of a zero result (see _with_zero_grades).
 function filter_ncadd!!(x::NCAdd; kwargs...)
     dict, coeff = filter_ncadd_dict!(x.dict; kwargs...)
     _add_scaled!!(x, coeff, One())
@@ -96,8 +92,7 @@ function print_coeff(io, coeff)
         print(io, "(", coeff, ")", "I")
     end
 end
-# Each term is rendered with the context of `io` as `(negative, text)`, and the terms are sorted by
-# their signed printed form so the output does not depend on dictionary order.
+# Terms are sorted by their signed printed form, so the output doesn't depend on dictionary order.
 function _term_parts(io::IO, x::NCAdd)
     parts = Tuple{Bool,String}[]
     for (k, v) in pairs(x.dict)
@@ -190,9 +185,8 @@ function add_term!!(dict::AbstractDict, key, coeff)
     return newdict
 end
 
-# Computes β * a + α * b. A zero result has the grades of β * a and b. Those of a nonzero β * a needn't be computed,
-# since its terms cancel with terms of b, and so its grades are among those of b. The grades of the destination are
-# dropped when β isa Zero, since it is then ignored.
+# Computes β * a + α * b. A zero result has the grades of b, plus the stored grades of a zero a unless β isa Zero.
+# A nonzero β * a cancels against b, so its grades are among those of b.
 function add!!(_a::NCAdd, b::Union{MulAdd,Number,UniformScaling}, α::Number=One(), β::Number=One())
     # scaling _a in place would also scale b if they alias, e.g. in scale!!(x, x, α)
     b = _a === b ? copy(b) : b
@@ -200,8 +194,7 @@ function add!!(_a::NCAdd, b::Union{MulAdd,Number,UniformScaling}, α::Number=One
     agrades = β isa VectorInterface.Zero ? nothing : _zero_grades(a)
     return _with_zero_grades(_add_scaled!!(a, b, α), () -> _union_grades(agrades, _grades(b)))
 end
-# a + α * b without the grades of a zero result. Loops that build a sum term by term call this directly, and leave the
-# grades to the operation that calls them.
+# a + α * b without maintaining the grades of a zero result
 function _add_scaled!!(a::NCAdd, b::NCMul, α)
     # a scalar product belongs in the coefficient, as in the NCAdd constructor
     isscalar(b) && return _add_scaled!!(a, prefactor(b), α)
@@ -226,9 +219,8 @@ end
 _add_scaled!!(a::NCAdd, b::Number, α) = set_coeff!!(a, additive_coeff(a) + α * b)
 _add_scaled!!(a::NCAdd, b::UniformScaling, α) = set_coeff!!(a, additive_coeff(a) + α * b.λ)
 
-# Convert, then mutate: sets `y` to the coefficient `coeff` plus the terms `terms`, an iterator of key => value pairs
-# that may read from `y.dict`. Everything is converted to the types of `y` before `y` is touched, so that a failed
-# conversion (e.g. an InexactError) leaves `y` unchanged. Zero terms are dropped as in the NCAdd constructor.
+# Sets `y` to `coeff` plus `terms`, key => value pairs that may read from `y.dict`. Everything is converted before `y`
+# is mutated, so a failed conversion leaves `y` unchanged.
 function _set_ncadd!(y::NCAdd{C,K}, coeff, terms) where {C,K}
     newcoeff = convert(C, coeff)
     newterms = [convert(K, k) => convert(C, v) for (k, v) in terms]
@@ -244,9 +236,7 @@ function _set_ncadd!(y::NCAdd, x::NCAdd)
     y.zero_grades = x.zero_grades
     return y
 end
-# Fast path: the terms of `x` already have the types of `y`, so only the coefficient can fail to convert, and the
-# terms are copied directly instead of through a temporary vector. If `x` shares its terms with `y` (e.g. x === y),
-# they are already in place.
+# The terms of `x` already have the types of `y`, so only the coefficient can fail to convert
 function _set_ncadd!(y::NCAdd{C,K}, x::NCAdd{C,K}) where {C,K}
     newcoeff = convert(C, additive_coeff(x))
     if x.dict !== y.dict
@@ -261,19 +251,17 @@ function _set_ncadd!(y::NCAdd{C,K}, x::NCAdd{C,K}) where {C,K}
 end
 _set_ncadd!(y::NCAdd, x::NCMul) = _set_ncadd!(y, NCAdd(x))
 
-# add! and scale! either update all of `a` or, if the result doesn't fit in the coefficient type, throw and leave
-# `a` unchanged. An error from the arithmetic itself (e.g. an OverflowError with Rational{Int}) may leave `a` partly
-# updated, since checking for that would need a temporary copy of the terms.
+# If the result doesn't fit in the coefficient type, add! and scale! throw and leave `a` unchanged. An error from the
+# arithmetic itself (e.g. an OverflowError with Rational{Int}) may leave `a` partly updated.
 function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where {C}
-    # computes β * a + α * b. The grades of a zero result are as in add!!, except that if a is scaled by zero they
-    # are those of a, which are computed before its terms are dropped.
+    # β * a + α * b, with grades as in add!!, except that a scaled by zero contributes all its grades
     agrades = β isa VectorInterface.Zero ? nothing : iszero(β) ? _grades(a) : _zero_grades(a)
     newgrades = () -> _union_grades(agrades, _grades(b))
     newcoeff = additive_coeff(a) * β + α * b
     if !(promote_type(typeof(β), C) <: C)
         return _with_zero_grades(_set_ncadd!(a, newcoeff, (k => v * β for (k, v) in a.dict)), newgrades)
     end
-    # the scaled terms fit in C, so only the coefficient can fail to convert. Convert it first and scale in place.
+    # the scaled terms fit in C, so only the coefficient can fail to convert
     set_coeff!(a, convert(C, newcoeff))
     if !(β isa One)
         map!(v -> v * β, values(a.dict))
@@ -284,7 +272,7 @@ end
 scale!(x::NCAdd, α::Number) = add!(x, false, One(), α)
 
 function scale!!(x::NCAdd{CS}, α::C) where {CS,C<:Number}
-    # decide up front, so that scale! is only used where it can't fail
+    # use scale! only where it can't fail
     if promote_type(C, CS) <: CS
         scale!(x, α)
     else
@@ -309,14 +297,12 @@ Base.:*(a::NCAdd, x::Number) = x * a
 Base.:*(a::NCAdd, b::NCMul) = _mul_sums(zero(typeof(a)), a, b)
 Base.:*(a::NCMul, b::NCAdd) = _mul_sums(zero(typeof(b)), a, b)
 Base.:*(a::NCAdd, b::NCAdd) = _mul_sums(zero(typeof(a)), a, b)
-# The product a * b, accumulated in the fresh zero `c`. `c` is not an operand, so a zero result has the grades of a
-# and b only.
+# a * b accumulated in the fresh zero `c`, so a zero result has the grades of a and b only
 function _mul_sums(c::NCAdd, a::MulAdd, b::MulAdd)
     product = filter_ncadd!!(_mul!!(c, a, b); filter_zeros=true, filter_scalars=true)
     return _with_zero_grades(product, () -> _mul_grades(_grades(a), _grades(b)))
 end
-# Computes c + a * b. A zero result has the grades of c and the products of the grades of a and b. As in add!!, those
-# of a nonzero c needn't be computed, since they are among the latter.
+# Computes c + a * b. A zero result has the stored grades of c and the products of the grades of a and b.
 function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     cgrades = _zero_grades(c)
     return _with_zero_grades(_mul!!(c, a, b), () -> _union_grades(cgrades, _mul_grades(_grades(a), _grades(b))))
@@ -340,13 +326,12 @@ function _add_coeff_terms!!(c::NCAdd, a::MulAdd, b::MulAdd)
     end
     if !iszero(bcoeff)
         c = _add_scaled!!(c, a, bcoeff)
-        c = _add_scaled!!(c, -acoeff * bcoeff, One()) # We've double counted this term so subtract it
+        c = _add_scaled!!(c, -acoeff * bcoeff, One()) # counted twice above
     end
     return c
 end
-# The sorted sum of c and the products of the terms of a and b. The products are sorted together with the terms of c
-# as one list before they are added up, which avoids hashing every unsorted product. The result is the same as
-# adding the products to c and then sorting it.
+# The sorted sum of c and the products of the terms of a and b. Sorting the products with the terms of c before adding
+# them up avoids hashing every unsorted product.
 function _add_sorted_products!!(c::NCAdd{C}, a::MulAdd, b::MulAdd) where {C}
     products = [catenate(aterm, bterm) for bterm in NCterms(b) for aterm in NCterms(a)]
     isempty(products) && return bubble_sort(c)
