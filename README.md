@@ -4,8 +4,6 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/)
 [![Build Status](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl)
-[![Aqua QA](https://juliatesting.github.io/Aqua.jl/dev/assets/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
-[![Version](https://img.shields.io/github/v/tag/cvsvensson/NonCommutativeProducts.jl)](https://github.com/cvsvensson/NonCommutativeProducts.jl/tags)
 
 **NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. With a list of types `Ts` that represents your non-commuting objects, call `@nc Ts...` to define addition and multiplication for these types, and define `mul_effect(a, b)` for each pair of types to say what `a*b` is replaced by while sorting.
 
