@@ -22,6 +22,24 @@ SUITE["multiply"] = BenchmarkGroup()
 const h = sum(Fermion(n)' * Fermion(n) + Fermion(n) * Fermion(n + 1)' for n in 1:10)
 SUITE["multiply"]["sum_cube"] = @benchmarkable $h^3
 
+# The same sum, for fermions whose `mul_effect` returns `Swap` and `AddTerms` instead of forming new expressions
+struct SwapFermion
+    label::Int
+    creation::Bool
+end
+SwapFermion(k) = SwapFermion(k, false)
+Base.adjoint(x::SwapFermion) = SwapFermion(x.label, !x.creation)
+Base.hash(x::SwapFermion, h::UInt) = hash(x.label, hash(x.creation, hash(0x452821e638d01377, h)))
+NonCommutativeProducts.@nc SwapFermion
+function NonCommutativeProducts.mul_effect(a::SwapFermion, b::SwapFermion)
+    a == b && return 0
+    (!a.creation, a.label) > (!b.creation, b.label) || return nothing
+    a.label == b.label && return NonCommutativeProducts.AddTerms((NonCommutativeProducts.Swap(-1), 1))
+    return NonCommutativeProducts.Swap(-1)
+end
+const h_swap = sum(SwapFermion(n)' * SwapFermion(n) + SwapFermion(n) * SwapFermion(n + 1)' for n in 1:10)
+SUITE["multiply"]["sum_cube_swap"] = @benchmarkable $h_swap^3
+
 labels = shuffle(1:10)
 SUITE["multiply"]["deep_product"] = @benchmarkable prod(Fermion(l) for l in $labels) * prod(Fermion(l)' for l in $labels)
 
