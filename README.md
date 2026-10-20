@@ -1,281 +1,54 @@
 # NonCommutativeProducts.jl
 
-<!--  [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://cvsvensson.github.io/NonCommutativeProducts.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/) -->
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://cvsvensson.github.io/NonCommutativeProducts.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/)
 [![Build Status](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl)
 [![Aqua QA](https://juliatesting.github.io/Aqua.jl/dev/assets/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+[![Version](https://img.shields.io/github/v/tag/cvsvensson/NonCommutativeProducts.jl)](https://github.com/cvsvensson/NonCommutativeProducts.jl/tags)
 
-**NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. Install by
+**NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. With a list of types `Ts` that represents your non-commuting objects, call `@nc Ts...` to define addition and multiplication for these types, and define `mul_effect(a, b)` for each pair of types to say what `a*b` is replaced by while sorting.
+
+## Installation
+
 ```julia
 using Pkg
 Pkg.add("NonCommutativeProducts")
 ```
 
-## How to do it
-With a list of types `Ts` that represents your non-commuting objects, call `@nc Ts...` which defines addition and multiplication for these types. In order to sort them, define `mul_effect(a::Tj, b::Tk)` for each pair of types to define the behaviour of `a*b`.
-
-The function `mul_effect(a::Tj, b::Tk)` can have return values 
-* `nothing`: Keeps `a*b`. This return value is important as the sorting only terminates when this is the return value for each neighbouring pair product. If you don't have this, you'll get stuck in an infinite loop.
-* `λ::Number`: replaces `a*b` by `λ`.
-* `x::T`: replaces `a*b` by `x`
-* Sums and products of such terms, such as `b*a + 1`.
-
-No names are currently exported from the package, so you'll need to import the names you need.
-
-Let's look at an example that shows how to define and sort fermions. The tests of this package contains a similar example with majorana fermions, and another test shows how one can collect powers.
-
 ## Example: Fermions
 
-Let's see how to define fermions which satisfy
-```math
-\begin{align*}
-\{c_i^\dagger,c_j\}&=\delta_{ij}\\ 
-\{c_i,c_j\}&=0\\ 
-\{c_i^\dagger,c_j^\dagger\}&=0.
-\end{align*}
-```
-
-We'll sort them in normal order i.e. all creation operators appear before annihilation operators. First let's define a struct representing a fermion.
+Fermions sorted in normal order, with all creation operators before annihilation operators:
 ```julia
 struct Fermion
-	label::Int
+    label::Int
     dagger::Bool
 end
 Base.adjoint(x::Fermion) = Fermion(x.label, !x.dagger)
 Fermion(k) = Fermion(k, false)
 Base.show(io::IO, x::Fermion) = print(io, "c", x.dagger ? "†" : "", "[", x.label, "]")
-```
-Then, we need to hook up our struct to the package to let it handle the arithmetic. Let's load the package and import the functions we are gonna use.
-```julia
+
 using NonCommutativeProducts
 import NonCommutativeProducts: @nc, mul_effect
 @nc Fermion
-```
-Now one can add and multiply these fermions,
-```julia
-Fermion(1)'*Fermion(1) + 1
-#1I + c†[1]*c[1]
-```
-but they can't be sorted. To sort them in normal order and by label, we define 
-```julia
+
 function mul_effect(a::Fermion, b::Fermion)
-    # If the fermion is multiplied with itself, replace it by zero. 
-    (a.dagger, a.label) == (b.dagger, b.label) && return 0 
+    # If the fermion is multiplied with itself, replace it by zero.
+    (a.dagger, a.label) == (b.dagger, b.label) && return 0
     # If already sorted, return nothing
     (!a.dagger, a.label) < (!b.dagger, b.label) && return nothing
     # Non-trivial anti-commutation relation
-    (!a.dagger, a.label) == (b.dagger, b.label) && return -b*a + 1 
+    (!a.dagger, a.label) == (b.dagger, b.label) && return -b*a + 1
     # Trivial anti-commutation relation
     return -b*a
 end
-```
-Now we can sort expression involving fermions while respecting the commutation relations.
-```julia
+
 Fermion(1)'*Fermion(1) |> sort
 #c†[1]*c[1]
 Fermion(1)*Fermion(1)' |> sort
 #1I - c†[1]*c[1]
 ```
-In order to automatically sort them on each multiplication, we can call `enable_autosort!`:
-```julia
-NonCommutativeProducts.enable_autosort!()
-prod(Fermion(n) + Fermion(n)' for n in 1:4) 
-#=Sum with 16 terms: 
- -c†[1]*c†[2]*c†[4]*c[3]-c†[1]*c†[3]*c[2]*c[4]-c†[2]*c[1]*c[3]*c[4] + ...=#
-```
-`enable_autosort!` sets the global default. You can override it locally in a scope with `NonCommutativeProducts.with_autosort(false) do ... end`. This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort is always locally disabled to avoid infinite recursion. Use `NonCommutativeProducts.disable_autosort!()` to turn autosort off globally again.
 
-## Multiple types
+## Documentation
 
-Several types can be used in the same expressions. When sorting, `mul_effect` is called on every pair of neighbouring factors, so each pair of types that can end up next to each other needs one. For types that commute with each other, the macro `@commutative` defines mixed arithmetic and the mixed `mul_effect`s for you. Factors are then ordered by type, in the order the types are listed.
-```julia
-import NonCommutativeProducts: @commutative, @nc
-struct Foo end
-struct Bar end
-@nc Foo Bar
-@commutative Foo Bar
-
-2Bar()Foo() - Foo()Bar() |> sort
-# Foo()*Bar()
-```
-For types that don't commute define `mul_effect(a::Foo, b::Bar)` and `mul_effect(a::Bar, b::Foo)` yourself.
-
-## Traversing expressions
-
-`ncmapreduce(f, (add, mul), x; scalarmap)` maps `f` over every factor in `x`, combines the factors in each term with `mul`, and then combines the terms with `add`. Scalars are passed through `scalarmap`. For example, the highest number of factors in any term of a fermion expression is
-```julia
-import NonCommutativeProducts: ncmapreduce
-op = 1 + 2Fermion(1)'*Fermion(2) + Fermion(1)'*Fermion(2)'*Fermion(3)
-ncmapreduce(x -> 1, (max, +), op; scalarmap=zero)
-# 3
-```
-With the ordinary `(+, *)`, one can substitute a matrix for each factor:
-```julia
-c = [0 1; 0 0]
-ncmapreduce(x -> x.dagger ? c' : c, (+, *), Fermion(1)'*Fermion(1) + 2; scalarmap=x -> x*I)
-# [2 0; 0 3]
-```
-
-## Performance tips
-
-This package is flexible, but not very efficient. Sorting is done via bubble sort, which is convenient for this use case since it is based on repeatedly swapping adjacent elements where commutation relations can be used. But it does not scale well with the length of the list, so it won't perform well for products of many elements.
-
-```julia
-# Example timing: 108.298 ms (1142139 allocations: 78.37 MiB)
-op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
-#= Sum with 59049 terms: 
-1I-c†[10]*c[1]-c†[10]*c[1]*c[2]*c[3]-c†[10]*c[1]*c[2]*c[3]*c[4]*c[5] + ...
-=#
-```
-
-
-To cut down on allocations, one can use `NonCommutativeProducts.add!!` which tries to perform addition in place, but widens the type if not possible.
-```julia
-op = 0
-for n in 1:100
-    op += Fermion(n)'*Fermion(n)
-end
-# Example timing: 105.000 μs (2221 allocations: 543.15 KiB)
-
-op2 = zero(op)
-for n in 1:100
-    op2 = NonCommutativeProducts.add!!(op2, Fermion(n)'*Fermion(n))
-end
-# Example timing: 44.300 μs (1613 allocations: 108.64 KiB)
-op == op2 #true
-```
-
-Mixing different symbolic types together is slower than using a single type.
-
-Disable autosort to improve performance if you don't want automatic sorting.
-
-Finally, instead of using ordinary addition and multiplication in mul_effect, 
-you can use `Swap` and `AddTerms` which are more efficient. 
-Their behaviour is:
-* `Swap(λ::Number)`: Replaces `a*b` by `λ*b*a`. 
-* `AddTerms(terms)`: `a*b` should be replaced by a sum of terms. `terms` should be an iterable such as a vector or a tuple, and the elements can be of the other allowed return types except `nothing`.
-
-For example, the `mul_effect` for fermions can be implemented as
-```julia
-import NonCommutativeProducts: Swap, AddTerms
-function mul_effect(a::Fermion, b::Fermion)
-    (a.dagger, a.label) == (b.dagger, b.label) && return 0 
-    (!a.dagger, a.label) < (!b.dagger, b.label) && return nothing
-    (!a.dagger, a.label) == (b.dagger, b.label) && return AddTerms((Swap(-1), 1))
-    return Swap(-1)
-end
-```
-
-## Linear algebra
-
-Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left, so that `scalar` can extract its value. `inner` sorts `x' * y` whether or not autosort is enabled. With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. 
-
-
-Example: Let's define kets and bras and exponentiate a hamiltonian:
-```julia
-using KrylovKit, LinearAlgebra
-import NonCommutativeProducts as NC
-NC.enable_autosort!()
-struct Ket
-    n::Int
-    bra::Bool
-    Ket(n::Int, bra::Bool=false) = new(n, bra)
-end
-Base.show(io::IO, k::Ket) = print(io, k.bra ? "⟨" : "|", k.n, k.bra ? "|" : "⟩")
-Base.adjoint(k::Ket) = Ket(k.n, !k.bra)
-NC.@nc Ket
-NC.mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
-
-k0, k1 = Ket(0), Ket(1)
-H = k0 * k1' + k1 * k0'
-vals, vecs = eigsolve(H, k0, 2, :SR; ishermitian=true)
-x, info = exponentiate(1im*H, pi/2, k0)
-norm(x - im*k1) < 1e-12 # true
-```
-
-## Gradings
-
-A grading gives every factor a grade, so that the grade of a product is the product of the grades of its factors. Gradings can be used to keep track of what kind of object an expression is, e.g. a ket, a bra or an operator, or of quantities such as particle number. The grade `nothing` is the identity grade, which numbers and types without a grade have. Define these for your types:
-* `grade(a)`: the grade of the factor `a`.
-* `mul_grade(g, h)`: the product of two grades of one grading. It must be associative, return a grade of the same grading, and return `nothing` for the identity.
-* `adjoint_grade(g)`: the grade of `a'` when `a` has grade `g`.
-
-Then `grades(x)` returns the set of grades of the terms of `x`, and `grade(x)` returns the single grade of `x`, throwing an error if there isn't exactly one.
-
-The value `0` doesn't say what kind of zero it is. Instead, a zero keeps the grades of the expressions it was derived from. For the kets of the previous section, a ket has grade (1,0) and a bra (0,1).
-```julia
-struct Bicyclic
-    m::Int
-    n::Int
-end
-NC.grade(k::Ket) = k.bra ? Bicyclic(0, 1) : Bicyclic(1, 0)
-function NC.mul_grade(g::Bicyclic, h::Bicyclic)
-    c = max(g.n, h.m)
-    r = Bicyclic(g.m - g.n + c, h.n - h.m + c)
-    return r == Bicyclic(0, 0) ? nothing : r
-end
-NC.adjoint_grade(g::Bicyclic) = Bicyclic(g.n, g.m)
-
-z = k0 * k1' * k0 # an annihilated ket
-z == 0 # true
-NC.grades(z) # Set([Bicyclic(1, 0)]), a zero ket
-NC.grades(z') # Set([Bicyclic(0, 1)]), a zero bra
-```
-
-As another example, give the fermions from the beginning a charge, to check that a Hamiltonian conserves the number of particles:
-```julia
-struct Charge
-    q::Int
-end
-NC.grade(f::Fermion) = Charge(f.dagger ? 1 : -1)
-NC.mul_grade(a::Charge, b::Charge) = iszero(a.q + b.q) ? nothing : Charge(a.q + b.q)
-NC.adjoint_grade(a::Charge) = Charge(-a.q)
-
-H = sum(Fermion(n)' * Fermion(n + 1) + Fermion(n + 1)' * Fermion(n) for n in 1:3) + Fermion(1)' * Fermion(1)
-NC.grades(H) # Set([nothing]), so H conserves the particle number
-NC.grades(Fermion(1)' + Fermion(2)' * Fermion(1)' * Fermion(1)) # Set([Charge(1)])
-```
-To mix grades of different types, declare which grading each type belongs to:
-```julia
-NC.grading(::Type{Charge}) = Charge
-NC.grading(::Type{Bicyclic}) = Bicyclic
-NC.@commutative Fermion Ket
-```
-Grades of the same type, or of different types with the same declared grading, are multiplied with `mul_grade`. Grades of different declared gradings are independent and combine into a `NC.ProductGrade`, with one component per grading. Mixing grades where either type has no declared grading throws an `ArgumentError`. So `Fermion(1)' * k0` has the grade `ProductGrade(Bicyclic(1, 0), Charge(1))` in either order. Components of the same grading are multiplied with each other, and components that become `nothing` are dropped, so `Fermion(1)' * k0 * Fermion(1)` has the grade `Bicyclic(1, 0)`. Several types can share a grading, e.g. `NC.grading(::Type{<:U1}) = U1`, and then you define `mul_grade` between them. A type can also carry several gradings, e.g. `NC.grade(f::SpinfulFermion) = NC.ProductGrade(Charge(1), Spin(1))`, if `Charge` and `Spin` have declared gradings.
-
-Every term that `mul_effect(a, b)` returns must have the product of the grades of `a` and `b`. Use `check_grading(a, b)` in your tests to check this, e.g. `NC.check_grading(Fermion(1), Fermion(1)')`.
-
-## API overview
-
-The names below are public but not exported, so access them as `NonCommutativeProducts.name` or import them explicitly, e.g. `using NonCommutativeProducts: @nc, terms`.
-
-**Setting up types**
-* `@nc T1 T2 ...`: defines addition and multiplication for the given types, both within each type and between them.
-* `@commutative T1 T2 ...`: defines mixed arithmetic for types that commute with each other, and orders them as listed. The types must already be registered with `@nc`.
-* `mul_effect(a, b)`: defined by you, says what to replace `a*b` with while sorting. Return `nothing` to keep it, or a number, an object, a sum or product of these, `Swap(λ)` or `AddTerms(terms)`.
-* `Swap(λ)`: return value for `mul_effect` that replaces `a*b` by `λ*b*a`.
-* `AddTerms(terms)`: return value for `mul_effect` that replaces `a*b` by a sum of `terms`. Elements can be any other allowed return value except `nothing`, including sums and nested `AddTerms`.
-* `grade(a)`: defined by you, the grade of a factor (see [Gradings](#gradings)). Defaults to `nothing`, the identity grade. For an expression, it returns the single element of `grades(x)`, and throws an `ArgumentError` if there isn't exactly one.
-* `mul_grade(g, h)`: defined by you, the associative product of two grades of one grading, other than `nothing`. Return a grade of that grading, or `nothing` for the identity.
-* `adjoint_grade(g)`: defined by you, the grade of `a'` for a factor `a` of grade `g`.
-* `grading(T)`: defined by you, the grading that grades of type `T` belong to, e.g. `NC.grading(::Type{Charge}) = Charge`. Needed only to mix grades of different types. Defaults to `nothing`, undeclared.
-* `ProductGrade(g1, g2, ...)`: a grade in the direct product of independent gradings, one component per grading, in any order. It is the product of grades of different declared gradings.
-* `grades(x)`: the set of grades of the terms of `x`. A zero has the grades it was computed from, and a zero without grades, such as the number `0`, has none.
-* `grade_part(x, g)`: the part of `x` with grade `g`, i.e. the sum of its terms of grade `g`. The parts over `grades(x)` sum to `x`.
-* `check_grading(a, b)`: checks that every term of `mul_effect(a, b)` has the product of the grades of `a` and `b`.
-
-**Sorting**
-* `sort(x)`: sorts a product or sum by repeatedly applying `mul_effect`. The result is always a sum.
-* `enable_autosort!()` / `disable_autosort!()`: sets whether products are sorted automatically when they are formed. `autosort()` returns the current setting. Override locally with `with_autosort(false) do ... end` (or `with_autosort(true) do ... end`).
-
-**Expressions**
-* `NCMul`: a product, i.e. a coefficient times a list of factors.
-* `NCAdd`: a sum of `NCMul`s plus a scalar term. Its constructors are internal; create sums by adding atoms and products.
-* `terms(x)`: an iterator over the terms of `x`, each as an `NCMul` including its coefficient. A nonzero scalar part appears as a product without factors, so `sum(terms(x)) == x`. Works for sums, products, numbers and atoms.
-* `factors(m)`: the factors of the product `m` as a vector.
-* `coefficient(m)`: the coefficient of the product `m`.
-* `scalar(x)`: the number `x` equals if it is a scalar, and an error otherwise.
-* `add!!(a, b)` / `add!!(a, b, α, β)`: computes `a + b` or `β*a + α*b`, in place when possible. This is the package's own function, not `VectorInterface.add!!`: it also has the 2-argument form, and `α` and `β` default to `One()`.
-* `ncmap(f, x)`: applies `f` to every factor of `x`, e.g. `ncmap(f, 2*a*b + 1) == 2*f(a)*f(b) + 1`.
-* `ncmapreduce(f, (add, mul), x; scalarmap=identity)`: maps `f` over the factors and combines them with custom operations instead of `+` and `*`.
+See the [stable](https://cvsvensson.github.io/NonCommutativeProducts.jl/stable/) or [development](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/) documentation for automatic sorting, multiple types, traversing expressions, linear algebra, gradings, performance tips and the API reference.

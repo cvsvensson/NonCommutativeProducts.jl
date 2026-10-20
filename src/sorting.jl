@@ -1,6 +1,18 @@
+"""
+    AddTerms(terms)
+
+Return value for [`mul_effect`](@ref) that replaces `a*b` by the sum of `terms`. `terms` is an iterable such as a
+vector or a tuple, and its elements can be any other allowed return value of `mul_effect` except `nothing`, including
+sums and nested `AddTerms`.
+"""
 struct AddTerms{T}
     terms::T
 end
+"""
+    Swap(λ)
+
+Return value for [`mul_effect`](@ref) that replaces `a*b` by `λ*b*a`.
+"""
 struct Swap{T}
     λ::T
 end
@@ -37,7 +49,12 @@ function _splice!!_and_add_flatten(ncmul::NCMul, i, terms)
     return ncmul2, identity.(newterms)
 end
 
-# Sorting returns a sum for products too, also when the sorted product is a single term.
+"""
+    sort(x::Union{NCMul,NCAdd})
+
+Sort `x` by repeatedly applying [`mul_effect`](@ref) to neighbouring factors. The result is always an `NCAdd`, also
+when `x` is a product that sorts to a single term.
+"""
 Base.sort(a::NCMul) = bubble_sort(a) |> _as_ncadd
 Base.sort(a::NCAdd) = bubble_sort(a)
 _as_ncadd(a::NCAdd) = a
@@ -225,7 +242,7 @@ No methods for `mul_effect` are defined in this package, so you need to define t
 
 The return value can be `nothing`, a number, an object, a sum or product of these, or one of the helper types `Swap(λ)`
 (replace `a*b` by `λ*b*a`) and `AddTerms(terms)` (replace `a*b` by a sum of `terms`). `Swap` and `AddTerms` are
-available as `NonCommutativeProducts.Swap` and `NonCommutativeProducts.AddTerms`, but are not yet public.
+available as `NonCommutativeProducts.Swap` and `NonCommutativeProducts.AddTerms`.
 
 # Example
 ```julia
