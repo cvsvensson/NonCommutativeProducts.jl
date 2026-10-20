@@ -139,8 +139,8 @@ Whether products are sorted with `mul_effect` as they are formed. Set the global
 `disable_autosort!`, or override it for a block of code with `with_autosort`. Autosorting is off by default.
 """
 function autosort()
-    Base.isassigned(_autosort) && return _autosort[]
-    return _DEFAULT_AUTOSORT[]
+    v = ScopedValues.get(_autosort)
+    return v === nothing ? _DEFAULT_AUTOSORT[] : something(v)
 end
 """
     enable_autosort!()
