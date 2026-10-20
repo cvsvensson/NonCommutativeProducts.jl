@@ -3,6 +3,9 @@ uuid = "a9a0a982-c603-4485-bf80-6b61b825abb4"
 version = "0.5.0"
 authors = ["Viktor Svensson", "William Samuelson"]
 
+[workspace]
+projects = ["test"]
+
 [deps]
 BangBang = "198e06fe-97b7-11e9-32a5-e1d131e6ad66"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -20,8 +23,5 @@ BangBang = "0.4"
 KrylovKit = "0.10"
 LinearAlgebra = "1"
 PrecompileTools = "1"
-VectorInterface = "0.5, 0.6"
+VectorInterface = "0.5, 0.6, 0.7"
 julia = "1.12"
-
-[workspace]
-projects = ["test"]
