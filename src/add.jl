@@ -172,14 +172,16 @@ Methods for `VectorInterface.add!!` call it.
 add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
 # Add `coeff` to the term with key `key` in `dict`, and delete the term if it becomes zero.
-# Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int).
+# Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int). A result that
+# fits is converted before the zero check, since the conversion can round it to zero (e.g. Rational to Float16).
 function add_term!!(dict::AbstractDict, key, coeff)
     newdict, _ = modify!!(dict, key) do val
-        newval = isnothing(val) ? coeff : something(val) + coeff
+        newval = _fit_value(valtype(dict), isnothing(val) ? coeff : something(val) + coeff)
         iszero(newval) ? nothing : newval
     end
     return newdict
 end
+_fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V, x) : x
 
 # Computes β * a + α * b. A zero result has the grades of b, plus the stored grades of a zero a unless β isa Zero.
 # A nonzero β * a cancels against b, so its grades are among those of b.

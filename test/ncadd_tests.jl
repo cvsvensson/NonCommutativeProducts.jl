@@ -78,6 +78,9 @@ end
     @test iscanonical(add!!(f1 + 1, -1 * (f1 + 1)), 0)
     @test iscanonical(add!!(f1 + 1, f1, 1, 0), f1)
     @test iscanonical(add!!(f1 + f2, -1.0 * f1), f2) # widening coefficients
+    # a coefficient that rounds to zero in the value type (promote_type(Float16, Rational{Int}) == Float16)
+    @test iscanonical(add!!(Float16(1) * f1 + 0, (1 // 10^8) * f2 + 0), Float16(1) * f1 + 0)
+    @test iscanonical(add!!(Float16(1) * f1 + 0, (1 // 10^8) * f2), Float16(1) * f1 + 0)
     @test iscanonical(add!!(1 + f2, NC.NCMul(0, [f1])), 1 + f2) # no new zero term
     @test iscanonical(add!!(f1 + 1, NC.NCMul(2, typeof(f1)[])), f1 + 3) # scalar products go to the coefficient
     @test iscanonical(add!(f1 + 1, 1, 1, 0), 1)
