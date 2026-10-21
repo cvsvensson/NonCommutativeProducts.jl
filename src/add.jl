@@ -284,7 +284,8 @@ function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where 
     set_coeff!(a, convert(C, newcoeff))
     if !(β isa One)
         map!(v -> v * β, values(a.dict))
-        iszero(β) && filter_zeros!(a.dict)
+        # a nonzero β can also give zero terms, through underflow
+        filter_zeros!(a.dict)
     end
     return _with_zero_grades(a, newgrades)
 end

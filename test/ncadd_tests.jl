@@ -91,6 +91,10 @@ end
     @test iscanonical(VectorInterface.scale!(f1 + 1, f1 + f2, 0), 0)
     @test iscanonical(VectorInterface.add!(f1 + 1, f1 + 0, -1, 1), 1)
     @test iscanonical(VectorInterface.add!!(f1 + 1, f1 + 0, -1, 1), 1)
+    # scaling by a nonzero number that underflows the terms to zero
+    @test iscanonical(add!(1e-200 * f1 + 1.0, 0, 1, 1e-200), 1e-200)
+    @test iscanonical(NC.scale!(1e-200 * f1 + 1.0, 1e-200), 1e-200)
+    @test iscanonical(VectorInterface.scale!!(1e-200 * f1 + 1.0, 1e-200), 1e-200)
     @test iscanonical(f1 + 1 - f1, 1)
     @test iscanonical((f1 + 1) + (-f1 + 0), 1)
     @test iscanonical(0 * (f1 + 1), 0)
