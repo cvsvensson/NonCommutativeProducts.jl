@@ -97,6 +97,12 @@ end
     @test iscanonical(VectorInterface.scale!!(1e-200 * f1 + 1.0, 1e-200), 1e-200)
     @test iscanonical(f1 + 1 - f1, 1)
     @test iscanonical((f1 + 1) + (-f1 + 0), 1)
+    @test iscanonical((f1 + 2 * f2) + (-1.0 * f1 + 0), 2.0 * f2 + 0) # widening coefficients
+    @test iscanonical((true * f1 + 0) + (true * f1 + 0), 2 * f1 + 0) # Bool + Bool isa Int
+    @test iscanonical((1 * f1 + b1) + (-b1 + 0), f1 + 0) # keys of different types
+    # coefficients that round to zero in the promoted type (promote_type(Float16, Rational{Int}) == Float16)
+    @test iscanonical(((1 // 10^8) * f1 + 0) + (Float16(1) * f2 + 0), Float16(1) * f2 + 0)
+    @test iscanonical((Float16(1) * f2 + 0) + ((1 // 10^8) * f1 + 0), Float16(1) * f2 + 0)
     @test iscanonical(0 * (f1 + 1), 0)
     # mixed species: the keys of the terms have different types
     @test iscanonical(add!!(1 * f1 + b1, -b1), f1 + 0)

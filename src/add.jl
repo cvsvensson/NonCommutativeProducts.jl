@@ -152,11 +152,14 @@ Base.:-(a::Union{Number,UniformScaling}, b::MulAdd) = a + (-b)
 Base.:-(a::MulAdd, b::Union{Number,MulAdd,UniformScaling}) = a + (-b)
 Base.:-(a::NCAdd) = (-1) * a
 function Base.:+(a::NCAdd{C1,K1}, b::NCAdd{C2,K2}) where {C1,K1,C2,K2}
-    dict = copy_dict(a, promote_type(K1, K2), promote_type(C1, C2))
+    C = promote_type(C1, C2)
+    dict = copy_dict(a, promote_type(K1, K2), C)
     for (k, v) in b.dict
         dict = add_term!!(dict, k, v)
     end
-    sum = NCAdd(additive_coeff(a) + additive_coeff(b), dict)
+    # The terms of a and b are nonzero and have factors, and add_term!! leaves out terms that are zero. Only converting
+    # the terms of a to another coefficient type can make them zero, e.g. a small Rational converted to Float16.
+    sum = NCAdd(additive_coeff(a) + additive_coeff(b), dict; filter_zeros=C1 !== C, filter_scalars=false)
     return _with_zero_grades(sum, () -> _union_grades(_grades(a), _grades(b)))
 end
 """
