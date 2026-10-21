@@ -182,6 +182,27 @@ function add_term!!(dict::AbstractDict, key, coeff)
     return newdict
 end
 _fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V, x) : x
+# A Dict method that hashes `key` once, using the Dict internals that Base's setindex! uses. It falls back to the
+# generic method when the result needs a wider value type. The internals, and the method of _setindex! that takes the
+# short hash, are checked for when the package is compiled.
+@static if isdefined(Base, :ht_keyindex2_shorthash!) && isdefined(Base, :_delete!) && isdefined(Base, :_setindex!) &&
+           hasmethod(Base._setindex!, Tuple{Dict{Int,Int},Int,Int,Int,UInt8}) && all(in(fieldnames(Dict)), (:keys, :vals, :age))
+    function add_term!!(dict::Dict{K,V}, key::K, coeff) where {K,V}
+        index, sh = Base.ht_keyindex2_shorthash!(dict, key)
+        newval = _fit_value(V, index > 0 ? dict.vals[index] + coeff : coeff)
+        newval isa V || return @invoke add_term!!(dict::AbstractDict, key::Any, coeff::Any)
+        if iszero(newval)
+            index > 0 && Base._delete!(dict, index)
+        elseif index > 0
+            dict.age += 1
+            dict.keys[index] = key
+            dict.vals[index] = newval
+        else
+            Base._setindex!(dict, newval, key, -index, sh)
+        end
+        return dict
+    end
+end
 
 # Computes β * a + α * b. A zero result has the grades of b, plus the stored grades of a zero a unless β isa Zero.
 # A nonzero β * a cancels against b, so its grades are among those of b.

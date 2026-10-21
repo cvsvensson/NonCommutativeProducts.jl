@@ -165,3 +165,47 @@ end
     @test z.coeff isa Int
     @test z == NC.NCAdd{Int,K}(false, Dict(f1key => false, scalar_key => false))
 end
+
+@testitem "NCAdd: add_term!! inserts, updates and deletes like a Dict" setup = [Fermions] begin
+    import NonCommutativeProducts as NC
+    using Random: Xoshiro
+    # the reference uses only the public Dict API
+    function ref_add_term(dict, key, coeff)
+        newval = get(dict, key, false) + coeff
+        T = promote_type(valtype(dict), typeof(newval))
+        newdict = Dict{keytype(dict),T}(dict)
+        iszero(newval) ? delete!(newdict, key) : (newdict[key] = newval)
+        return newdict
+    end
+    keys_ = [NC.NCMul(1, [Fermion(n) for n in 1:k]) for k in 1:40]
+    rng = Xoshiro(1)
+    for (V, coeffs) in ((Int, -2:2), (Float64, [-1.0, -0.5, 0.0, 0.5, 1.0]), (Bool, [true, false]))
+        dict = Dict{eltype(keys_),V}()
+        ref = copy(dict)
+        for _ in 1:2000
+            key, coeff = rand(rng, keys_), rand(rng, coeffs)
+            dict = NC.add_term!!(dict, key, coeff)
+            ref = ref_add_term(ref, key, coeff)
+            @test dict == ref
+        end
+        @test !any(iszero, values(dict))
+        @test all(k -> haskey(dict, k), keys(ref))
+    end
+    # values that don't fit the value type widen the Dict
+    k = first(keys_)
+    d = Dict(k => true)
+    d2 = NC.add_term!!(d, k, true)
+    @test d2 == Dict(k => 2) && valtype(d2) == Int
+    d = Dict(k => 1)
+    @test NC.add_term!!(d, last(keys_), 0.5) == Dict(k => 1.0, last(keys_) => 0.5)
+    # values that fit the value type are converted, also when they round to zero
+    d = NC.add_term!!(Dict(k => 1.0), k, 1)
+    @test d == Dict(k => 2.0) && valtype(d) == Float64
+    d = NC.add_term!!(Dict(k => Float16(1)), last(keys_), 1 // 10^8)
+    @test d == Dict(k => 1) && valtype(d) == Float16
+    # keys of another type are converted
+    tuplekey = NC.NCMul(1, (Fermion(1), Fermion(2)))
+    d = NC.add_term!!(Dict(k => 1), tuplekey, 2)
+    @test d == Dict(k => 1, keys_[2] => 2) && keytype(d) == typeof(k)
+    @test NC.add_term!!(d, tuplekey, -2) == Dict(k => 1)
+end
