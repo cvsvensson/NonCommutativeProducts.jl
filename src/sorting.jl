@@ -85,7 +85,9 @@ function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C
     if length(sorted_terms) == 0
         return NCAdd(zero(C), Dict{to_add_dict_type(T),C}())
     end
-    newadd = NCAdd(zero(C), to_add_dict(first(sorted_terms)))
+    # sized for the case that no terms combine, so that the Dict is not rehashed while it grows
+    dict = sizehint!(to_add_dict(first(sorted_terms)), length(sorted_terms))
+    newadd = NCAdd(zero(C), dict)
     for term in Iterators.drop(sorted_terms, 1)
         newadd = _add_scaled!!(newadd, term, One())
     end
