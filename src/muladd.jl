@@ -58,9 +58,6 @@ to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Integer)
     b < 0 && throw(DomainError(b, "products and sums have no inverse, so the exponent must be non-negative"))
     ret = Base.power_by_squaring(a, b)
-    # For b >= 2 every step of power_by_squaring is a `*`, which sorts when autosort is enabled. For b < 2 the result
-    # is a copy of `a` or `one(a)`. bubble_sort rather than bubble_sort!, so that a product keeps its factors for the
-    # grades of a zero result.
     autosort() && b < 2 && return bubble_sort(ret)
     return ret
 end
