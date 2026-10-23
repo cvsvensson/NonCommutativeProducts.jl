@@ -157,8 +157,8 @@ function Base.:+(a::NCAdd{C1,K1}, b::NCAdd{C2,K2}) where {C1,K1,C2,K2}
     for (k, v) in b.dict
         dict = add_term!!(dict, k, v)
     end
-    # The terms of a and b are nonzero and have factors, and add_term!! leaves out terms that are zero. Only converting
-    # the terms of a to another coefficient type can make them zero, e.g. a small Rational converted to Float16.
+    # The terms have factors and add_term!! drops zeros, so only converting the coefficients of a can leave zero terms
+    # (e.g. Rational to Float16).
     sum = NCAdd(additive_coeff(a) + additive_coeff(b), dict; filter_zeros=C1 !== C, filter_scalars=false)
     return _with_zero_grades(sum, () -> _union_grades(_grades(a), _grades(b)))
 end

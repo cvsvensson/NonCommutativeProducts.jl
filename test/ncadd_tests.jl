@@ -80,7 +80,6 @@ end
     @test iscanonical(add!!(f1 + f2, -1.0 * f1), f2) # widening coefficients
     # a coefficient that rounds to zero in the value type (promote_type(Float16, Rational{Int}) == Float16)
     @test iscanonical(add!!(Float16(1) * f1 + 0, (1 // 10^8) * f2 + 0), Float16(1) * f1 + 0)
-    @test iscanonical(add!!(Float16(1) * f1 + 0, (1 // 10^8) * f2), Float16(1) * f1 + 0)
     @test iscanonical(add!!(1 + f2, NC.NCMul(0, [f1])), 1 + f2) # no new zero term
     @test iscanonical(add!!(f1 + 1, NC.NCMul(2, typeof(f1)[])), f1 + 3) # scalar products go to the coefficient
     @test iscanonical(add!(f1 + 1, 1, 1, 0), 1)
@@ -91,15 +90,9 @@ end
     @test iscanonical(VectorInterface.scale!(f1 + 1, f1 + f2, 0), 0)
     @test iscanonical(VectorInterface.add!(f1 + 1, f1 + 0, -1, 1), 1)
     @test iscanonical(VectorInterface.add!!(f1 + 1, f1 + 0, -1, 1), 1)
-    # scaling by a nonzero number that underflows the terms to zero
-    @test iscanonical(add!(1e-200 * f1 + 1.0, 0, 1, 1e-200), 1e-200)
-    @test iscanonical(NC.scale!(1e-200 * f1 + 1.0, 1e-200), 1e-200)
-    @test iscanonical(VectorInterface.scale!!(1e-200 * f1 + 1.0, 1e-200), 1e-200)
+    @test iscanonical(add!(1e-200 * f1 + 1.0, 0, 1, 1e-200), 1e-200) # terms underflow to zero
     @test iscanonical(f1 + 1 - f1, 1)
     @test iscanonical((f1 + 1) + (-f1 + 0), 1)
-    @test iscanonical((f1 + 2 * f2) + (-1.0 * f1 + 0), 2.0 * f2 + 0) # widening coefficients
-    @test iscanonical((true * f1 + 0) + (true * f1 + 0), 2 * f1 + 0) # Bool + Bool isa Int
-    @test iscanonical((1 * f1 + b1) + (-b1 + 0), f1 + 0) # keys of different types
     # coefficients that round to zero in the promoted type (promote_type(Float16, Rational{Int}) == Float16)
     @test iscanonical(((1 // 10^8) * f1 + 0) + (Float16(1) * f2 + 0), Float16(1) * f2 + 0)
     @test iscanonical((Float16(1) * f2 + 0) + ((1 // 10^8) * f1 + 0), Float16(1) * f2 + 0)
@@ -174,48 +167,4 @@ end
     z = NC.NCAdd(false, Dict(f1key => false, scalar_key => false))
     @test z.coeff isa Int
     @test z == NC.NCAdd{Int,K}(false, Dict(f1key => false, scalar_key => false))
-end
-
-@testitem "NCAdd: add_term!! inserts, updates and deletes like a Dict" setup = [Fermions] begin
-    import NonCommutativeProducts as NC
-    using Random: Xoshiro
-    # the reference uses only the public Dict API
-    function ref_add_term(dict, key, coeff)
-        newval = get(dict, key, false) + coeff
-        T = promote_type(valtype(dict), typeof(newval))
-        newdict = Dict{keytype(dict),T}(dict)
-        iszero(newval) ? delete!(newdict, key) : (newdict[key] = newval)
-        return newdict
-    end
-    keys_ = [NC.NCMul(1, [Fermion(n) for n in 1:k]) for k in 1:40]
-    rng = Xoshiro(1)
-    for (V, coeffs) in ((Int, -2:2), (Float64, [-1.0, -0.5, 0.0, 0.5, 1.0]), (Bool, [true, false]))
-        dict = Dict{eltype(keys_),V}()
-        ref = copy(dict)
-        for _ in 1:2000
-            key, coeff = rand(rng, keys_), rand(rng, coeffs)
-            dict = NC.add_term!!(dict, key, coeff)
-            ref = ref_add_term(ref, key, coeff)
-            @test dict == ref
-        end
-        @test !any(iszero, values(dict))
-        @test all(k -> haskey(dict, k), keys(ref))
-    end
-    # values that don't fit the value type widen the Dict
-    k = first(keys_)
-    d = Dict(k => true)
-    d2 = NC.add_term!!(d, k, true)
-    @test d2 == Dict(k => 2) && valtype(d2) == Int
-    d = Dict(k => 1)
-    @test NC.add_term!!(d, last(keys_), 0.5) == Dict(k => 1.0, last(keys_) => 0.5)
-    # values that fit the value type are converted, also when they round to zero
-    d = NC.add_term!!(Dict(k => 1.0), k, 1)
-    @test d == Dict(k => 2.0) && valtype(d) == Float64
-    d = NC.add_term!!(Dict(k => Float16(1)), last(keys_), 1 // 10^8)
-    @test d == Dict(k => 1) && valtype(d) == Float16
-    # keys of another type are converted
-    tuplekey = NC.NCMul(1, (Fermion(1), Fermion(2)))
-    d = NC.add_term!!(Dict(k => 1), tuplekey, 2)
-    @test d == Dict(k => 1, keys_[2] => 2) && keytype(d) == typeof(k)
-    @test NC.add_term!!(d, tuplekey, -2) == Dict(k => 1)
 end

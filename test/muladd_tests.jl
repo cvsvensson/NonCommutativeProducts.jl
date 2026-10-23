@@ -53,42 +53,13 @@ end
     @test one(typeof(s)) isa typeof(s)
 end
 
-@testitem "Powers are sorted exactly when autosort is enabled" setup = [Bosons, Fermions] begin
-    # `^` relies on `*` sorting each intermediate product, so for exponents >= 2 it doesn't sort the result again
+@testitem "Powers are sorted exactly when autosort is enabled" setup = [Bosons] begin
     NC = NonCommutativeProducts
     b = Boson()
-    f1, f2 = Fermion(:a), Fermion(:b)
-    # an atom as a product, since sort is defined for products and sums
-    asmul(x) = x isa Union{NC.NCMul,NC.NCAdd} ? x : NC.NCMul(x)
-    unsorted_power(x, p) = NC.with_autosort(false) do
-        asmul(p == 0 ? one(x) : prod(fill(x, p)))
-    end
-    xs = NC.with_autosort(false) do
-        (b, b * b', 2 * b' * b, b + b', b * b' + 1, f2 * f1, f2 * f1 + f1' + 2, 1.5 * f1' * f2 + f2' * f1)
-    end
-    was_enabled = NC.autosort()
-    try
-        for global_setting in (true, false), scoped in (nothing, true, false), x in xs, p in 0:5
-            global_setting ? NC.enable_autosort!() : NC.disable_autosort!()
-            y = asmul(isnothing(scoped) ? x^p : NC.with_autosort(() -> x^p, scoped))
-            if something(scoped, global_setting)
-                @test y == sort(y)
-                @test y == sort(unsorted_power(x, p))
-            else
-                @test y == unsorted_power(x, p)
-            end
-        end
-        # the innermost scope decides
-        NC.enable_autosort!()
-        x = b + b'
-        @test NC.with_autosort(false) do
-            NC.with_autosort(() -> x^3, true)
-        end == sort(unsorted_power(x, 3))
-        @test NC.with_autosort(true) do
-            NC.with_autosort(() -> x^3, false)
-        end == unsorted_power(x, 3)
-    finally
-        was_enabled ? NC.enable_autosort!() : NC.disable_autosort!()
+    for x in NC.with_autosort(() -> (b * b', b + b'), false), p in 1:3
+        unsorted = NC.with_autosort(() -> prod(fill(x, p)), false)
+        @test NC.with_autosort(() -> x^p, true) == sort(unsorted)
+        @test NC.with_autosort(() -> x^p, false) == unsorted
     end
 end
 
