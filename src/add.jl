@@ -310,8 +310,8 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     return _with_zero_grades(_mul!!(c, a, b), () -> _union_grades(cgrades, _mul_grades(_grades(a), _grades(b))))
 end
 function _mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
-    c = _add_coeff_terms!!(c, a, b)
     autosort() && return _add_sorted_products!!(c, a, b)
+    c = _add_coeff_terms!!(c, a, b)
     for bterm in NCterms(b)
         for aterm in NCterms(a)
             c = _add_scaled!!(c, catenate(aterm, bterm), One())
@@ -332,17 +332,69 @@ function _add_coeff_terms!!(c::NCAdd, a::MulAdd, b::MulAdd)
     end
     return c
 end
-# The sorted sum of c and the products of the terms of a and b. Sorting the products with the terms of c before adding
-# them up avoids hashing every unsorted product.
+# The sorted sum of c and a * b. Each product of a term of a and a term of b is sorted on its own and added to the sum.
+# The additive coefficients of a and b count as terms without factors.
 function _add_sorted_products!!(c::NCAdd{C}, a::MulAdd, b::MulAdd) where {C}
-    products = [catenate(aterm, bterm) for bterm in NCterms(b) for aterm in NCterms(a)]
-    isempty(products) && return bubble_sort(c)
-    terms = isempty(c.dict) ? products : vcat(products, collect(NCterms(c, copy_factors)))
+    aterms = _terms_with_coeff(a)
+    bterms = _terms_with_coeff(b)
+    (isempty(aterms) || isempty(bterms)) && return bubble_sort(_add_coeff_terms!!(c, a, b))
+    first_product = catenate(first(aterms), first(bterms))
     # the coefficient type of c with the products added, also if they all vanish when sorted
-    return _add_scaled!!(_bubble_sort!(terms, promote_type(C, _coeff_type(products))), additive_coeff(c), One())
+    D = promote_type(C, typeof(prefactor(first_product)))
+    # function barrier: the type of the sorted c is only known at runtime
+    return _add_sorted_products!!(bubble_sort(c), D, aterms, bterms, first_product)
 end
-_coeff_type(::Vector{<:NCMul{C}}) where {C} = C
-_coeff_type(terms::Vector{<:NCMul}) = mapreduce(t -> typeof(prefactor(t)), promote_type, terms)
+function _add_sorted_products!!(c::NCAdd{C,K}, ::Type{D}, aterms, bterms, first_product) where {C,K,D}
+    result = convert(NCAdd{promote_type(C, D),K}, c)
+    scratch = [first_product]
+    buffer = first_product.factors
+    sorted = with(_autosort => false) do
+        _add_sorted_products_from!!(result, aterms, bterms, scratch, buffer, 1)
+    end
+    sizehint!(sorted.dict, length(sorted.dict))
+    return sorted
+end
+_terms_with_coeff(x::NCMul) = [x]
+function _terms_with_coeff(x::NCAdd)
+    terms = collect(NCterms(x))
+    iszero(additive_coeff(x)) && return terms
+    return push!!(terms, NCMul(additive_coeff(x), _empty_factors(eltype(terms))))
+end
+_empty_factors(::Type{<:NCMul{<:Any,S}}) where {S} = S[]
+_empty_factors(::Type) = Any[]
+# Adds the sorted products of aterms[i] and bterms[j] to c, for the pairs from the k-th on, with i running fastest.
+# Each product is sorted in `scratch` with its factors in `buffer`, both reused across pairs. The loop continues in a
+# new call when c changes type.
+function _add_sorted_products_from!!(c::NCAdd, aterms, bterms, scratch, buffer, k)
+    m = length(aterms)
+    while k <= m * length(bterms)
+        j, i = divrem(k - 1, m) .+ 1
+        k += 1
+        product = _catenate_into!(buffer, aterms[i], bterms[j])
+        if product isa eltype(scratch)
+            empty!(scratch)
+            push!(scratch, product)
+            sorted = __bubble_sort!(scratch)
+        else
+            sorted = __bubble_sort!([product])
+        end
+        # the identical branches split the call on whether sorting widened the vector
+        newc = sorted isa typeof(scratch) ? _add_sorted_terms!!(c, sorted, buffer) :
+               _add_sorted_terms!!(c, sorted, buffer)
+        newc isa typeof(c) || return _add_sorted_products_from!!(newc, aterms, bterms, scratch, buffer, k)
+        c = newc
+    end
+    return c
+end
+# The product of a and b with its factors in `buffer`, or in a new vector if they don't fit in `buffer`
+function _catenate_into!(buffer, a::NCMul, b::NCMul)
+    S = eltype(buffer)
+    eltype(a.factors) <: S && eltype(b.factors) <: S || return catenate(a, b)
+    empty!(buffer)
+    append!(buffer, a.factors)
+    append!(buffer, b.factors)
+    return NCMul(prefactor(a) * prefactor(b), buffer)
+end
 add!!(c::NCMul, term) = c + term
 add!!(c::Number, term) = c + term
 

@@ -42,3 +42,24 @@ end
     @test sort(NCMul(3, Any[])) == 3
     @test sort(2 * f1) == 2 * f1
 end
+
+@testitem "Sorted products of atoms with a common supertype have concrete keys" begin
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort
+    abstract type BraKet end
+    struct Ket <: BraKet
+        n::Int
+    end
+    struct Bra <: BraKet
+        n::Int
+    end
+    @nc Ket Bra
+    mul_effect(a::BraKet, b::BraKet) = a isa Bra && b isa Ket ? Int(a.n == b.n) : nothing
+
+    H = sum(Ket(n) * Bra(n + 1) + Ket(n + 1) * Bra(n) for n in 1:4)
+    ψ = sum(n * 1.0 * Ket(n) for n in 1:5)
+    Hψ = with_autosort(() -> H * ψ)
+    @test Hψ isa typeof(ψ)
+    @test Hψ == sum((n + 1) * Ket(n) + n * Ket(n + 1) for n in 1:4)
+    unsorted = with_autosort(() -> H * ψ, false)
+    @test keytype(sort(unsorted).dict) == keytype(ψ.dict)
+end

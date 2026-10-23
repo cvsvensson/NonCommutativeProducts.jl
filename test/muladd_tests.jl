@@ -78,3 +78,18 @@ end
         @test_throws DomainError x^-2
     end
 end
+
+@testitem "Products of sums where most products vanish" setup = [GradedKets] begin
+    import NonCommutativeProducts: mul!!, with_autosort
+    with_autosort() do
+        N = 8
+        hterms = [[ket(n) * bra(n + 1) for n in 1:N]; [3 * ket(n + 1) * bra(n) for n in 1:N]]
+        ψterms = [n * ket(n) for n in 1:N]
+        H0, ψ0 = sum(hterms), sum(ψterms)
+        H, ψ = H0 + 2, ψ0 + 1
+        @test H * ψ == sum(h * p for h in hterms for p in ψterms) + H0 + 2 * ψ0 + 2
+
+        c = with_autosort(() -> bra(1) * ket(1) + ket(2), false)
+        @test mul!!(copy(c), H, ψ) == sort(c) + H * ψ
+    end
+end

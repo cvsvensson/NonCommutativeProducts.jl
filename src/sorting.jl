@@ -85,12 +85,35 @@ function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C
     if length(sorted_terms) == 0
         return NCAdd(zero(C), Dict{to_add_dict_type(T),C}())
     end
-    newadd = NCAdd(zero(C), to_add_dict(first(sorted_terms)))
-    for term in Iterators.drop(sorted_terms, 1)
-        newadd = _add_scaled!!(newadd, term, One())
-    end
+    newadd = NCAdd(zero(C), to_add_dict(_narrow_factors(first(sorted_terms))))
+    newadd = _add_sorted_terms!!(newadd, Iterators.drop(sorted_terms, 1))
     sizehint!(newadd.dict, length(newadd.dict))
     return newadd
+end
+# Adds the sorted terms to `c`. The first term added to an empty sum sets its key type. Factors that are `buffer` are
+# copied, so the caller can reuse it.
+function _add_sorted_terms!!(c::NCAdd, sorted_terms, buffer=nothing)
+    for term in sorted_terms
+        owned = term.factors === buffer ? NCMul(prefactor(term), copy(term.factors)) : term
+        c = _add_sorted_term!!(c, _narrow_factors(owned))
+    end
+    return c
+end
+function _add_sorted_term!!(c::NCAdd, term::NCMul)
+    if isempty(c.dict) && !isscalar(term)
+        return NCAdd(additive_coeff(c), to_add_dict(term))
+    end
+    return _add_scaled!!(c, term, One())
+end
+# `term` with its factors in a Vector{T} if they all have the concrete type T but are stored with an abstract element
+# type. Vector{Any} is kept, since sums from `anyadd` must keep their type under multiplication.
+function _narrow_factors(term::NCMul)
+    factors = term.factors
+    S = eltype(factors)
+    (isconcretetype(S) || S === Any || isempty(factors)) && return term
+    T = typeof(first(factors))
+    all(f -> f isa T, factors) || return term
+    return NCMul(prefactor(term), convert(Vector{T}, factors))
 end
 
 # Sorts terms[n:end]. The optional arguments let the recursive call resume: `start` is the factor position in
@@ -139,7 +162,9 @@ function _apply_effect!!(terms, index, ncmul, i, effect)
 
     terms_with_newterms = _add_newterms!!(terms, newterms)
     if iszero(newncmul)
-        deleteat!(terms_with_newterms, index)
+        # move the last term into its place, to be sorted from its start
+        lastterm = pop!(terms_with_newterms)
+        index <= length(terms_with_newterms) && (terms_with_newterms[index] = lastterm)
         return terms_with_newterms, false, 1
     end
     return setindex!!(terms_with_newterms, newncmul, index), false, i - 1
