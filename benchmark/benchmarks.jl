@@ -126,7 +126,7 @@ const H_large = sum(Ket(n) * Ket(n + 1)' + Ket(n + 1) * Ket(n)' for n in 1:(N_la
 const x_large = sum(randn() * Ket(n) for n in 1:N_large)
 SUITE["vector"]["apply_large"] = @benchmarkable $H_large * $x_large
 
-# Kets with a contraction key, so that `inner` pairs only terms with the same label
+# Kets keyed by their label (bras have no key), so that `inner` pairs only terms with the same label
 struct KeyedKet
     n::Int
     bra::Bool
@@ -136,7 +136,7 @@ Base.adjoint(k::KeyedKet) = KeyedKet(k.n, !k.bra)
 Base.hash(k::KeyedKet, h::UInt) = hash(k.n, hash(k.bra, hash(0xa4093822299f31d0, h)))
 NonCommutativeProducts.@nc KeyedKet
 NonCommutativeProducts.mul_effect(a::KeyedKet, b::KeyedKet) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
-NonCommutativeProducts.contraction_key(k::KeyedKet) = k.n
+NonCommutativeProducts.contraction_key(k::KeyedKet) = k.bra ? nothing : k.n
 
 const N_keyed = 4096
 const x_keyed = sum(randn() * KeyedKet(n) for n in 1:N_keyed)

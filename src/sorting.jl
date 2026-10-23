@@ -144,18 +144,27 @@ _mul_effect(factors, a, b) = mul_effect(a, b)
 # Continues bubble!! after a sum of effects on factors[i:i+1]: every part but the first is applied to a copy of the
 # factors and added to `pending`, and the first is applied in place.
 function _split!!(acc, coeff, factors, i, effect, pending)
-    parts = _effect_terms(effect)
+    parts = effect.terms
     next = iterate(parts)
     isnothing(next) && return _sort_pending!!(acc, pending)
     first_part, state = next
     pending = _push_parts!!(pending, coeff, factors, i, Base.rest(parts, state))
-    first_part isa Union{AddTerms,NCAdd} && return _split!!(acc, coeff, factors, i, first_part, pending)
-    newcoeff, newfactors = apply_effect!!(coeff, factors, i, first_part)
+    return _apply_part!!(acc, coeff, factors, i, first_part, pending)
+end
+# A sum splits into its scalar part, applied in place when nonzero, and its products
+function _split!!(acc, coeff, factors, i, effect::NCAdd, pending)
+    λ = additive_coeff(effect)
+    iszero(λ) && return _split!!(acc, coeff, factors, i, AddTerms(NCterms(effect)), pending)
+    pending = _push_parts!!(pending, coeff, factors, i, NCterms(effect))
+    return _apply_part!!(acc, coeff, factors, i, λ, pending)
+end
+# Continues bubble!! after applying `part` to factors[i:i+1] in place
+function _apply_part!!(acc, coeff, factors, i, part, pending)
+    part isa Union{AddTerms,NCAdd} && return _split!!(acc, coeff, factors, i, part, pending)
+    newcoeff, newfactors = apply_effect!!(coeff, factors, i, part)
     iszero(newcoeff) && return _sort_pending!!(acc, pending)
     return bubble!!(acc, newcoeff, newfactors, pending, max(i - 1, 1))
 end
-_effect_terms(effect::AddTerms) = effect.terms
-_effect_terms(effect::NCAdd) = terms(effect)
 # Tuples are split one element at a time, so that each element is applied in a call specialized on its type
 _push_parts!!(pending, coeff, factors, i, ::Tuple{}) = pending
 function _push_parts!!(pending, coeff, factors, i, parts::Tuple)
@@ -168,9 +177,16 @@ function _push_parts!!(pending, coeff, factors, i, parts)
     end
     return pending
 end
+# A sum adds its scalar part, when nonzero, and its products
+function _push_parts!!(pending, coeff, factors, i, parts::NCAdd)
+    λ = additive_coeff(parts)
+    iszero(λ) || (pending = _push_part!!(pending, coeff, factors, i, λ))
+    return _push_parts!!(pending, coeff, factors, i, NCterms(parts))
+end
+_push_parts!!(pending, coeff, factors, i, parts::AddTerms) = _push_parts!!(pending, coeff, factors, i, parts.terms)
 # `pending` with the products from applying `part` to a copy of `factors` added
 function _push_part!!(pending, coeff, factors, i, part)
-    part isa Union{AddTerms,NCAdd} && return _push_parts!!(pending, coeff, factors, i, _effect_terms(part))
+    part isa Union{AddTerms,NCAdd} && return _push_parts!!(pending, coeff, factors, i, part)
     newcoeff, newfactors = apply_effect!!(coeff, copy(factors), i, part)
     iszero(newcoeff) && return pending
     product = NCMul(newcoeff, newfactors)

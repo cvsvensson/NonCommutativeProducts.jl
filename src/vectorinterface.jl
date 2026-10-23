@@ -91,15 +91,21 @@ _collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
 """
     contraction_key(atom)
 
-A key for fast inner products, or `nothing` (the default) for none. If every factor of a term `a` of `x` and of a term
-`b` of `y` has a key, `inner(x, y)` forms the product `a' * b` only when the keys of the factors of `a` equal those of
-`b`, in order. Define keys only if `a' * b` sorts to zero whenever they differ. A term with a factor without a key, or
-without factors, is paired with every term. Keys are compared with `isequal`, so they must be hashable.
+A key for fast inner products, or `nothing` (the default) for none. For a term `a` of `x` and a term `b` of `y` whose
+factors all have keys, `inner(x, y)` forms `a' * b` only if the keys of the factors of `a` equal those of `b`, in order
+and in number. A term with a factor whose key is `nothing`, or with no factors, is paired with every term. Keys are
+compared with `isequal`, so they must be hashable.
+
+Give keys only to atoms that behave as basis vectors under the inner product: for two atoms `k` and `l` with keys,
+`k' * l` must sort to zero unless their keys are equal. Products of atoms with keys and atoms without keys are
+unrestricted, and any atom may be left without a key.
 
 # Example
-For kets `|n⟩` with `⟨n|m⟩ = δ_nm`, key each ket by its label:
+For kets `|n⟩` with `⟨n|m⟩ = δ_nm`, key each ket by its basis label and leave bras without a key, so that operators
+such as `|n⟩⟨m|` have none either. Keying bras by their label breaks the rule above: `⟨1| * |1⟩⟨2|` is the nonzero bra
+`⟨2|`, but `|1⟩` and `|1⟩⟨2|` would have the different keys `1` and `(1, 2)`.
 ```julia
-NonCommutativeProducts.contraction_key(k::Ket) = k.n
+NonCommutativeProducts.contraction_key(k::Ket) = k.bra ? nothing : k.n
 ```
 """
 contraction_key(atom) = nothing
