@@ -53,6 +53,16 @@ end
     @test one(typeof(s)) isa typeof(s)
 end
 
+@testitem "Powers are sorted exactly when autosort is enabled" setup = [Bosons] begin
+    NC = NonCommutativeProducts
+    b = Boson()
+    for x in NC.with_autosort(() -> (b * b', b + b'), false), p in 1:3
+        unsorted = NC.with_autosort(() -> prod(fill(x, p)), false)
+        @test NC.with_autosort(() -> x^p, true) == sort(unsorted)
+        @test NC.with_autosort(() -> x^p, false) == unsorted
+    end
+end
+
 @testitem "Powers with any Integer exponent" setup = [Bosons] begin
     b = Boson()
     for x in (b, 2 * b' * b, b + b')

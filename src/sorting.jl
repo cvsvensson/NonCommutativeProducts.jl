@@ -86,7 +86,9 @@ function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C
         return NCAdd(zero(C), Dict{to_add_dict_type(T),C}())
     end
     newadd = NCAdd(zero(C), to_add_dict(_narrow_factors(first(sorted_terms))))
-    return _add_sorted_terms!!(newadd, Iterators.drop(sorted_terms, 1))
+    newadd = _add_sorted_terms!!(newadd, Iterators.drop(sorted_terms, 1))
+    sizehint!(newadd.dict, length(newadd.dict))
+    return newadd
 end
 # Adds the sorted terms to `c`. The first term added to an empty sum sets its key type. Factors that are `buffer` are
 # copied, so the caller can reuse it.
