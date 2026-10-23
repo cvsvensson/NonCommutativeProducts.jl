@@ -119,3 +119,9 @@ SUITE["vector"] = BenchmarkGroup()
 SUITE["vector"]["apply"] = @benchmarkable $H_chain * $x_chain
 SUITE["vector"]["inner"] = @benchmarkable VI.inner($x_chain, $y_chain)
 SUITE["vector"]["arnoldi"] = @benchmarkable arnoldi($H_chain, $x_chain, 10)
+
+# The same chain with many more sites, where the work per pair of terms dominates
+const N_large = 600
+const H_large = sum(Ket(n) * Ket(n + 1)' + Ket(n + 1) * Ket(n)' for n in 1:(N_large-1)) + sum(0.1n * Ket(n) * Ket(n)' for n in 1:N_large)
+const x_large = sum(randn() * Ket(n) for n in 1:N_large)
+SUITE["vector"]["apply_large"] = @benchmarkable $H_large * $x_large
