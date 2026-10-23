@@ -91,7 +91,7 @@ function Base.hash(a::NCMul, h::UInt)
 end
 NCMul(f::NCMul) = f
 
-NCterms(a::NCMul, copy=identity) = (NCMul(prefactor(a), copy(a.factors)),)
+NCterms(a::NCMul) = (a,)
 Base.:-(a::NCMul) = NCMul(-prefactor(a), a.factors)
 
 Base.:*(x::Number, a::NCMul) = NCMul(x * prefactor(a), a.factors)
@@ -103,7 +103,7 @@ function Base.:*(a::NCMul, b::NCMul)
     end
     return ncmul
 end
-catenate(x::NCMul, others...) = NCMul(prefactor(x) * prod(y -> prefactor(y), others), vcat(factors_vector(x.factors), map(y -> factors_vector(y.factors), others)...))
+catenate(a::NCMul, b::NCMul) = NCMul(prefactor(a) * prefactor(b), vcat(factors_vector(a.factors), factors_vector(b.factors)))
 
 function Base.adjoint(x::NCMul)
     length(x.factors) == 0 && return NCMul(adjoint(prefactor(x)), x.factors)

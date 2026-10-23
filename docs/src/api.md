@@ -18,6 +18,8 @@ NonCommutativeProducts.@commutative
 NonCommutativeProducts.mul_effect
 NonCommutativeProducts.Swap
 NonCommutativeProducts.AddTerms
+NonCommutativeProducts.contraction_key
+NonCommutativeProducts.mul_terms!!
 ```
 
 ## Gradings
@@ -50,6 +52,8 @@ NonCommutativeProducts.NCMul
 NonCommutativeProducts.NCAdd
 NonCommutativeProducts.terms
 NonCommutativeProducts.nterms
+NonCommutativeProducts.termpairs
+NonCommutativeProducts.map_coefficients
 NonCommutativeProducts.factors
 NonCommutativeProducts.coefficient
 NonCommutativeProducts.scalar

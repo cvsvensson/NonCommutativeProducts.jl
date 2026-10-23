@@ -18,10 +18,11 @@ end
 
 The examples on this page use the `Fermion` type defined on the [Home](@ref "Example: Fermions") page.
 
-This package is flexible, but not very efficient. Sorting is done via bubble sort, which is convenient for this use case since it is based on repeatedly swapping adjacent elements where commutation relations can be used. But it does not scale well with the length of the list, so it won't perform well for products of many elements.
+Each product is sorted with bubble sort, which repeatedly swaps adjacent factors so that commutation relations apply. The time to sort one product grows quadratically with its number of factors, so long products are slow.
+
+A product of sums is formed one pair of terms at a time: each pair is sorted on its own and added straight into the result. The time is proportional to the number of term pairs and the memory to the size of the result. A product that sorts to zero allocates nothing, and each term added to the result costs one copy of its factors.
 
 ```julia
-# Example timing: 108.298 ms (1142139 allocations: 78.37 MiB)
 op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
 #= Sum with 59049 terms:
 1I-c†[10]*c[1]-c†[10]*c[1]*c[2]*c[3]-c†[10]*c[1]*c[2]*c[3]*c[4]*c[5] + ...
@@ -34,13 +35,11 @@ op = 0
 for n in 1:100
     op += Fermion(n)'*Fermion(n)
 end
-# Example timing: 105.000 μs (2221 allocations: 543.15 KiB)
 
 op2 = zero(op)
 for n in 1:100
     op2 = NonCommutativeProducts.add!!(op2, Fermion(n)'*Fermion(n))
 end
-# Example timing: 44.300 μs (1613 allocations: 108.64 KiB)
 op == op2 # true
 ```
 
@@ -71,6 +70,10 @@ which sorts the same way:
 julia> Fermion(1)*Fermion(1)' |> sort
 1I - c†[1]*c[1]
 ```
+
+When products of a term with a sum have structure that `mul_effect` cannot use, such as an operator string that acts on every basis state of a sum of kets with one precomputation, define a method of [`mul_terms!!`](@ref NonCommutativeProducts.mul_terms!!) for your types. With autosort enabled, `*` calls `mul_terms!!(c, x, b)` for each term `x` of the left factor, with autosort disabled during the call. A method reads the terms of `b` with [`termpairs`](@ref NonCommutativeProducts.termpairs) and adds the results to `c` with [`add!!`](@ref NonCommutativeProducts.add!!).
+
+For inner products of large sums, see [Fast inner products](@ref).
 
 ```@meta
 DocTestSetup = nothing

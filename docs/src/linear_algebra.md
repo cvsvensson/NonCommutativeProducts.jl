@@ -38,3 +38,17 @@ julia> x, info = exponentiate(1im*H, pi/2, k0);
 julia> norm(x - im*k1) < 1e-12
 true
 ```
+
+## Fast inner products
+
+`inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. With [`contraction_key`](@ref NonCommutativeProducts.contraction_key) defined, `inner` skips the pairs whose first factors have different keys, which takes time proportional to the number of terms when each key matches few terms.
+
+For the kets above, `⟨n|m⟩` is zero unless `n == m`, so kets are keyed by their label. Bras get no key, since `⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero.
+```jldoctest kets
+julia> NC.contraction_key(k::Ket) = k.bra ? nothing : k.n
+
+julia> using NonCommutativeProducts.VectorInterface: inner
+
+julia> inner(k0 + 2k1, k1)
+2
+```

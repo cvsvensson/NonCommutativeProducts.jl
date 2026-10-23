@@ -9,7 +9,7 @@ module NonCommutativeProducts
 
 using Base.ScopedValues
 using LinearAlgebra: LinearAlgebra, UniformScaling
-using BangBang: push!!, pushfirst!!, setindex!!, append!!
+using BangBang: push!!, pushfirst!!
 using BangBang.Extras: modify!!
 using VectorInterface: VectorInterface, One
 using PrecompileTools: @setup_workload, @compile_workload
