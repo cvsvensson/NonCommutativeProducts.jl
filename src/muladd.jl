@@ -58,8 +58,8 @@ to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Integer)
     b < 0 && throw(DomainError(b, "products and sums have no inverse, so the exponent must be non-negative"))
     ret = Base.power_by_squaring(a, b)
-    # bubble_sort rather than bubble_sort!, so that a product keeps its factors for the grades of a zero result
-    autosort() && return bubble_sort(ret)
+    # for b >= 2, ret is a product computed by `*`, which already sorts
+    autosort() && b < 2 && return bubble_sort(ret)
     return ret
 end
 # Base rewrites a negative literal power `x^-n` as `inv(x)^n`. Forward it to `^` instead.

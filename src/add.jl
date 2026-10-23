@@ -152,11 +152,14 @@ Base.:-(a::Union{Number,UniformScaling}, b::MulAdd) = a + (-b)
 Base.:-(a::MulAdd, b::Union{Number,MulAdd,UniformScaling}) = a + (-b)
 Base.:-(a::NCAdd) = (-1) * a
 function Base.:+(a::NCAdd{C1,K1}, b::NCAdd{C2,K2}) where {C1,K1,C2,K2}
-    dict = copy_dict(a, promote_type(K1, K2), promote_type(C1, C2))
+    C = promote_type(C1, C2)
+    dict = copy_dict(a, promote_type(K1, K2), C)
     for (k, v) in b.dict
         dict = add_term!!(dict, k, v)
     end
-    sum = NCAdd(additive_coeff(a) + additive_coeff(b), dict)
+    # The terms have factors and add_term!! drops zeros, so only converting the coefficients of a can leave zero terms
+    # (e.g. Rational to Float16).
+    sum = NCAdd(additive_coeff(a) + additive_coeff(b), dict; filter_zeros=C1 !== C, filter_scalars=false)
     return _with_zero_grades(sum, () -> _union_grades(_grades(a), _grades(b)))
 end
 """
@@ -172,14 +175,16 @@ Methods for `VectorInterface.add!!` call it.
 add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
 # Add `coeff` to the term with key `key` in `dict`, and delete the term if it becomes zero.
-# Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int).
+# Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int). A result that
+# fits is converted before the zero check, since the conversion can round it to zero (e.g. Rational to Float16).
 function add_term!!(dict::AbstractDict, key, coeff)
     newdict, _ = modify!!(dict, key) do val
-        newval = isnothing(val) ? coeff : something(val) + coeff
+        newval = _fit_value(valtype(dict), isnothing(val) ? coeff : something(val) + coeff)
         iszero(newval) ? nothing : newval
     end
     return newdict
 end
+_fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V, x) : x
 
 # Computes β * a + α * b. A zero result has the grades of b, plus the stored grades of a zero a unless β isa Zero.
 # A nonzero β * a cancels against b, so its grades are among those of b.
@@ -261,7 +266,8 @@ function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where 
     set_coeff!(a, convert(C, newcoeff))
     if !(β isa One)
         map!(v -> v * β, values(a.dict))
-        iszero(β) && filter_zeros!(a.dict)
+        # a nonzero β can also give zero terms, through underflow
+        filter_zeros!(a.dict)
     end
     return _with_zero_grades(a, newgrades)
 end

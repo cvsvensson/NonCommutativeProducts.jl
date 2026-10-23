@@ -89,6 +89,7 @@ function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C
     for term in Iterators.drop(sorted_terms, 1)
         newadd = _add_scaled!!(newadd, term, One())
     end
+    sizehint!(newadd.dict, length(newadd.dict))
     return newadd
 end
 
