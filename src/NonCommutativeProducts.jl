@@ -9,13 +9,14 @@ module NonCommutativeProducts
 
 using Base.ScopedValues
 using LinearAlgebra: LinearAlgebra, UniformScaling
-using BangBang: push!!, pushfirst!!, setindex!!, append!!
+using BangBang: push!!, pushfirst!!
 using BangBang.Extras: modify!!
 using VectorInterface: VectorInterface, One
 using PrecompileTools: @setup_workload, @compile_workload
 
 public NCMul, NCAdd, @nc, @commutative, mul_effect, enable_autosort!, disable_autosort!, autosort, with_autosort,
-    ncmap, ncmapreduce, scalar, add!!, terms, nterms, factors, coefficient
+    ncmap, ncmapreduce, scalar, add!!, terms, nterms, factors, coefficient, termpairs, map_coefficients,
+    mul_terms!!, contraction_key
 
 include("mul.jl")
 include("add.jl")

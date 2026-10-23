@@ -38,3 +38,17 @@ julia> x, info = exponentiate(1im*H, pi/2, k0);
 julia> norm(x - im*k1) < 1e-12
 true
 ```
+
+## Fast inner products
+
+`inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. Defining [`contraction_key`](@ref NonCommutativeProducts.contraction_key) for your atom types makes `inner` form only the products of terms whose keys are equal, which takes time proportional to the number of terms when each key matches few terms. The keys must be equal whenever `a' * b` can be nonzero. A term with a factor whose key is `nothing`, the default, is paired with every term.
+
+For the kets above, `⟨n|m⟩` is zero unless `n == m`, so the label is a key:
+```jldoctest kets
+julia> NC.contraction_key(k::Ket) = k.n
+
+julia> using NonCommutativeProducts.VectorInterface: inner
+
+julia> inner(k0 + 2k1, k1)
+2
+```

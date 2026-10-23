@@ -2,7 +2,7 @@
 # products with factors::Vector{Any} and sums of them. Operations on such factors dispatch at runtime, so integers
 # stand in for atoms and the workload defines no types or methods.
 # Sorting runs only on products with at most one factor, which compiles the sorting loop without calling mul_effect.
-# _apply_effect!! is called directly with the effects that involve no downstream types.
+# The effects that involve no downstream types are applied to a product directly, and the results are added to a sum.
 
 @setup_workload begin
     anymul(c, xs...) = NCMul(c, Any[xs...])
@@ -22,9 +22,10 @@
         sort(x), sort(c * anymul(1, 1) + anymul(1, 2) + 1)
     end
     function effect_workload(c, effect)
-        ncmul = anymul(c, 1, 2, 3)
-        terms, _, _ = _apply_effect!!([ncmul], 1, ncmul, 1, effect)
-        _sum_sorted_terms(terms, typeof(c))
+        pending = _push_part!!(nothing, c, Any[1, 2, 3], 1, effect)
+        acc = zero(NCAdd{typeof(c),NCMul{Int,Any,Vector{Any}}})
+        isnothing(pending) && return acc
+        return fold_retyping!!((acc, p) -> add_term!!(acc, prefactor(p), p.factors), acc, pending)
     end
     @compile_workload begin
         with(_autosort => false) do

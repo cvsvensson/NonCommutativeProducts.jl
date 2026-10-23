@@ -155,9 +155,9 @@ function Base.:+(a::NCAdd{C1,K1}, b::NCAdd{C2,K2}) where {C1,K1,C2,K2}
     C = promote_type(C1, C2)
     dict = copy_dict(a, promote_type(K1, K2), C)
     for (k, v) in b.dict
-        dict = add_term!!(dict, k, v)
+        dict = add_key!!(dict, k, v)
     end
-    # The terms have factors and add_term!! drops zeros, so only converting the coefficients of a can leave zero terms
+    # The terms have factors and add_key!! drops zeros, so only converting the coefficients of a can leave zero terms
     # (e.g. Rational to Float16).
     sum = NCAdd(additive_coeff(a) + additive_coeff(b), dict; filter_zeros=C1 !== C, filter_scalars=false)
     return _with_zero_grades(sum, () -> _union_grades(_grades(a), _grades(b)))
@@ -174,17 +174,6 @@ Methods for `VectorInterface.add!!` call it.
 """
 add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 
-# Add `coeff` to the term with key `key` in `dict`, and delete the term if it becomes zero.
-# Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int). A result that
-# fits is converted before the zero check, since the conversion can round it to zero (e.g. Rational to Float16).
-function add_term!!(dict::AbstractDict, key, coeff)
-    newdict, _ = modify!!(dict, key) do val
-        newval = _fit_value(valtype(dict), isnothing(val) ? coeff : something(val) + coeff)
-        iszero(newval) ? nothing : newval
-    end
-    return newdict
-end
-_fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V, x) : x
 
 # Computes β * a + α * b. A zero result has the grades of b, plus the stored grades of a zero a unless β isa Zero.
 # A nonzero β * a cancels against b, so its grades are among those of b.
@@ -199,7 +188,7 @@ end
 function _add_scaled!!(a::NCAdd, b::NCMul, α)
     # a scalar product belongs in the coefficient, as in the NCAdd constructor
     isscalar(b) && return _add_scaled!!(a, prefactor(b), α)
-    newdict = add_term!!(a.dict, term_key(b), α * prefactor(b))
+    newdict = add_key!!(a.dict, term_key(b), α * prefactor(b))
     newcoeff = additive_coeff(a)
     if newdict === a.dict
         return set_coeff!!(a, newcoeff)
@@ -209,7 +198,7 @@ end
 function _add_scaled!!(a::NCAdd, b::NCAdd, α)
     newdict = a.dict
     for (k, v) in b.dict
-        newdict = add_term!!(newdict, k, α * v)
+        newdict = add_key!!(newdict, k, α * v)
     end
     newcoeff = additive_coeff(a) + additive_coeff(b) * α
     if newdict === a.dict
@@ -286,7 +275,7 @@ function scale!!(y::NCAdd, x::MulAdd, α::C) where C<:Number
 end
 scale(x::NCAdd, α::Number) = α * x
 
-NCterms(a::NCAdd, copy=identity) = (NCMul(v, copy(k.factors)) for (k, v) in pairs(a.dict))
+NCterms(a::NCAdd) = (NCMul(v, k.factors) for (k, v) in pairs(a.dict))
 
 function Base.:*(x::Number, a::NCAdd{C,K}) where {C,K}
     dict = copy_dict(a, K, promote_type(typeof(x), C))
@@ -295,124 +284,91 @@ function Base.:*(x::Number, a::NCAdd{C,K}) where {C,K}
 end
 Base.:*(a::NCAdd, x::Number) = x * a
 
-Base.:*(a::NCAdd, b::NCMul) = _mul_sums(typeof(a), a, b)
-Base.:*(a::NCMul, b::NCAdd) = _mul_sums(typeof(b), a, b)
-Base.:*(a::NCAdd, b::NCAdd) = _mul_sums(typeof(a), a, b)
-# a * b accumulated in a fresh zero sum without grades, so a zero result has the grades of a and b only. The outer
-# constructor gives the zero the coefficient type of a sum of coefficients (Bool + Bool isa Int).
-function _mul_sums(::Type{NCAdd{C,K}}, a::MulAdd, b::MulAdd) where {C,K}
-    product = _mul!!(NCAdd(zero(C), Dict{K,C}()), a, b)
-    return _with_zero_grades(product, () -> _mul_grades(_grades(a), _grades(b)))
-end
+# a * b accumulated in a fresh zero sum, so a zero result has the grades of a and b only
+Base.:*(a::NCAdd, b::MulAdd) = _shrink!(mul!!(zero(_sum_type(a, b)), a, b))
+Base.:*(a::NCMul, b::NCAdd) = _shrink!(mul!!(zero(_sum_type(a, b)), a, b))
+_shrink!(x::NCAdd) = (sizehint!(x.dict, length(x.dict)); x)
 # Computes c + a * b. A zero result has the stored grades of c and the products of the grades of a and b.
 function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     cgrades = _zero_grades(c)
     return _with_zero_grades(_mul!!(c, a, b), () -> _union_grades(cgrades, _mul_grades(_grades(a), _grades(b))))
 end
+# c + a * b. With autosort, c is sorted and each term x of a is multiplied into it by mul_terms!!. Otherwise the
+# catenated products are added unsorted. c is first converted to the promoted type of c, a and b, so the coefficient
+# type of the result doesn't depend on which products vanish.
 function _mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
-    autosort() && return _add_sorted_products!!(c, a, b)
-    c = _add_coeff_terms!!(c, a, b)
-    for bterm in NCterms(b)
-        for aterm in NCterms(a)
-            c = _add_scaled!!(c, catenate(aterm, bterm), One())
-        end
+    autosort() && return _without_autosort(() -> _mul_sorted!!(c, a, b))
+    c = convert(promote_type(typeof(c), _sum_type(a, b)), c)
+    buffer = _factor_eltype(typeof(c))[]
+    return fold_terms!!(c, a) do acc, x
+        fold_terms!!((acc, y) -> add_term!!(acc, prefactor(x) * prefactor(y), _catenate!(buffer, x, y)), acc, b)
     end
-    return c
 end
-# c + acoeff * b + a * bcoeff - acoeff * bcoeff, the part of c + a * b that involves the additive coefficients
-function _add_coeff_terms!!(c::NCAdd, a::MulAdd, b::MulAdd)
-    acoeff = additive_coeff(a)
-    bcoeff = additive_coeff(b)
-    if !iszero(acoeff)
-        c = _add_scaled!!(c, b, acoeff)
-    end
-    if !iszero(bcoeff)
-        c = _add_scaled!!(c, a, bcoeff)
-        c = _add_scaled!!(c, -acoeff * bcoeff, One()) # counted twice above
-    end
-    return c
+function _mul_sorted!!(c::NCAdd, a::MulAdd, b::MulAdd)
+    c = convert(promote_type(typeof(c), _sum_type(a, b)), _sorted(c))
+    return fold_terms!!((acc, x) -> mul_terms!!(acc, x, b), c, a)
 end
-# The sorted sum of c and a * b. Each product of a term of a and a term of b is sorted on its own and added to the sum.
-# The additive coefficients of a and b count as terms without factors.
-function _add_sorted_products!!(c::NCAdd{C}, a::MulAdd, b::MulAdd) where {C}
-    aterms = _terms_with_coeff(a)
-    bterms = _terms_with_coeff(b)
-    (isempty(aterms) || isempty(bterms)) && return bubble_sort(_add_coeff_terms!!(c, a, b))
-    first_product = catenate(first(aterms), first(bterms))
-    # the coefficient type of c with the products added, also if they all vanish when sorted
-    D = promote_type(C, typeof(prefactor(first_product)))
-    # function barrier: the type of the sorted c is only known at runtime
-    return _add_sorted_products!!(bubble_sort(c), D, aterms, bterms, first_product)
+# `x` with its terms sorted, which is `x` itself if they already are
+function _sorted(x::NCAdd)
+    all(k -> _is_sorted(k.factors), keys(x.dict)) && return x
+    return bubble_sort(x)
 end
-function _add_sorted_products!!(c::NCAdd{C,K}, ::Type{D}, aterms, bterms, first_product) where {C,K,D}
-    result = convert(NCAdd{promote_type(C, D),K}, c)
-    scratch = [first_product]
-    buffer = first_product.factors
-    sorted = with(_autosort => false) do
-        _add_sorted_products_from!!(result, aterms, bterms, scratch, buffer, 1)
-    end
-    sizehint!(sorted.dict, length(sorted.dict))
-    return sorted
+_is_sorted(factors) = all(i -> isnothing(_mul_effect(factors, factors[i], factors[i+1])), 1:length(factors)-1)
+
+"""
+    mul_terms!!(c, x::NCMul, b)
+
+Add the sorted product of the term `x` and the product or sum `b` to the sum `c`, and return the result, which may be
+`c` mutated or a new sum. `*` and `mul!!` call it for each term of the left factor when autosort is enabled.
+
+Define methods for your own factor types to compute these products directly, e.g. to apply an operator string to every
+basis state in a sum of kets with one precomputation. Use [`termpairs`](@ref) to read the terms of `b` and
+[`add!!`](@ref) to add results to `c`. The result must equal `c + x * b` sorted, with a type that does not depend on
+which products vanish.
+
+Autosort is disabled while a `mul_terms!!` method runs, as it is for [`mul_effect`](@ref), so `*` inside the method
+does not sort. A method must therefore produce terms that are already sorted and add them with `add!!`.
+"""
+function mul_terms!!(c, x::NCMul, b::MulAdd)
+    buffer = _factor_eltype(typeof(c), typeof(x), typeof(b))[]
+    return fold_terms!!((c, y) -> _mul_term_pair!!(c, x, y, buffer), c, b)
 end
-_terms_with_coeff(x::NCMul) = [x]
-function _terms_with_coeff(x::NCAdd)
-    terms = collect(NCterms(x))
-    iszero(additive_coeff(x)) && return terms
-    return push!!(terms, NCMul(additive_coeff(x), _empty_factors(eltype(terms))))
+# c + x * y sorted, with the product formed in `buffer`
+function _mul_term_pair!!(c, x, y, buffer)
+    coeff = prefactor(x) * prefactor(y)
+    iszero(coeff) && return c
+    return sort_into!!(c, coeff, _catenate!(buffer, x, y))
 end
-_empty_factors(::Type{<:NCMul{<:Any,S}}) where {S} = S[]
-_empty_factors(::Type) = Any[]
-# Adds the sorted products of aterms[i] and bterms[j] to c, for the pairs from the k-th on, with i running fastest.
-# Each product is sorted in `scratch` with its factors in `buffer`, both reused across pairs. The loop continues in a
-# new call when c changes type.
-function _add_sorted_products_from!!(c::NCAdd, aterms, bterms, scratch, buffer, k)
-    m = length(aterms)
-    while k <= m * length(bterms)
-        j, i = divrem(k - 1, m) .+ 1
-        k += 1
-        product = _catenate_into!(buffer, aterms[i], bterms[j])
-        if product isa eltype(scratch)
-            empty!(scratch)
-            push!(scratch, product)
-            sorted = __bubble_sort!(scratch)
-        else
-            sorted = __bubble_sort!([product])
-        end
-        # the identical branches split the call on whether sorting widened the vector
-        newc = sorted isa typeof(scratch) ? _add_sorted_terms!!(c, sorted, buffer) :
-               _add_sorted_terms!!(c, sorted, buffer)
-        newc isa typeof(c) || return _add_sorted_products_from!!(newc, aterms, bterms, scratch, buffer, k)
-        c = newc
-    end
-    return c
+_catenate!(buffer, x::NCMul, y::NCMul) = append!(empty!(buffer), x.factors, y.factors)
+
+# The type of a sum of the terms of `xs`, with coefficients of the type of a sum of coefficients (Bool + Bool isa Int)
+_sum_type(x) = _sum_type(typeof(x))
+_sum_type(x, y) = _sum_type(promote_type(typeof(x), typeof(y)))
+function _sum_type(::Type{T}) where {T<:MulAdd}
+    C = _coeff_type(T)
+    return NCAdd{Base.promote_op(+, C, C),to_add_dict_type(T)}
 end
-# The product of a and b with its factors in `buffer`, or in a new vector if they don't fit in `buffer`
-function _catenate_into!(buffer, a::NCMul, b::NCMul)
-    S = eltype(buffer)
-    eltype(a.factors) <: S && eltype(b.factors) <: S || return catenate(a, b)
-    empty!(buffer)
-    append!(buffer, a.factors)
-    append!(buffer, b.factors)
-    return NCMul(prefactor(a) * prefactor(b), buffer)
-end
+_coeff_type(::Type{<:NCMul{C}}) where {C} = C
+_coeff_type(::Type{<:NCAdd{C}}) where {C} = C
+# The element type of factors that can hold the factors of products and sums of the types `Ts`
+_factor_eltype(Ts::Type...) = promote_type(map(_factor_eltype, Ts)...)
+_factor_eltype(::Type{<:NCMul{<:Any,S}}) where {S} = S
+_factor_eltype(::Type{<:NCAdd{<:Any,K}}) where {K} = _factor_eltype(K)
+_factor_eltype(::Type) = Any
+_factor_eltype(::Type{Union{}}) = Union{}
+
 add!!(c::NCMul, term) = c + term
 add!!(c::Number, term) = c + term
 
 function Base.adjoint(x::NCAdd)
-    # adjoint the terms unsorted, so each term stays an NCMul, then sort the sum once
-    newx = with(_autosort => false) do
-        _adjoint_terms(x)
-    end
-    newx = autosort() ? bubble_sort(newx) : newx
-    return _with_zero_grades(newx, () -> _adjoint_grades(_grades(x)))
+    adjoint_sum = autosort() ? _without_autosort(() -> _adjoint_sum(sort_into!!, x)) : _adjoint_sum(add_term!!, x)
+    return _with_zero_grades(adjoint_sum, () -> _adjoint_grades(_grades(x)))
 end
-function _adjoint_terms(x::NCAdd)
-    newx = zero(typeof(x))
-    set_coeff!(newx, adjoint(additive_coeff(x)))
-    for (f, v) in x.dict
-        newx = _add_scaled!!(newx, v' * f', One())
+# The sum of the adjoints of the terms of x, each added to the sum with `add`
+function _adjoint_sum(add::F, x::NCAdd) where {F}
+    return fold_terms!!(zero(_sum_type(x)), x) do acc, t
+        add(acc, adjoint(prefactor(t)), adjoint_factors(t.factors))
     end
-    newx
 end
 
 Base.zero(::Type{NCAdd{C,K}}) where {C,K} = NCAdd{C,K}(zero(C), Dict{K,C}())

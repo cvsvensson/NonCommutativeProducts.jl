@@ -69,12 +69,61 @@ VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β
 VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β)
 
 VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
-# Autosort is enabled so the result doesn't depend on the setting. The result is promoted to the product of the scalar
-# types, so its type doesn't depend on which terms vanish.
+# The sorted sum of a' * b over the pairs of terms a of x and b of y that can contract. The result is promoted to the
+# product of the scalar types, so its type doesn't depend on which terms vanish or on the autosort setting.
 function _inner(x, y)
-    z = with_autosort(() -> x' * y)
+    xterms, yterms = _collect_terms(x), _collect_terms(y)
+    bras = [NCMul(adjoint(prefactor(t)), adjoint_factors(t.factors)) for t in xterms]
+    S = _factor_eltype(eltype(bras), eltype(yterms))
+    C = promote_type(_scalartype(x), _scalartype(y))
+    acc = zero(NCAdd{Base.promote_op(+, C, C),NCMul{Int,S,Vector{S}}})
+    buffer = S[]
+    z = _without_autosort() do
+        fold_retyping!!(acc, _contracting_pairs(xterms, bras, yterms)) do acc, (bra, ket)
+            _mul_term_pair!!(acc, bra, ket, buffer)
+        end
+    end
     _reduces_to_scalar(z) || throw(_inner_error())
     return zero(_scalartype(x))' * zero(_scalartype(y)) + scalar(z)
+end
+# The terms of x in a Vector with a concrete element type
+_collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
+"""
+    contraction_key(atom)
+
+A key for fast inner products, or `nothing` (the default) for none. If every factor of a term `a` of `x` and of a term
+`b` of `y` has a key, `inner(x, y)` forms the product `a' * b` only when the keys of the factors of `a` equal those of
+`b`, in order. Define keys only if `a' * b` sorts to zero whenever they differ. A term with a factor without a key, or
+without factors, is paired with every term. Keys are compared with `isequal`, so they must be hashable.
+
+# Example
+For kets `|n⟩` with `⟨n|m⟩ = δ_nm`, key each ket by its label:
+```julia
+NonCommutativeProducts.contraction_key(k::Ket) = k.n
+```
+"""
+contraction_key(atom) = nothing
+# The keys of the factors of `t`: `nothing` if a factor has no key or there are no factors, the key of a single factor,
+# and a Tuple of keys otherwise
+function _term_key(t::NCMul)
+    fs = t.factors
+    isempty(fs) && return nothing
+    length(fs) == 1 && return contraction_key(only(fs))
+    keys = Tuple(contraction_key(f) for f in fs)
+    return any(isnothing, keys) ? nothing : keys
+end
+# The pairs (bras[i], kets[j]) whose keys match, where bras[i] is the adjoint of xterms[i]. Each pair appears once.
+function _contracting_pairs(xterms, bras, kets)
+    ketkeys = map(_term_key, kets)
+    all(isnothing, ketkeys) && return Iterators.product(bras, kets)
+    groups = Dict{Any,Vector{Int}}()
+    for (j, key) in pairs(ketkeys)
+        push!(get!(Vector{Int}, groups, key), j)
+    end
+    wildcards = get(groups, nothing, Int[])
+    everything, none = collect(eachindex(kets)), Int[]
+    matching(key) = isnothing(key) ? (everything, none) : (get(groups, key, none), wildcards)
+    return ((bras[i], kets[j]) for i in eachindex(bras) for j in Iterators.flatten(matching(_term_key(xterms[i]))))
 end
 _inner_error() = ArgumentError("inner(x, y) requires x' * y to reduce to a scalar; check that adjoint and mul_effect are defined")
 _reduces_to_scalar(::Number) = true
