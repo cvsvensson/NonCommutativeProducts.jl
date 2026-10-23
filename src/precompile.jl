@@ -25,7 +25,7 @@
         pending = _push_part!!(nothing, c, Any[1, 2, 3], 1, effect)
         acc = zero(NCAdd{typeof(c),NCMul{Int,Any,Vector{Any}}})
         isnothing(pending) && return acc
-        return fold_retyping!!((acc, p) -> add_term!!(acc, prefactor(p), p.factors), acc, pending)
+        return fold_retyping!!((acc, p) -> add_sorted!!(acc, prefactor(p), p.factors), acc, pending)
     end
     @compile_workload begin
         with(_autosort => false) do

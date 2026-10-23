@@ -41,11 +41,9 @@ true
 
 ## Fast inner products
 
-`inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. Defining [`contraction_key`](@ref NonCommutativeProducts.contraction_key) for your atom types makes `inner` form `a' * b` only for pairs of terms whose factor keys are equal, in order and in number, which takes time proportional to the number of terms when each key matches few terms. A term with a factor whose key is `nothing`, the default, is paired with every term.
+`inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. With [`contraction_key`](@ref NonCommutativeProducts.contraction_key) defined, `inner` skips the pairs whose first factors have different keys, which takes time proportional to the number of terms when each key matches few terms.
 
-A key may only be given to atoms that behave as basis vectors under the inner product: for two atoms `k` and `l` with keys, `k' * l` must sort to zero unless their keys are equal. Products of atoms with keys and atoms without keys are unrestricted.
-
-For the kets above, `⟨n|m⟩` is zero unless `n == m`, so each ket is keyed by its basis label. Bras, and with them operators such as `|n⟩⟨m|`, are left without a key: `⟨1| * |1⟩⟨2|` is the nonzero bra `⟨2|`, so `|1⟩` and `|1⟩⟨2|` must not get the different keys `1` and `(1, 2)`.
+For the kets above, `⟨n|m⟩` is zero unless `n == m`, so kets are keyed by their label. Bras get no key, since `⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero.
 ```jldoctest kets
 julia> NC.contraction_key(k::Ket) = k.bra ? nothing : k.n
 

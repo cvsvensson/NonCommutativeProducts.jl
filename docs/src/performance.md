@@ -73,7 +73,7 @@ julia> Fermion(1)*Fermion(1)' |> sort
 
 When products of a term with a sum have structure that `mul_effect` cannot use, such as an operator string that acts on every basis state of a sum of kets with one precomputation, define a method of [`mul_terms!!`](@ref NonCommutativeProducts.mul_terms!!) for your types. With autosort enabled, `*` calls `mul_terms!!(c, x, b)` for each term `x` of the left factor, with autosort disabled during the call. A method reads the terms of `b` with [`termpairs`](@ref NonCommutativeProducts.termpairs) and adds the results to `c` with [`add!!`](@ref NonCommutativeProducts.add!!).
 
-For inner products of large sums, define [`contraction_key`](@ref NonCommutativeProducts.contraction_key) for atoms that behave as basis vectors, such as kets keyed by their basis label, so that `inner` forms `a' * b` only for pairs of terms whose factor keys are equal; see [Fast inner products](@ref).
+For inner products of large sums, see [Fast inner products](@ref).
 
 ```@meta
 DocTestSetup = nothing

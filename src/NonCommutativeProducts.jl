@@ -15,8 +15,7 @@ using VectorInterface: VectorInterface, One
 using PrecompileTools: @setup_workload, @compile_workload
 
 public NCMul, NCAdd, @nc, @commutative, mul_effect, enable_autosort!, disable_autosort!, autosort, with_autosort,
-    ncmap, ncmapreduce, scalar, add!!, terms, nterms, factors, coefficient, termpairs, map_coefficients,
-    mul_terms!!, contraction_key
+    ncmap, ncmapreduce, scalar, add!!, terms, nterms, factors, coefficient
 
 include("mul.jl")
 include("add.jl")

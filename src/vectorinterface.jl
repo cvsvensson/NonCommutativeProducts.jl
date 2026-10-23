@@ -78,7 +78,7 @@ function _inner(x, y)
     C = promote_type(_scalartype(x), _scalartype(y))
     acc = zero(NCAdd{Base.promote_op(+, C, C),NCMul{Int,S,Vector{S}}})
     buffer = S[]
-    z = _without_autosort() do
+    z = with_autosort(false) do
         fold_retyping!!(acc, _contracting_pairs(xterms, bras, yterms)) do acc, (bra, ket)
             _mul_term_pair!!(acc, bra, ket, buffer)
         end
@@ -91,33 +91,19 @@ _collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
 """
     contraction_key(atom)
 
-A key for fast inner products, or `nothing` (the default) for none. For a term `a` of `x` and a term `b` of `y` whose
-factors all have keys, `inner(x, y)` forms `a' * b` only if the keys of the factors of `a` equal those of `b`, in order
-and in number. A term with a factor whose key is `nothing`, or with no factors, is paired with every term. Keys are
-compared with `isequal`, so they must be hashable.
+A key that lets `inner(x, y)` skip products that vanish, or `nothing` (the default). `inner` forms `a' * b` for a term
+`a` of `x` and a term `b` of `y` only if the first factors of `a` and `b` have equal keys, or one of them has no key.
+Keys are compared with `isequal`.
 
-Give keys only to atoms that behave as basis vectors under the inner product: for two atoms `k` and `l` with keys,
-`k' * l` must sort to zero unless their keys are equal. Products of atoms with keys and atoms without keys are
-unrestricted, and any atom may be left without a key.
-
-# Example
-For kets `|n⟩` with `⟨n|m⟩ = δ_nm`, key each ket by its basis label and leave bras without a key, so that operators
-such as `|n⟩⟨m|` have none either. Keying bras by their label breaks the rule above: `⟨1| * |1⟩⟨2|` is the nonzero bra
-`⟨2|`, but `|1⟩` and `|1⟩⟨2|` would have the different keys `1` and `(1, 2)`.
+Give keys only to atoms `k` and `l` for which `k' * l` sorts to zero whenever their keys differ, e.g. kets of an
+orthonormal basis but not bras, since `⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero:
 ```julia
 NonCommutativeProducts.contraction_key(k::Ket) = k.bra ? nothing : k.n
 ```
 """
 contraction_key(atom) = nothing
-# The keys of the factors of `t`: `nothing` if a factor has no key or there are no factors, the key of a single factor,
-# and a Tuple of keys otherwise
-function _term_key(t::NCMul)
-    fs = t.factors
-    isempty(fs) && return nothing
-    length(fs) == 1 && return contraction_key(only(fs))
-    keys = Tuple(contraction_key(f) for f in fs)
-    return any(isnothing, keys) ? nothing : keys
-end
+# The key of the first factor of `t`, which meets the first factor of the other term in a' * b
+_term_key(t::NCMul) = isempty(t.factors) ? nothing : contraction_key(first(t.factors))
 # The pairs (bras[i], kets[j]) whose keys match, where bras[i] is the adjoint of xterms[i]. Each pair appears once.
 function _contracting_pairs(xterms, bras, kets)
     ketkeys = map(_term_key, kets)

@@ -26,12 +26,12 @@ when `x` is a product that sorts to a single term.
 """
 Base.sort(x::MulAdd) = bubble_sort(x)
 function bubble_sort(a::NCMul)
-    sorted = _without_autosort(() -> sort_into!!(zero(_sum_type(a)), prefactor(a), copy_factors(a.factors)))
+    sorted = with_autosort(() -> sort_into!!(zero(_sum_type(a)), prefactor(a), copy_factors(a.factors)), false)
     return _with_zero_grades(sorted, () -> _grades(a))
 end
 function bubble_sort(x::NCAdd)
     buffer = _factor_eltype(typeof(x))[]
-    sorted = _without_autosort() do
+    sorted = with_autosort(false) do
         fold_terms!!(zero(_sum_type(x)), x) do acc, t
             sort_into!!(acc, prefactor(t), append!(empty!(buffer), t.factors))
         end
@@ -42,9 +42,8 @@ end
 # most one factor is returned as is.
 function bubble_sort!(a::NCMul)
     length(a.factors) <= 1 && return a
-    return _without_autosort(() -> sort_into!!(zero(_sum_type(a)), prefactor(a), factors_vector(a.factors)))
+    return with_autosort(() -> sort_into!!(zero(_sum_type(a)), prefactor(a), factors_vector(a.factors)), false)
 end
-_without_autosort(f) = with(f, _autosort => false)
 
 # foldl(f, itr; init=acc), where the loop continues in a new specialization whenever `f` returns an accumulator of
 # another type
@@ -69,26 +68,27 @@ function fold_terms!!(f, acc, x::NCAdd)
 end
 
 # Adds the term `coeff * factors` to the sum `acc`, reusing its storage when the term fits, and returns the result.
-# The factors are copied, so callers can pass a scratch vector. A term without factors is added to the scalar part.
-function add_term!!(acc::NCAdd, coeff, factors)
+# The key may share `factors`, which must not be mutated afterwards. A term without factors is added to the scalar
+# part.
+function add_term!!(acc::NCAdd{C,K}, coeff, factors) where {C,K}
     iszero(coeff) && return acc
     isempty(factors) && return set_coeff!!(acc, additive_coeff(acc) + coeff)
-    K = _term_key_type(acc, factors)
-    K === keytype(acc.dict) || return _add_factors!!(convert(NCAdd{valtype(acc.dict),K}, acc), coeff, factors)
-    return _add_factors!!(acc, coeff, factors)
-end
-function _add_factors!!(acc::NCAdd{C,K}, coeff, factors) where {C,K}
-    dict = add_key!!(acc.dict, convert(K, NCMul(1, collect(_factor_eltype(K), factors))), coeff)
+    T = eltype(factors)
+    if !(T <: _factor_eltype(K))
+        K2 = promote_type(K, NCMul{Int,T,Vector{T}})
+        return add_term!!(convert(NCAdd{C,K2}, acc), coeff, collect(_factor_eltype(K2), factors))
+    end
+    dict = add_key!!(acc.dict, convert(K, NCMul(1, factors)), coeff)
     return dict === acc.dict ? acc : NCAdd(additive_coeff(acc), dict)
 end
-# The key type of `acc` with a term with `factors` added. The first term of an empty sum sets the key type, with the
-# factors narrowed to a concrete type they all share.
-function _term_key_type(acc::NCAdd{C,K}, factors) where {C,K}
+# add_term!! for a sorted product, with `factors` copied so callers can pass a scratch vector. The factors are narrowed
+# to a concrete type they all share, and the first term of an empty sum sets its key type.
+function add_sorted!!(acc::NCAdd{C}, coeff, factors) where {C}
+    (iszero(coeff) || isempty(factors)) && return add_term!!(acc, coeff, factors)
     T = _narrow_eltype(eltype(factors), factors)
-    S = _factor_eltype(K)
-    (T === S || (T <: S && !isempty(acc.dict))) && return K
-    termkey = NCMul{Int,T,Vector{T}}
-    return isempty(acc.dict) ? termkey : promote_type(K, termkey)
+    isempty(acc.dict) && (acc = convert(NCAdd{C,NCMul{Int,T,Vector{T}}}, acc))
+    S = _factor_eltype(keytype(acc.dict))
+    return add_term!!(acc, coeff, collect(T <: S ? S : T, factors))
 end
 # The type of all elements of `factors` if their element type T is abstract and they share a concrete type. Any is
 # kept, since sums from `anyadd` must keep their type.
@@ -98,7 +98,7 @@ function _narrow_eltype(::Type{T}, factors) where {T}
     return all(f -> f isa U, factors) ? U : T
 end
 
-# Add `coeff` to the term with key `key` in `dict`, and delete the term if it becomes zero. `key` is stored as given.
+# Adds `coeff` to the term with key `key` in `dict`, and deletes the term if it becomes zero. `key` is stored as given.
 # Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int). A result that
 # fits is converted before the zero check, since the conversion can round it to zero (e.g. Rational to Float16).
 function add_key!!(dict::AbstractDict, key, coeff)
@@ -132,7 +132,7 @@ function bubble!!(acc, coeff::C, factors::F, pending, start) where {C,F}
             return bubble!!(acc, newcoeff, newfactors, pending, i)
         end
     end
-    return _sort_pending!!(add_term!!(acc, coeff, factors), pending)
+    return _sort_pending!!(add_sorted!!(acc, coeff, factors), pending)
 end
 _sort_pending!!(acc, ::Nothing) = acc
 _sort_pending!!(acc, pending) = fold_retyping!!((acc, p) -> sort_into!!(acc, prefactor(p), p.factors), acc, pending)

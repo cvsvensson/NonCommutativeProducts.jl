@@ -103,7 +103,7 @@ end
         r = H * ψ
         c = copy(r)
         mul!!(copy(r), H, ψ)
-        # 3200 pairs of terms, of which 80 don't vanish and all add to existing terms of c
+        # 3200 pairs of terms, of which 80 don't vanish and all add to existing terms of c, each copying its factors
         @test @allocated(mul!!(c, H, ψ)) < 40_000
         @test c == 2r
     end

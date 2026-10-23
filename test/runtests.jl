@@ -984,6 +984,8 @@ end
     with_autosort(false) do
         @test inner(x, y) == -4im
     end
+    # the first factors have equal keys, so the pair is formed, and k2' * k1' * k1 throws
+    @test_throws ArgumentError inner(k1 * k2 + k3, k1)
     NonCommutativeProducts.disable_autosort!()
 end
 
@@ -1096,7 +1098,7 @@ end
     using NonCommutativeProducts
     public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :enable_autosort!,
         :disable_autosort!, :autosort, :with_autosort, :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors,
-        :coefficient, :termpairs, :map_coefficients, :contraction_key, Symbol("mul_terms!!")]
+        :coefficient]
     for name in public_names
         @test Base.ispublic(NonCommutativeProducts, name)
         @test Base.Docs.hasdoc(NonCommutativeProducts, name)
