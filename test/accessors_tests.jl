@@ -130,3 +130,32 @@ end
     @test all(u -> factors(u) isa Vector, terms(s))
     @test Set(collect(terms(s))) == Set([NCMul(2, [b, a']), NCMul(3, [a]), NCMul(1, Fermion{Symbol}[])])
 end
+
+@testitem "nterms and termpairs" setup = [Fermions] begin
+    import NonCommutativeProducts: terms, nterms, termpairs, factors, coefficient
+    NonCommutativeProducts.disable_autosort!()
+    a, b, c = Fermion(:a), Fermion(:b), Fermion(:c)
+    for x in (2 * a * b + 3 * c + 1, 2 * a * b + 3 * c, a + 5 - a, a - a, 3 * a * b, 0 * a, 2.5, 0)
+        @test nterms(x) == length(collect(terms(x)))
+        @test Dict(termpairs(x)) == Dict(factors(t) => coefficient(t) for t in terms(x))
+    end
+    @test nterms(a) == 1
+end
+
+@testitem "map_coefficients" setup = [Fermions] begin
+    import NonCommutativeProducts: map_coefficients
+    NonCommutativeProducts.disable_autosort!()
+    a, b, c = Fermion(:a), Fermion(:b), Fermion(:c)
+    @test map_coefficients((fs, c) -> length(fs) * c, 2 * a * b + 3 * c + 1) == 4 * a * b + 3 * c
+    # a zero scalar part is not passed to f
+    @test map_coefficients((fs, c) -> c + 1, 2 * a + 3 * b) == 3 * a + 4 * b
+    @test map_coefficients((fs, c) -> 2c, 3 * a * b) == 6 * a * b
+    @test map_coefficients((fs, c) -> 1.0, a - a) isa NonCommutativeProducts.NCAdd{Int}
+end
+
+@testitem "map_coefficients keeps the grades of zero" setup = [GradedKets] begin
+    import NonCommutativeProducts as NC
+    z = NC.map_coefficients((fs, c) -> 0, 1.0 * ket(1) + 2.0 * ket(2))
+    @test iszero(z)
+    @test NC.grades(z) == Set([KET])
+end

@@ -49,6 +49,7 @@ NonCommutativeProducts.with_autosort
 NonCommutativeProducts.NCMul
 NonCommutativeProducts.NCAdd
 NonCommutativeProducts.terms
+NonCommutativeProducts.nterms
 NonCommutativeProducts.factors
 NonCommutativeProducts.coefficient
 NonCommutativeProducts.scalar
