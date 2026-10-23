@@ -50,8 +50,6 @@ NonCommutativeProducts.NCMul
 NonCommutativeProducts.NCAdd
 NonCommutativeProducts.terms
 NonCommutativeProducts.nterms
-NonCommutativeProducts.termpairs
-NonCommutativeProducts.map_coefficients
 NonCommutativeProducts.factors
 NonCommutativeProducts.coefficient
 NonCommutativeProducts.scalar

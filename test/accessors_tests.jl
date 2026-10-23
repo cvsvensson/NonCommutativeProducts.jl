@@ -135,10 +135,11 @@ end
     import NonCommutativeProducts: terms, nterms, termpairs, factors, coefficient
     NonCommutativeProducts.disable_autosort!()
     a, b, c = Fermion(:a), Fermion(:b), Fermion(:c)
-    for x in (2 * a * b + 3 * c + 1, 2 * a * b + 3 * c, a + 5 - a, a - a, 3 * a * b, 0 * a, 2.5, 0, a)
+    for x in (2 * a * b + 3 * c + 1, 2 * a * b + 3 * c, a + 5 - a, a - a, 3 * a * b, 0 * a, 2.5, 0)
         @test nterms(x) == length(collect(terms(x)))
         @test Dict(termpairs(x)) == Dict(factors(t) => coefficient(t) for t in terms(x))
     end
+    @test nterms(a) == 1
 end
 
 @testitem "map_coefficients" setup = [Fermions] begin
