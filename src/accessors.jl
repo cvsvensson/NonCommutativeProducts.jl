@@ -19,9 +19,74 @@ terms(x::NCAdd) = Iterators.flatten((_scalar_terms(x), Iterators.filter(!iszero,
 terms(x::NCMul) = iszero(x) ? () : NCterms(x)
 terms(x::Number) = iszero(x) ? () : (NCMul(x, Any[]),)
 
-function _scalar_terms(x::NCAdd{C,<:NCMul{<:Any,S}}) where {C,S}
-    return Iterators.filter(!iszero, (NCMul(additive_coeff(x), S[]),))
+_scalar_terms(x::NCAdd) = Iterators.filter(!iszero, (NCMul(additive_coeff(x), _scalar_factors(x)),))
+# The factors of the scalar part of a sum
+_scalar_factors(::NCAdd{C,<:NCMul{<:Any,S}}) where {C,S} = S[]
+
+"""
+    nterms(x)
+
+The number of terms of `x`, `length(collect(terms(x)))`, computed in constant time.
+
+# Example
+```julia
+nterms(2 * a * b + 3 * c + 1) == 3
+nterms(2 * a) == 1
+nterms(0) == 0
+```
+"""
+function nterms end
+
+# the terms of a sum never have zero coefficients
+nterms(x::NCAdd) = length(x.dict) + !iszero(additive_coeff(x))
+nterms(x::NCMul) = Int(!iszero(x))
+nterms(x::Number) = Int(!iszero(x))
+
+"""
+    termpairs(x)
+
+An iterator over the terms of `x`, as in `terms(x)`, as pairs `factors => coefficient` without creating a product for
+each term. The factors may be the internal storage of `x`, so they must not be mutated.
+
+# Example
+```julia
+Dict(termpairs(2 * a * b + 3 * c + 1)) == Dict([a, b] => 2, [c] => 3, [] => 1)
+collect(termpairs(2 * a)) == [[a] => 2]
+```
+"""
+function termpairs end
+
+termpairs(x::NCAdd) = Iterators.flatten((_scalar_termpairs(x), (k.factors => v for (k, v) in pairs(x.dict))))
+termpairs(x::NCMul) = iszero(x) ? () : (factors_vector(x.factors) => prefactor(x),)
+termpairs(x::Number) = iszero(x) ? () : (Any[] => x,)
+
+_scalar_termpairs(x::NCAdd) = Iterators.filter(!iszero ∘ last, (_scalar_factors(x) => additive_coeff(x),))
+
+"""
+    map_coefficients(f, x)
+
+`x` with the coefficient `c` of each term in `termpairs(x)` replaced by `f(factors, c)`. Terms that become zero are
+dropped, and a zero result keeps the grades of `x`. The factors must not be mutated.
+
+# Example
+```julia
+map_coefficients((fs, c) -> length(fs) * c, 2 * a * b + 3 * c + 1) == 4 * a * b + 3 * c
+map_coefficients((fs, c) -> 2c, 3 * a) == 6 * a
+```
+"""
+function map_coefficients end
+
+function map_coefficients(f, x::NCAdd{C,K}) where {C,K}
+    coeff = additive_coeff(x)
+    newcoeff = iszero(coeff) ? nothing : f(_scalar_factors(x), coeff)
+    newterms = [k => f(k.factors, v) for (k, v) in pairs(x.dict)]
+    T = mapreduce(typeof ∘ last, promote_type, newterms; init=isnothing(newcoeff) ? Union{} : typeof(newcoeff))
+    T = T === Union{} ? C : T
+    result = NCAdd(isnothing(newcoeff) ? zero(T) : newcoeff, Dict{K,T}(newterms))
+    return _with_zero_grades(result, () -> _grades(x))
 end
+map_coefficients(f, x::NCMul) = iszero(x) ? x : NCMul(f(factors_vector(x.factors), prefactor(x)), x.factors)
+map_coefficients(f, x::Number) = iszero(x) ? x : f(Any[], x)
 
 """
     factors(x)

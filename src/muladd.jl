@@ -81,6 +81,9 @@ macro nc_common(T)
         NonCommutativeProducts.terms(x::$(esc(T))) = terms(NCMul(x))
         NonCommutativeProducts.factors(x::$(esc(T))) = [x]
         NonCommutativeProducts.coefficient(x::$(esc(T))) = 1
+        NonCommutativeProducts.nterms(::$(esc(T))) = 1
+        NonCommutativeProducts.termpairs(x::$(esc(T))) = termpairs(NCMul(x))
+        NonCommutativeProducts.map_coefficients(f, x::$(esc(T))) = map_coefficients(f, NCMul(x))
 
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
         Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) + y
