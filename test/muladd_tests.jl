@@ -93,3 +93,18 @@ end
         @test mul!!(copy(c), H, ψ) == sort(c) + H * ψ
     end
 end
+
+@testitem "Products of sums allocate per new term, not per pair" setup = [GradedKets] begin
+    import NonCommutativeProducts: mul!!, with_autosort
+    with_autosort() do
+        N = 40
+        H = sum(ket(n) * bra(n + 1) + ket(n + 1) * bra(n) for n in 1:N)
+        ψ = sum(n * ket(n) for n in 1:N)
+        r = H * ψ
+        c = copy(r)
+        mul!!(copy(r), H, ψ)
+        # 3200 pairs of terms, of which 80 don't vanish and all add to existing terms of c, each copying its factors
+        @test @allocated(mul!!(c, H, ψ)) < 40_000
+        @test c == 2r
+    end
+end

@@ -24,7 +24,7 @@ function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), to_add_dict_type(typeof(b)))
     # convert the keys first so that the Dict has a single concrete key type, e.g. for Tuple- and Vector-backed terms
-    dict = add_term!!(Dict{K,C}(term_key(K, a) => prefactor(a)), term_key(K, b), prefactor(b))
+    dict = add_key!!(Dict{K,C}(term_key(K, a) => prefactor(a)), term_key(K, b), prefactor(b))
     return _with_zero_grades(NCAdd(zero(C), dict), () -> _union_grades(_grades(a), _grades(b)))
 end
 
@@ -38,7 +38,7 @@ Base.:*(J::UniformScaling, x::MulAdd) = J.λ * x
 function Base.:+(a::NCMul{C1}, b::NCAdd{C2,K2}) where {C1,C2,K2}
     C = promote_type(C1, C2)
     K = promote_type(to_add_dict_type(typeof(a)), K2)
-    newdict = add_term!!(copy_dict(b, K, C), term_key(K, a), prefactor(a))
+    newdict = add_key!!(copy_dict(b, K, C), term_key(K, a), prefactor(a))
     return _with_zero_grades(NCAdd(additive_coeff(b), newdict), () -> _union_grades(_grades(a), _grades(b)))
 end
 

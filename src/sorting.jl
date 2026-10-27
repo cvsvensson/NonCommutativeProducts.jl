@@ -17,36 +17,6 @@ struct Swap{T}
     λ::T
 end
 
-function splice!!(ncmul::NCMul, i::Integer, swap::Swap)
-    factors = ncmul.factors
-    a = factors[i]
-    factors[i] = factors[i+1]
-    factors[i+1] = a
-    coeff = prefactor(ncmul) * swap.λ
-    return NCMul(coeff, factors)
-end
-function splice!!_and_add(ncmul::NCMul, i, terms::AddTerms)
-    # resolved at compile time for tuples, which keeps the common case type stable
-    any(term -> term isa Union{NCAdd,AddTerms}, terms.terms) && return _splice!!_and_add_flatten(ncmul, i, terms.terms)
-    firstterm, state = iterate(terms.terms)
-    newterms = map(term -> splice!!(copy(ncmul), i, term), Base.rest(terms.terms, state))
-    ncmul2 = splice!!(ncmul, i, firstterm)
-    return ncmul2, newterms
-end
-# Elements that are sums expand to several terms. The first element is spliced last, since that mutates ncmul.
-function _splice!!_and_add_flatten(ncmul::NCMul, i, terms)
-    firstterm, state = iterate(terms)
-    newterms = Any[]
-    for term in Base.rest(terms, state)
-        ncmul2, newterms2 = splice!!_and_add(copy(ncmul), i, term)
-        push!(newterms, ncmul2)
-        append!(newterms, newterms2)
-    end
-    ncmul2, newterms2 = splice!!_and_add(ncmul, i, firstterm)
-    append!(newterms, newterms2)
-    # narrow the element type, since the sorting loop needs a Vector of NCMuls
-    return ncmul2, identity.(newterms)
-end
 
 """
     sort(x::Union{NCMul,NCAdd})
@@ -54,211 +24,223 @@ end
 Sort `x` by repeatedly applying [`mul_effect`](@ref) to neighbouring factors. The result is always an `NCAdd`, also
 when `x` is a product that sorts to a single term.
 """
-Base.sort(a::NCMul) = bubble_sort(a) |> _as_ncadd
-Base.sort(a::NCAdd) = bubble_sort(a)
-_as_ncadd(a::NCAdd) = a
-_as_ncadd(a::NCMul) = NCAdd(a)
-function bubble_sort(a::NCMul)
-    return _with_zero_grades(bubble_sort!(copy(a)), () -> _grades(a))
-end
-# Sorts `a` in place, so its factors must not be shared.
-function bubble_sort!(a::NCMul{C}) where C
-    if length(a.factors) <= 1
-        return a
-    end
-    return _bubble_sort!([NCMul(prefactor(a), factors_vector(a.factors))], C)
-end
-function bubble_sort(ncadd::NCAdd{C}) where C
-    length(ncadd.dict) == 0 && return ncadd
-    terms = collect(NCterms(ncadd, copy_factors))
-    sorted = _add_scaled!!(_bubble_sort!(terms, C), additive_coeff(ncadd), One())
-    return _with_zero_grades(sorted, () -> _grades(ncadd))
-end
-function _bubble_sort!(terms::Vector{T}, ::Type{C}=Int) where {T<:NCMul,C}
-    sorted_terms = with(_autosort => false) do
-        __bubble_sort!(terms)
-    end
-    # function barrier: the element type of sorted_terms is only known at runtime
-    return _sum_sorted_terms(sorted_terms, C)
-end
-function _sum_sorted_terms(sorted_terms::Vector{T}, ::Type{C}) where {T<:NCMul,C}
-    if length(sorted_terms) == 0
-        return NCAdd(zero(C), Dict{to_add_dict_type(T),C}())
-    end
-    newadd = NCAdd(zero(C), to_add_dict(_narrow_factors(first(sorted_terms))))
-    newadd = _add_sorted_terms!!(newadd, Iterators.drop(sorted_terms, 1))
-    sizehint!(newadd.dict, length(newadd.dict))
-    return newadd
-end
-# Adds the sorted terms to `c`. The first term added to an empty sum sets its key type. Factors that are `buffer` are
-# copied, so the caller can reuse it.
-function _add_sorted_terms!!(c::NCAdd, sorted_terms, buffer=nothing)
-    for term in sorted_terms
-        owned = term.factors === buffer ? NCMul(prefactor(term), copy(term.factors)) : term
-        c = _add_sorted_term!!(c, _narrow_factors(owned))
-    end
-    return c
-end
-function _add_sorted_term!!(c::NCAdd, term::NCMul)
-    if isempty(c.dict) && !isscalar(term)
-        return NCAdd(additive_coeff(c), to_add_dict(term))
-    end
-    return _add_scaled!!(c, term, One())
-end
-# `term` with its factors in a Vector{T} if they all have the concrete type T but are stored with an abstract element
-# type. Vector{Any} is kept, since sums from `anyadd` must keep their type under multiplication.
-function _narrow_factors(term::NCMul)
-    factors = term.factors
-    S = eltype(factors)
-    (isconcretetype(S) || S === Any || isempty(factors)) && return term
-    T = typeof(first(factors))
-    all(f -> f isa T, factors) || return term
-    return NCMul(prefactor(term), convert(Vector{T}, factors))
-end
-
-# Sorts terms[n:end]. The optional arguments let the recursive call resume: `start` is the factor position in
-# terms[n] and `done` whether terms[n] is sorted.
-function __bubble_sort!(terms::Vector{T}, n::Int=1, start::Int=1, done::Bool=false) where {T<:NCMul}
-    while n <= length(terms)
-        while !done && n <= length(terms)
-            newterms, done, start = __bubble_sort_step!(terms, n, start)
-            # new terms can widen the vector's element type; continue in a call specialized on the new type
-            newterms isa Vector{T} || return __bubble_sort!(newterms, n, start, done)
-            terms = newterms
+Base.sort(x::MulAdd) = bubble_sort(x)
+bubble_sort(a::NCMul) = _with_zero_grades(_sort_product!!(a, copy_factors(a.factors)), () -> _grades(a))
+function bubble_sort(x::NCAdd)
+    buffer = _factor_eltype(typeof(x))[]
+    sorted = with_autosort(false) do
+        fold_terms!!(zero(_sum_type(x)), x) do acc, t
+            sort_into!!(acc, prefactor(t), append!(empty!(buffer), t.factors))
         end
-        n += 1
-        done = false
-        start = 1
     end
-    return terms
+    return _with_zero_grades(sorted, () -> _grades(x))
+end
+# Sorts the product `a` into a sum, using its factors as scratch space, so they must not be shared. A product with at
+# most one factor is returned as is.
+function bubble_sort!(a::NCMul)
+    length(a.factors) <= 1 && return a
+    return _sort_product!!(a, factors_vector(a.factors))
+end
+# The sum from sorting `prefactor(a) * factors` with autosort disabled, using `factors` as scratch space
+_sort_product!!(a, factors) = with_autosort(() -> sort_into!!(zero(_sum_type(a)), prefactor(a), factors), false)
+
+# foldl(f, itr; init=acc), where the loop continues in a new specialization whenever `f` returns an accumulator of
+# another type
+fold_retyping!!(f, acc, itr) = _fold_retyping!!(f, acc, itr, ())
+# `state` is () to start the iteration, or (s,) to continue it from the state s
+function _fold_retyping!!(f, acc::A, itr, state) where {A}
+    next = iterate(itr, state...)
+    while !isnothing(next)
+        x, s = next
+        newacc = f(acc, x)
+        newacc isa A || return _fold_retyping!!(f, newacc, itr, (s,))
+        acc = newacc
+        next = iterate(itr, s)
+    end
+    return acc
+end
+# fold_retyping!! over terms(x)
+fold_terms!!(f, acc, x::NCMul) = iszero(x) ? acc : f(acc, x)
+function fold_terms!!(f, acc, x::NCAdd)
+    iszero(additive_coeff(x)) || (acc = f(acc, NCMul(additive_coeff(x), _scalar_factors(x))))
+    return fold_retyping!!(f, acc, NCterms(x))
 end
 
-function __bubble_sort_step!(terms, index, start)
-    ncmul = terms[index]
-    factors = ncmul.factors
-    N::Int = length(factors)
-    if N <= 1
-        done = true
-        return terms, done, start
+# Adds the term `coeff * factors` to the sum `acc`, reusing its storage when the term fits, and returns the result.
+# The key may share `factors`, which must not be mutated afterwards. A term without factors is added to the scalar
+# part.
+function add_term!!(acc::NCAdd{C,K}, coeff, factors) where {C,K}
+    iszero(coeff) && return acc
+    isempty(factors) && return set_coeff!!(acc, additive_coeff(acc) + coeff)
+    T = eltype(factors)
+    if !(T <: _factor_eltype(K))
+        K2 = promote_type(K, NCMul{Int,T,Vector{T}})
+        return add_term!!(convert(NCAdd{C,K2}, acc), coeff, collect(_factor_eltype(K2), factors))
     end
-    i::Int = max(0, start - 1)
-    while i < N - 1
-        i += 1
-        a, b = factors[i], factors[i+1]
-        effect = _mul_effect(factors, a, b)
-        isnothing(effect) && continue
-        return _apply_effect!!(terms, index, ncmul, i, effect)
-    end
-    done = true
-    newstart = i - 1
-    return terms, done, newstart
+    dict = add_key!!(acc.dict, convert(K, NCMul(1, factors)), coeff)
+    return dict === acc.dict ? acc : NCAdd(additive_coeff(acc), dict)
 end
-# Replaces the factors i and i+1 of `ncmul == terms[index]` according to `effect`, adding any new terms to `terms`
-function _apply_effect!!(terms, index, ncmul, i, effect)
-    # When effect is only known at runtime, these results infer as Any, and code compiled for Any is invalidated by
-    # downstream convert methods. The type assertions here and in _add_newterms!! prevent that.
-    newncmul, newterms = splice!!_and_add(ncmul, i, effect)
-    newncmul::NCMul
+# add_term!! for a sorted product, with `factors` copied so callers can pass a scratch vector. The factors are narrowed
+# to a concrete type they all share, and the first term of an empty sum sets its key type.
+function add_sorted!!(acc::NCAdd{C}, coeff, factors) where {C}
+    (iszero(coeff) || isempty(factors)) && return add_term!!(acc, coeff, factors)
+    T = _narrow_eltype(eltype(factors), factors)
+    isempty(acc.dict) && (acc = convert(NCAdd{C,NCMul{Int,T,Vector{T}}}, acc))
+    S = _factor_eltype(keytype(acc.dict))
+    return add_term!!(acc, coeff, collect(T <: S ? S : T, factors))
+end
+# The type of all elements of `factors` if their element type T is abstract and they share a concrete type. Any is
+# kept, since sums from `anyadd` must keep their type.
+function _narrow_eltype(::Type{T}, factors) where {T}
+    (isconcretetype(T) || T === Any) && return T
+    U = typeof(first(factors))
+    return all(f -> f isa U, factors) ? U : T
+end
 
-    terms_with_newterms = _add_newterms!!(terms, newterms)
-    if iszero(newncmul)
-        # move the last term into its place, to be sorted from its start
-        lastterm = pop!(terms_with_newterms)
-        index <= length(terms_with_newterms) && (terms_with_newterms[index] = lastterm)
-        return terms_with_newterms, false, 1
+# Adds `coeff` to the term with key `key` in `dict`, and deletes the term if it becomes zero. `key` is stored as given.
+# Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int). A result that
+# fits is converted before the zero check, since the conversion can round it to zero (e.g. Rational to Float16).
+function add_key!!(dict::AbstractDict, key, coeff)
+    newdict, _ = modify!!(dict, key) do val
+        newval = _fit_value(valtype(dict), isnothing(val) ? coeff : something(val) + coeff)
+        iszero(newval) ? nothing : newval
     end
-    return setindex!!(terms_with_newterms, newncmul, index), false, i - 1
+    return newdict
+end
+_fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V, x) : x
+
+# Sorts `coeff * factors` and adds the result to `acc`, using `factors` as scratch space. Callers disable autosort, so
+# that the products that mul_effect forms are not sorted recursively.
+sort_into!!(acc, coeff, factors) = iszero(coeff) ? acc : bubble!!(acc, coeff, factors, nothing, 1)
+
+# Applies mul_effect to neighbouring factors from position `start` until none applies, and adds the sorted product to
+# `acc`. Effects that split the product (AddTerms, NCAdd) push the other products onto `pending`, a stack that the
+# caller sorts, or that is created and sorted here if `pending` is `nothing`. Continues in a new specialization when an
+# effect changes the type of the coefficient, the factors or `pending`.
+function bubble!!(acc, coeff::C, factors::F, pending::P, start) where {C,F,P}
+    i = start
+    while i < length(factors)
+        effect = _mul_effect(factors, factors[i], factors[i+1])
+        isnothing(effect) && (i += 1; continue)
+        # The result of a split is often not inferred, so it is narrowed in its own branch, which keeps the result of
+        # the other effects inferred
+        if effect isa Union{AddTerms,NCAdd}
+            state = _apply!!(coeff, factors, i, effect, pending)
+            state isa Tuple{C,F,P} || return _continue!!(acc, state, i, pending)
+        else
+            state = _apply!!(coeff, factors, i, effect, pending)
+            state isa Tuple{C,F,P} || return _continue!!(acc, state, i, pending)
+        end
+        coeff, factors, pending = state
+        iszero(coeff) && return acc
+        i = max(i - 1, 1)
+    end
+    return add_sorted!!(acc, coeff, factors)
+end
+# bubble!! from the state after an effect on factors[i:i+1]. A new `pending` (created, or widened by push!!) holds the
+# products of the old one, so it is sorted here and the old one is emptied.
+function _continue!!(acc, (coeff, factors, newpending), i, pending)
+    iszero(coeff) || (acc = bubble!!(acc, coeff, factors, newpending, max(i - 1, 1)))
+    newpending === pending && return acc
+    isnothing(pending) || empty!(pending)
+    return _sort_pending!!(acc, newpending)
+end
+# Sorts the products in `pending` into `acc`, last first. Their splits push onto the same `pending`. Continues in a new
+# specialization when the type of `acc` changes.
+_sort_pending!!(acc, ::Nothing) = acc
+function _sort_pending!!(acc::A, pending) where {A}
+    while !isempty(pending)
+        p = pop!(pending)
+        newacc = bubble!!(acc, prefactor(p), p.factors, pending, 1)
+        newacc isa A || return _sort_pending!!(newacc, pending)
+        acc = newacc
+    end
+    return acc
 end
 # Mixed-type products dispatch mul_effect at runtime anyway. The inference barrier keeps the compiled sorting loop
 # independent of the mul_effect methods, so downstream methods don't invalidate the precompiled code.
 _mul_effect(::Vector{Any}, a, b) = Base.inferencebarrier(mul_effect)(a, b)
 _mul_effect(factors, a, b) = mul_effect(a, b)
 
-function _add_newterms!!(terms::Vector{T}, newterms) where {T}
-    isempty(newterms) && return terms
-    newterms isa Union{Vector{T},Tuple{Vararg{T}}} && return append!(terms, newterms)
-    # the new terms widen the element type. The inference barrier keeps append!! from being compiled for Any, which
-    # downstream convert methods would invalidate.
-    return Base.inferencebarrier(append!!)(terms, newterms)::Vector
+# The coefficient, factors and pending products after applying `effect` to factors[i:i+1]. For a sum of effects, every
+# part but the first is applied to a copy of the factors and added to `pending`, and the first is applied in place. An
+# empty sum gives a zero coefficient.
+_apply!!(coeff, factors, i, effect, pending) = (apply_effect!!(coeff, factors, i, effect)..., pending)
+function _apply!!(coeff, factors, i, effect::AddTerms, pending)
+    parts = effect.terms
+    next = iterate(parts)
+    isnothing(next) && return zero(coeff), factors, pending
+    first_part, state = next
+    pending = _push_parts!!(pending, coeff, factors, i, Base.rest(parts, state))
+    return _apply!!(coeff, factors, i, first_part, pending)
+end
+# A sum splits into its scalar part, applied in place when nonzero, and its products
+function _apply!!(coeff, factors, i, effect::NCAdd, pending)
+    λ = additive_coeff(effect)
+    iszero(λ) && return _apply!!(coeff, factors, i, AddTerms(NCterms(effect)), pending)
+    pending = _push_parts!!(pending, coeff, factors, i, NCterms(effect))
+    return _apply!!(coeff, factors, i, λ, pending)
+end
+# Tuples are split one element at a time, so that each element is applied in a call specialized on its type
+_push_parts!!(pending, coeff, factors, i, ::Tuple{}) = pending
+function _push_parts!!(pending, coeff, factors, i, parts::Tuple)
+    pending = _push_part!!(pending, coeff, factors, i, first(parts))
+    return _push_parts!!(pending, coeff, factors, i, Base.rest(parts, 2))
+end
+function _push_parts!!(pending, coeff, factors, i, parts)
+    for part in parts
+        pending = _push_part!!(pending, coeff, factors, i, part)
+    end
+    return pending
+end
+# A sum adds its scalar part, when nonzero, and its products
+function _push_parts!!(pending, coeff, factors, i, parts::NCAdd)
+    λ = additive_coeff(parts)
+    iszero(λ) || (pending = _push_part!!(pending, coeff, factors, i, λ))
+    return _push_parts!!(pending, coeff, factors, i, NCterms(parts))
+end
+_push_parts!!(pending, coeff, factors, i, parts::AddTerms) = _push_parts!!(pending, coeff, factors, i, parts.terms)
+# `pending` with the products from applying `part` to a copy of `factors` added
+function _push_part!!(pending, coeff, factors, i, part)
+    part isa Union{AddTerms,NCAdd} && return _push_parts!!(pending, coeff, factors, i, part)
+    newcoeff, newfactors = apply_effect!!(coeff, copy(factors), i, part)
+    iszero(newcoeff) && return pending
+    product = NCMul(newcoeff, newfactors)
+    return isnothing(pending) ? [product] : push!!(pending, product)
 end
 
-
-function mysplice!!(v::V, i::Integer, replacement::W) where {V,W}
-    T = promote_type(eltype(W), eltype(V))
-    if T <: eltype(V)
-        _mysplice!(v, i, replacement)
-        return v
-    end
-    # a new vector of the n factors before v[i:i+1], the replacement, and the factors after v[i:i+1]
-    n = i - firstindex(v)
-    m = length(replacement)
-    nafter = lastindex(v) - i - 1
-    newv = Vector{T}(undef, n + m + nafter)
-    copyto!(newv, 1, v, firstindex(v), n)
-    for (k, x) in enumerate(replacement)
-        newv[n+k] = x
-    end
-    copyto!(newv, n + m + 1, v, i + 2, nafter)
-    return newv
+# The coefficient and factors after replacing factors[i:i+1] according to `effect`
+function apply_effect!!(coeff, factors, i, effect)
+    λ, replacement = _effect_parts(effect, factors[i], factors[i+1])
+    return coeff * λ, replace_pair!!(factors, i, replacement)
 end
 
-function _mysplice!(a::Vector, i::Integer, ins)
-    m = length(ins)
-    if m == 0
-        deleteat!(a, i:(i+1))
-        return nothing
-    end
-    left = 2i < length(a)
-    if m == 1
-        deleteat!(a, left ? i : i + 1)
-    elseif m > 2
-        Base._growat!(a, left ? i : i + 2, m - 2)
-    end
-    # m == 2 needs no resize
-    for (k, x) in enumerate(ins)
-        a[i+k-1] = x
-    end
-    return nothing
-end
-
-
-function splice!!(ncmul::NCMul, i, term::NCMul)
-    coeff = prefactor(term) * prefactor(ncmul)
-    newfactors = mysplice!!(ncmul.factors, i, term.factors)
-    return NCMul(coeff, newfactors)
-end
-# an atom of the factor type. For mixed products (S == Any) this matches any value, so non-factors are rejected here.
-function splice!!(ncmul::NCMul{C,S}, i, term::S) where {C,S}
-    _check_atom_effect(term)
-    splice!!(ncmul, i, NCMul(one(C), (term,)))
-end
-# an atom of another type than the factors. NCMul(term) is defined by @nc, so only registered atoms are accepted.
-function splice!!(ncmul::NCMul, i, term)
-    _check_atom_effect(term)
-    splice!!(ncmul, i, NCMul(term)::NCMul)
+# The scale factor and the replacement factors of an effect on the pair a*b
+_effect_parts(λ::Number, a, b) = (λ, ())
+_effect_parts(swap::Swap, a, b) = (swap.λ, (b, a))
+_effect_parts(term::NCMul, a, b) = (prefactor(term), term.factors)
+# NCMul(atom) is defined by @nc, so values of other types throw a MethodError
+function _effect_parts(atom, a, b)
+    _check_atom_effect(atom)
+    return _is_atom(typeof(atom)) ? (1, (atom,)) : _effect_parts(NCMul(atom)::NCMul, a, b)
 end
 _check_atom_effect(term) = nothing
 # `nothing` inside AddTerms would keep a*b as a term, which gives the same effect again and never terminates
 _check_atom_effect(::Nothing) = throw(ArgumentError("unsupported mul_effect value: `nothing` can only be returned as the whole result of mul_effect, not inside AddTerms."))
-function splice!!(ncmul::NCMul, i::Integer, coeff::Number)
-    deleteat!(ncmul.factors, i:(i+1))
-    return NCMul(coeff * prefactor(ncmul), ncmul.factors)
-end
-function splice!!_and_add(ncmul::NCMul, i, add::NCAdd)
-    if iszero(additive_coeff(add))
-        terms = NCterms(add)
-        firstterm, state = iterate(terms)
-        newterms = map(term -> splice!!(copy(ncmul), i, term), Base.rest(terms, state))
-        ncmul2 = splice!!(ncmul, i, firstterm)
-    else
-        newterms = map(term -> splice!!(copy(ncmul), i, term), NCterms(add))
-        ncmul2 = splice!!(ncmul, i, additive_coeff(add))
+
+# `factors` with factors[i:i+1] replaced by the elements of `replacement`. Mutates `factors` if the elements fit, and
+# otherwise returns a new vector with a wider element type. Replacements of at most two factors are written in place.
+function replace_pair!!(factors, i, replacement)
+    T = eltype(factors)
+    S = promote_type(eltype(replacement), T)
+    S <: T || return append!(S[], view(factors, 1:i-1), replacement, view(factors, i+2:lastindex(factors)))
+    m = length(replacement)
+    m > 2 && (splice!(factors, i:i+1, replacement); return factors)
+    for (k, x) in enumerate(replacement)
+        factors[i+k-1] = x
     end
-    return ncmul2, newterms
-end
-function splice!!_and_add(ncmul::T, i, effect) where T<:NCMul
-    ncmul2 = splice!!(ncmul, i, effect)
-    return ncmul2, T[]
+    m < 2 && deleteat!(factors, i+m:i+1)
+    return factors
 end
 
 """

@@ -1,6 +1,6 @@
 using BenchmarkTools
 using NonCommutativeProducts
-using NonCommutativeProducts: with_autosort
+using NonCommutativeProducts: with_autosort, NCMul, NCAdd
 using LinearAlgebra: norm
 using Random
 BenchmarkTools.DEFAULT_PARAMETERS.seconds = 1
@@ -125,3 +125,42 @@ const N_large = 600
 const H_large = sum(Ket(n) * Ket(n + 1)' + Ket(n + 1) * Ket(n)' for n in 1:(N_large-1)) + sum(0.1n * Ket(n) * Ket(n)' for n in 1:N_large)
 const x_large = sum(randn() * Ket(n) for n in 1:N_large)
 SUITE["vector"]["apply_large"] = @benchmarkable $H_large * $x_large
+
+# Kets keyed by their label (bras have no key), so that `inner` pairs only terms with the same label
+struct KeyedKet
+    n::Int
+    bra::Bool
+end
+KeyedKet(n) = KeyedKet(n, false)
+Base.adjoint(k::KeyedKet) = KeyedKet(k.n, !k.bra)
+Base.hash(k::KeyedKet, h::UInt) = hash(k.n, hash(k.bra, hash(0xa4093822299f31d0, h)))
+NonCommutativeProducts.@nc KeyedKet
+NonCommutativeProducts.mul_effect(a::KeyedKet, b::KeyedKet) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+NonCommutativeProducts.contraction_key(k::KeyedKet) = k.bra ? nothing : k.n
+
+const N_keyed = 4096
+const x_keyed = sum(randn() * KeyedKet(n) for n in 1:N_keyed)
+const y_keyed = sum(randn() * KeyedKet(n) for n in 1:N_keyed)
+SUITE["vector"]["inner_keyed"] = @benchmarkable VI.inner($x_keyed, $y_keyed)
+
+# |n⟩⟨m| applied to a sum of kets is the coefficient of |m⟩ times |n⟩, found by a scan over the terms of the sum.
+# Other products go through the default method.
+_isket(fs) = length(fs) == 1 && !only(fs).bra
+function NonCommutativeProducts.mul_terms!!(c, x::NCMul{<:Any,KeyedKet}, b::NCAdd)
+    fs = x.factors
+    if length(fs) != 2 || fs[1].bra || !fs[2].bra || !all(_isket ∘ first, NonCommutativeProducts.termpairs(b))
+        return invoke(NonCommutativeProducts.mul_terms!!, Tuple{Any,NCMul,NCAdd}, c, x, b)
+    end
+    n, m = fs[1].n, fs[2].n
+    for (kets, coeff) in NonCommutativeProducts.termpairs(b)
+        if only(kets).n == m
+            c = NonCommutativeProducts.add!!(c, NonCommutativeProducts.coefficient(x) * coeff * KeyedKet(n))
+        end
+    end
+    return c
+end
+
+const H_keyed = sum(KeyedKet(n) * KeyedKet(n + 1)' + KeyedKet(n + 1) * KeyedKet(n)' for n in 1:(N_large-1)) +
+    sum(0.1n * KeyedKet(n) * KeyedKet(n)' for n in 1:N_large)
+const x_keyed_large = sum(randn() * KeyedKet(n) for n in 1:N_large)
+SUITE["vector"]["mul_hook"] = @benchmarkable $H_keyed * $x_keyed_large

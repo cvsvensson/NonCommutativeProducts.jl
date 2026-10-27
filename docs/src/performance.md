@@ -18,10 +18,11 @@ end
 
 The examples on this page use the `Fermion` type defined on the [Home](@ref "Example: Fermions") page.
 
-This package is flexible, but not very efficient. Sorting is done via bubble sort, which is convenient for this use case since it is based on repeatedly swapping adjacent elements where commutation relations can be used. But it does not scale well with the length of the list, so it won't perform well for products of many elements.
+Each product is sorted with bubble sort, which repeatedly swaps adjacent factors so that commutation relations apply. The time to sort one product grows quadratically with its number of factors, so long products are slow.
+
+A product of sums is formed one pair of terms at a time: each pair is sorted on its own and added straight into the result. The time is proportional to the number of term pairs and the memory to the size of the result. A product that sorts to zero allocates nothing, and each term added to the result costs one copy of its factors.
 
 ```julia
-# Example timing: 108.298 ms (1142139 allocations: 78.37 MiB)
 op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
 #= Sum with 59049 terms:
 1I-c†[10]*c[1]-c†[10]*c[1]*c[2]*c[3]-c†[10]*c[1]*c[2]*c[3]*c[4]*c[5] + ...
@@ -34,13 +35,11 @@ op = 0
 for n in 1:100
     op += Fermion(n)'*Fermion(n)
 end
-# Example timing: 105.000 μs (2221 allocations: 543.15 KiB)
 
 op2 = zero(op)
 for n in 1:100
     op2 = NonCommutativeProducts.add!!(op2, Fermion(n)'*Fermion(n))
 end
-# Example timing: 44.300 μs (1613 allocations: 108.64 KiB)
 op == op2 # true
 ```
 
@@ -71,6 +70,50 @@ which sorts the same way:
 julia> Fermion(1)*Fermion(1)' |> sort
 1I - c†[1]*c[1]
 ```
+
+When products of a term with a sum have structure that `mul_effect` cannot use, define a method of [`mul_terms!!`](@ref NonCommutativeProducts.mul_terms!!) for your types. With autosort enabled, `mul!!` calls `mul_terms!!(c, x, b)` for each term `x` of the left factor, and so does `*` when either factor is a sum. Autosort is disabled during the call, so the method must add terms that are already sorted.
+
+For example, `|n⟩⟨m|` applied to a sum of kets is the coefficient of `|m⟩` times `|n⟩`. A method can find it in one pass over the terms of the sum with [`termpairs`](@ref NonCommutativeProducts.termpairs), and add it to `c` with [`add!!`](@ref NonCommutativeProducts.add!!). Other products go through the default method:
+```jldoctest multerms
+julia> import NonCommutativeProducts as NC
+
+julia> NC.enable_autosort!();
+
+julia> struct Ket
+           n::Int
+           bra::Bool
+       end
+
+julia> Base.adjoint(k::Ket) = Ket(k.n, !k.bra)
+
+julia> Base.show(io::IO, k::Ket) = print(io, k.bra ? "⟨" : "|", k.n, k.bra ? "|" : "⟩")
+
+julia> NC.@nc Ket
+
+julia> NC.mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+julia> isket(fs) = length(fs) == 1 && !only(fs).bra;
+
+julia> function NC.mul_terms!!(c, x::NC.NCMul{<:Any,Ket}, b::NC.NCAdd)
+           fs = NC.factors(x)
+           if length(fs) != 2 || fs[1].bra || !fs[2].bra || !all(isket ∘ first, NC.termpairs(b))
+               return invoke(NC.mul_terms!!, Tuple{Any,NC.NCMul,NC.NCAdd}, c, x, b)
+           end
+           for (kets, coeff) in NC.termpairs(b)
+               if only(kets).n == fs[2].n
+                   c = NC.add!!(c, NC.coefficient(x) * coeff * Ket(fs[1].n, false))
+               end
+           end
+           return c
+       end;
+
+julia> ψ = sum(n * Ket(n, false) for n in 1:3);
+
+julia> Ket(1, false) * Ket(3, true) * ψ
+3*|1⟩
+```
+
+For inner products of large sums, see [Fast inner products](@ref).
 
 ```@meta
 DocTestSetup = nothing

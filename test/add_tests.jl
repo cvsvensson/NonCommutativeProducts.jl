@@ -32,3 +32,42 @@ end
     @test oneunit(typeof(x)) == oneunit(x)
     @test oneunit(x) * x == x
 end
+
+@testitem "mul!! with the target as a factor" begin
+    import NonCommutativeProducts: @nc, mul_effect, mul!!, with_autosort
+
+    struct AKet
+        n::Int
+        bra::Bool
+    end
+    AKet(n) = AKet(n, false)
+    Base.adjoint(k::AKet) = AKet(k.n, !k.bra)
+    @nc AKet
+    mul_effect(a::AKet, b::AKet) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+    H = sum(AKet(n) * AKet(n + 1)' + AKet(n + 1) * AKet(n)' for n in 1:30)
+    ψ = sum(n * AKet(n) for n in 1:31)
+    for autosort in (true, false)
+        with_autosort(autosort) do
+            c = copy(ψ)
+            @test mul!!(c, H, c) == mul!!(copy(ψ), H, ψ)
+            c = copy(H)
+            @test mul!!(c, c, H) == mul!!(copy(H), H, H)
+        end
+    end
+end
+
+@testitem "add!! and scale!! with a zero weight or term promote by type" setup = [Fermions] begin
+    using VectorInterface
+    import NonCommutativeProducts: add!!
+
+    f = Fermion.(1:3)
+    y = 1.0 * f[1]
+    x = f[2] + f[3]
+    T = typeof(VectorInterface.add(y, x, 0.0im, 1.0))
+    @test T == typeof(VectorInterface.add(y, 1.0im * x))
+    @test add!!(copy(y) + 0, 0 * (1.0im * x)) isa T
+    @test add!!(copy(y) + 0, x, 0.0im) isa T
+    @test VectorInterface.add!!(copy(y) + 0, x, 0.0im, 1.0) isa T
+    @test VectorInterface.scale!!(copy(y) + 0, x, 0.0im) isa typeof(VectorInterface.scale(x, 0.0im))
+end

@@ -946,6 +946,81 @@ end
     NonCommutativeProducts.disable_autosort!()
 end
 
+@testitem "VectorInterface: inner with contraction keys" begin
+    using LinearAlgebra, VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort, scalar, _reduces_to_scalar
+
+    const calls = Ref(0)
+    struct KKet
+        n::Int
+        bra::Bool
+    end
+    KKet(n) = KKet(n, false)
+    Base.adjoint(k::KKet) = KKet(k.n, !k.bra)
+    @nc KKet
+    mul_effect(a::KKet, b::KKet) = (calls[] += 1; a.bra && !b.bra ? Int(a.n == b.n) : nothing)
+    # |0⟩ and the bras have no key, so terms mix keyed and wildcard factors
+    NonCommutativeProducts.contraction_key(k::KKet) = k.bra || k.n == 0 ? nothing : k.n
+
+    NonCommutativeProducts.enable_autosort!()
+    k0, k1, k2, k3 = KKet.(0:3)
+    x = k0 + 2im * k1
+    y = 2k1 - k2 + 3k3
+    vecs = (x, y, x + 1, k2, k1 * k2', zero(x))
+    for a in vecs, b in vecs
+        ref = a' * b
+        if _reduces_to_scalar(ref)
+            @test inner(a, b) == scalar(ref)
+            @test typeof(inner(a, b)) == typeof(scalar(ref))
+        else
+            @test_throws ArgumentError inner(a, b)
+        end
+    end
+    # only the 50 pairs of equal kets are multiplied
+    ψ = sum(KKet(n) for n in 1:50)
+    calls[] = 0
+    @test norm(ψ) ≈ sqrt(50)
+    @test calls[] == 50
+    with_autosort(false) do
+        @test inner(x, y) == -4im
+    end
+    # the first factors have equal keys, so the pair is formed, and k2' * k1' * k1 throws
+    @test_throws ArgumentError inner(k1 * k2 + k3, k1)
+    NonCommutativeProducts.disable_autosort!()
+end
+
+@testitem "mul_terms!! hook" begin
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort, add!!, terms, nterms, NCMul, NCAdd
+
+    struct HKet
+        n::Int
+        bra::Bool
+    end
+    HKet(n) = HKet(n, false)
+    Base.adjoint(k::HKet) = HKet(k.n, !k.bra)
+    @nc HKet
+    mul_effect(a::HKet, b::HKet) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+    NonCommutativeProducts.enable_autosort!()
+    H = sum(HKet(n) * HKet(n + 1)' + 2 * HKet(n + 1) * HKet(n)' for n in 1:5)
+    ψ = sum(n * HKet(n) for n in 1:6) + HKet(1) * HKet(2)
+    ref = H * ψ
+    unsorted = with_autosort(() -> H * ψ, false)
+
+    const calls = Ref(0)
+    # the generic path through products of terms; autosort is off in the hook, so it is enabled for the reference
+    function NonCommutativeProducts.mul_terms!!(c, x::NCMul{<:Any,HKet}, b::NCAdd)
+        calls[] += 1
+        return add!!(c, with_autosort(() -> sum(x * y for y in terms(b))))
+    end
+    @test H * ψ == ref
+    @test calls[] == nterms(H)
+    calls[] = 0
+    @test with_autosort(() -> H * ψ, false) == unsorted
+    @test calls[] == 0
+    NonCommutativeProducts.disable_autosort!()
+end
+
 @testitem "VectorInterface: the type of inner doesn't depend on autosort" setup = [Fermions] begin
     using VectorInterface: inner
     f = Fermion(1)
