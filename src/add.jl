@@ -314,7 +314,7 @@ factor is a sum.
 
 Define methods for your own atom types to compute these products directly, e.g. to apply an operator to every ket in a
 sum with one precomputation. Autosort is disabled during the call, so a method must add terms that are already sorted,
-with [`add!!`](@ref). The coefficient type of the result must not depend on which products vanish.
+with [`add!!`](@ref). 
 """
 function mul_terms!!(c, x::NCMul, b::MulAdd)
     buffer = _factor_eltype(typeof(c), typeof(x), typeof(b))[]
