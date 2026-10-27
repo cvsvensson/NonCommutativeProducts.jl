@@ -184,8 +184,13 @@ function add!!(_a::NCAdd, b::Union{MulAdd,Number,UniformScaling}, α::Number=One
     agrades = β isa VectorInterface.Zero ? nothing : _zero_grades(a)
     return _with_zero_grades(_add_scaled!!(a, b, α), () -> _union_grades(agrades, _grades(b)))
 end
-# a + α * b without maintaining the grades of a zero result
-_add_scaled!!(a::NCAdd, b::MulAdd, α) = fold_terms!!((acc, t) -> add_term!!(acc, α * prefactor(t), t.factors), a, b)
+# a + α * b without maintaining the grades of a zero result. a is first converted to hold the terms of α * b, so the
+# type of the result doesn't depend on which terms are zero.
+function _add_scaled!!(a::NCAdd, b::MulAdd, α)
+    C = Base.promote_op(*, typeof(α), _coeff_type(typeof(b)))
+    a = convert(promote_type(typeof(a), NCAdd{C,to_add_dict_type(typeof(b))}), a)
+    return fold_terms!!((acc, t) -> add_term!!(acc, α * prefactor(t), t.factors), a, b)
+end
 _add_scaled!!(a::NCAdd, b::Number, α) = set_coeff!!(a, additive_coeff(a) + α * b)
 _add_scaled!!(a::NCAdd, b::UniformScaling, α) = _add_scaled!!(a, b.λ, α)
 
@@ -277,11 +282,16 @@ end
 # catenated products are added unsorted. c is first converted to the promoted type of c, a and b, so the coefficient
 # type of the result doesn't depend on which products vanish.
 function _mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
+    # the terms of a and b are read while c is updated in place
+    a = a === c ? copy(a) : a
+    b = b === c ? copy(b) : b
     autosort() && return with_autosort(() -> _mul_sorted!!(c, a, b), false)
     c = convert(promote_type(typeof(c), _sum_type(a, b)), c)
-    buffer = _factor_eltype(typeof(c))[]
     return fold_terms!!(c, a) do acc, x
-        fold_terms!!((acc, y) -> add_term!!(acc, prefactor(x) * prefactor(y), copy(_catenate!(buffer, x, y))), acc, b)
+        fold_terms!!(acc, b) do acc, y
+            t = catenate(x, y)
+            add_term!!(acc, prefactor(t), t.factors)
+        end
     end
 end
 function _mul_sorted!!(c::NCAdd, a::MulAdd, b::MulAdd)
@@ -299,8 +309,8 @@ _is_sorted(factors) = all(i -> isnothing(_mul_effect(factors, factors[i], factor
     mul_terms!!(c, x::NCMul, b)
 
 Return the sum `c` plus the sorted product of the term `x` and the product or sum `b`, reusing the storage of `c` when
-possible. With autosort enabled, `*` and `mul!!` call it for each term `x` of the left factor when either factor is a
-sum.
+possible. With autosort enabled, `mul!!` calls it for each term `x` of the left factor, and so does `*` when either
+factor is a sum.
 
 Define methods for your own atom types to compute these products directly, e.g. to apply an operator to every ket in a
 sum with one precomputation. Autosort is disabled during the call, so a method must add terms that are already sorted,

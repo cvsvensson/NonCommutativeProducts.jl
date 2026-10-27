@@ -63,3 +63,26 @@ end
     unsorted = with_autosort(() -> H * ψ, false)
     @test keytype(sort(unsorted).dict) == keytype(ψ.dict)
 end
+
+@testitem "Long products with splitting effects" begin
+    import NonCommutativeProducts: @nc, NCMul, mul_effect, AddTerms, Swap
+    NonCommutativeProducts.disable_autosort!()
+    # Every swap returns a sum
+    struct Mode
+        n::Int
+    end
+    @nc Mode
+    mul_effect(a::Mode, b::Mode) = a.n > b.n ? b * a + 0 : nothing
+    @test sort(NCMul(1, [Mode(n) for n in 300:-1:1])) == NCMul(1, [Mode(n) for n in 1:300])
+
+    # Every swap splits the product into one with Site(0), which vanishes, and the swapped one, which is pending
+    struct Site
+        n::Int
+    end
+    @nc Site
+    function mul_effect(a::Site, b::Site)
+        (iszero(a.n) || iszero(b.n)) && return 0
+        return a.n > b.n ? AddTerms((Site(0), Swap(1))) : nothing
+    end
+    @test sort(NCMul(1, [Site(n) for n in 200:-1:1])) == NCMul(1, [Site(n) for n in 1:200])
+end

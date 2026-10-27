@@ -25,10 +25,7 @@ Sort `x` by repeatedly applying [`mul_effect`](@ref) to neighbouring factors. Th
 when `x` is a product that sorts to a single term.
 """
 Base.sort(x::MulAdd) = bubble_sort(x)
-function bubble_sort(a::NCMul)
-    sorted = with_autosort(() -> sort_into!!(zero(_sum_type(a)), prefactor(a), copy_factors(a.factors)), false)
-    return _with_zero_grades(sorted, () -> _grades(a))
-end
+bubble_sort(a::NCMul) = _with_zero_grades(_sort_product!!(a, copy_factors(a.factors)), () -> _grades(a))
 function bubble_sort(x::NCAdd)
     buffer = _factor_eltype(typeof(x))[]
     sorted = with_autosort(false) do
@@ -42,8 +39,10 @@ end
 # most one factor is returned as is.
 function bubble_sort!(a::NCMul)
     length(a.factors) <= 1 && return a
-    return with_autosort(() -> sort_into!!(zero(_sum_type(a)), prefactor(a), factors_vector(a.factors)), false)
+    return _sort_product!!(a, factors_vector(a.factors))
 end
+# The sum from sorting `prefactor(a) * factors` with autosort disabled, using `factors` as scratch space
+_sort_product!!(a, factors) = with_autosort(() -> sort_into!!(zero(_sum_type(a)), prefactor(a), factors), false)
 
 # foldl(f, itr; init=acc), where the loop continues in a new specialization whenever `f` returns an accumulator of
 # another type
@@ -114,56 +113,73 @@ _fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V
 # that the products that mul_effect forms are not sorted recursively.
 sort_into!!(acc, coeff, factors) = iszero(coeff) ? acc : bubble!!(acc, coeff, factors, nothing, 1)
 
-# Applies mul_effect to neighbouring factors from position `start` until none applies, and adds the sorted product
-# and then the products in `pending` to `acc`. Effects that split the product (AddTerms, NCAdd) add the other products
-# to `pending`. Continues in a new specialization when an effect changes the type of the coefficient or the factors.
-function bubble!!(acc, coeff::C, factors::F, pending, start) where {C,F}
+# Applies mul_effect to neighbouring factors from position `start` until none applies, and adds the sorted product to
+# `acc`. Effects that split the product (AddTerms, NCAdd) push the other products onto `pending`, a stack that the
+# caller sorts, or that is created and sorted here if `pending` is `nothing`. Continues in a new specialization when an
+# effect changes the type of the coefficient, the factors or `pending`.
+function bubble!!(acc, coeff::C, factors::F, pending::P, start) where {C,F,P}
     i = start
     while i < length(factors)
         effect = _mul_effect(factors, factors[i], factors[i+1])
         isnothing(effect) && (i += 1; continue)
-        effect isa Union{AddTerms,NCAdd} && return _split!!(acc, coeff, factors, i, effect, pending)
-        newcoeff, newfactors = apply_effect!!(coeff, factors, i, effect)
-        iszero(newcoeff) && return _sort_pending!!(acc, pending)
-        i = max(i - 1, 1)
-        if newcoeff isa C && newfactors isa F
-            coeff, factors = newcoeff, newfactors
+        # The result of a split is often not inferred, so it is narrowed in its own branch, which keeps the result of
+        # the other effects inferred
+        if effect isa Union{AddTerms,NCAdd}
+            state = _apply!!(coeff, factors, i, effect, pending)
+            state isa Tuple{C,F,P} || return _continue!!(acc, state, i, pending)
         else
-            return bubble!!(acc, newcoeff, newfactors, pending, i)
+            state = _apply!!(coeff, factors, i, effect, pending)
+            state isa Tuple{C,F,P} || return _continue!!(acc, state, i, pending)
         end
+        coeff, factors, pending = state
+        iszero(coeff) && return acc
+        i = max(i - 1, 1)
     end
-    return _sort_pending!!(add_sorted!!(acc, coeff, factors), pending)
+    return add_sorted!!(acc, coeff, factors)
 end
+# bubble!! from the state after an effect on factors[i:i+1]. A new `pending` (created, or widened by push!!) holds the
+# products of the old one, so it is sorted here and the old one is emptied.
+function _continue!!(acc, (coeff, factors, newpending), i, pending)
+    iszero(coeff) || (acc = bubble!!(acc, coeff, factors, newpending, max(i - 1, 1)))
+    newpending === pending && return acc
+    isnothing(pending) || empty!(pending)
+    return _sort_pending!!(acc, newpending)
+end
+# Sorts the products in `pending` into `acc`, last first. Their splits push onto the same `pending`. Continues in a new
+# specialization when the type of `acc` changes.
 _sort_pending!!(acc, ::Nothing) = acc
-_sort_pending!!(acc, pending) = fold_retyping!!((acc, p) -> sort_into!!(acc, prefactor(p), p.factors), acc, pending)
+function _sort_pending!!(acc::A, pending) where {A}
+    while !isempty(pending)
+        p = pop!(pending)
+        newacc = bubble!!(acc, prefactor(p), p.factors, pending, 1)
+        newacc isa A || return _sort_pending!!(newacc, pending)
+        acc = newacc
+    end
+    return acc
+end
 # Mixed-type products dispatch mul_effect at runtime anyway. The inference barrier keeps the compiled sorting loop
 # independent of the mul_effect methods, so downstream methods don't invalidate the precompiled code.
 _mul_effect(::Vector{Any}, a, b) = Base.inferencebarrier(mul_effect)(a, b)
 _mul_effect(factors, a, b) = mul_effect(a, b)
 
-# Continues bubble!! after a sum of effects on factors[i:i+1]: every part but the first is applied to a copy of the
-# factors and added to `pending`, and the first is applied in place.
-function _split!!(acc, coeff, factors, i, effect, pending)
+# The coefficient, factors and pending products after applying `effect` to factors[i:i+1]. For a sum of effects, every
+# part but the first is applied to a copy of the factors and added to `pending`, and the first is applied in place. An
+# empty sum gives a zero coefficient.
+_apply!!(coeff, factors, i, effect, pending) = (apply_effect!!(coeff, factors, i, effect)..., pending)
+function _apply!!(coeff, factors, i, effect::AddTerms, pending)
     parts = effect.terms
     next = iterate(parts)
-    isnothing(next) && return _sort_pending!!(acc, pending)
+    isnothing(next) && return zero(coeff), factors, pending
     first_part, state = next
     pending = _push_parts!!(pending, coeff, factors, i, Base.rest(parts, state))
-    return _apply_part!!(acc, coeff, factors, i, first_part, pending)
+    return _apply!!(coeff, factors, i, first_part, pending)
 end
 # A sum splits into its scalar part, applied in place when nonzero, and its products
-function _split!!(acc, coeff, factors, i, effect::NCAdd, pending)
+function _apply!!(coeff, factors, i, effect::NCAdd, pending)
     λ = additive_coeff(effect)
-    iszero(λ) && return _split!!(acc, coeff, factors, i, AddTerms(NCterms(effect)), pending)
+    iszero(λ) && return _apply!!(coeff, factors, i, AddTerms(NCterms(effect)), pending)
     pending = _push_parts!!(pending, coeff, factors, i, NCterms(effect))
-    return _apply_part!!(acc, coeff, factors, i, λ, pending)
-end
-# Continues bubble!! after applying `part` to factors[i:i+1] in place
-function _apply_part!!(acc, coeff, factors, i, part, pending)
-    part isa Union{AddTerms,NCAdd} && return _split!!(acc, coeff, factors, i, part, pending)
-    newcoeff, newfactors = apply_effect!!(coeff, factors, i, part)
-    iszero(newcoeff) && return _sort_pending!!(acc, pending)
-    return bubble!!(acc, newcoeff, newfactors, pending, max(i - 1, 1))
+    return _apply!!(coeff, factors, i, λ, pending)
 end
 # Tuples are split one element at a time, so that each element is applied in a call specialized on its type
 _push_parts!!(pending, coeff, factors, i, ::Tuple{}) = pending

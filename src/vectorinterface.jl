@@ -92,11 +92,13 @@ _collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
     contraction_key(atom)
 
 A key that lets `inner(x, y)` skip products that vanish, or `nothing` (the default). `inner` forms `a' * b` for a term
-`a` of `x` and a term `b` of `y` only if the first factors of `a` and `b` have equal keys, or one of them has no key.
-Keys are compared with `isequal`.
+`a` of `x` and a term `b` of `y` only if the first factors of `a` and `b` have equal keys (by `isequal`), or one of
+them has no key. Skipping gives the same result as sorting `x' * y` when, for all atoms `k` and `l` with keys:
+- `mul_effect(k', l)` is zero whenever their keys differ, and
+- `mul_effect(u, k')` is `nothing` for every atom `u`.
 
-Give keys only to atoms `k` and `l` for which `k' * l` sorts to zero whenever their keys differ, e.g. kets of an
-orthonormal basis but not bras, since `⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero:
+Kets of an orthonormal basis can have keys when nothing acts on a bra from the left. Bras can't, since
+`⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero:
 ```julia
 NonCommutativeProducts.contraction_key(k::Ket) = k.bra ? nothing : k.n
 ```
