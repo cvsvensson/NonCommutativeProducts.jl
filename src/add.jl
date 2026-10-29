@@ -60,9 +60,13 @@ anyadd(x::Union{NCMul{C},NCAdd{C}}) where {C} = convert(NCAdd{C,NCMul{Int,Any,Ve
 
 const MulAdd = Union{NCMul,NCAdd}
 Base.iszero(x::NCAdd) = iszero(additive_coeff(x)) && all(iszero, values(x.dict))
-Base.:(==)(a::NCAdd, b::NCAdd) = additive_coeff(a) == additive_coeff(b) && a.dict == b.dict
-Base.:(==)(a::NCAdd, b::Number) = additive_coeff(a) == b && isempty(a.dict)
-Base.:(==)(a::Number, b::NCAdd) = a == additive_coeff(b) && isempty(b.dict)
+for eq in (:(==), :isequal)
+    @eval begin
+        Base.$eq(a::NCAdd, b::NCAdd) = $eq(additive_coeff(a), additive_coeff(b)) && $eq(a.dict, b.dict)
+        Base.$eq(a::NCAdd, b::Number) = $eq(additive_coeff(a), b) && isempty(a.dict)
+        Base.$eq(a::Number, b::NCAdd) = $eq(b, a)
+    end
+end
 function Base.hash(a::NCAdd, h::UInt)
     # if it's only a number, hash should equal hash of number
     if isempty(a.dict)
@@ -81,7 +85,7 @@ scalar(x::NCAdd) = isscalar(x) ? additive_coeff(x) : throw(ArgumentError("NCAdd 
 Base.copy(x::NCAdd) = NCAdd(copy(additive_coeff(x)), copy(x.dict); zero_grades=x.zero_grades)
 
 function print_coeff(io, coeff)
-    if isreal(coeff)
+    if isreal(coeff) && (real(coeff) < 0) isa Bool
         print(io, real(coeff), "I")
     else
         print(io, "(", coeff, ")", "I")
@@ -226,6 +230,11 @@ function _set_ncadd!(y::NCAdd{C,K}, x::NCAdd{C,K}) where {C,K}
 end
 _set_ncadd!(y::NCAdd, x::NCMul) = _set_ncadd!(y, NCAdd(x))
 
+# Whether scaling coefficients of type C by a T gives a C. One and Zero are handled directly, since promote_type with
+# them is ambiguous for number types with a generic promote_rule, such as Symbolics.Num.
+_keeps_type(::Type{C}, ::Type{T}) where {C,T} = promote_type(T, C) <: C
+_keeps_type(::Type, ::Type{<:Union{One,VectorInterface.Zero}}) = true
+
 # If the result doesn't fit in the coefficient type, add! and scale! throw and leave `a` unchanged. An error from the
 # arithmetic itself (e.g. an OverflowError with Rational{Int}) may leave `a` partly updated.
 function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where {C}
@@ -233,7 +242,7 @@ function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where 
     agrades = β isa VectorInterface.Zero ? nothing : iszero(β) ? _grades(a) : _zero_grades(a)
     newgrades = () -> _union_grades(agrades, _grades(b))
     newcoeff = additive_coeff(a) * β + α * b
-    if !(promote_type(typeof(β), C) <: C)
+    if !_keeps_type(C, typeof(β))
         return _with_zero_grades(_set_ncadd!(a, newcoeff, (k => v * β for (k, v) in a.dict)), newgrades)
     end
     # the scaled terms fit in C, so only the coefficient can fail to convert
@@ -249,7 +258,7 @@ scale!(x::NCAdd, α::Number) = add!(x, false, One(), α)
 
 function scale!!(x::NCAdd{CS}, α::C) where {CS,C<:Number}
     # use scale! only where it can't fail
-    if promote_type(C, CS) <: CS
+    if _keeps_type(CS, C)
         scale!(x, α)
     else
         scale(x, α)

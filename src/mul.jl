@@ -69,10 +69,15 @@ function Base.show(io::IO, x::NCMul)
 end
 Base.iszero(x::NCMul) = iszero(prefactor(x))
 
-# Equality is by value, so all zero products are equal, to each other and to 0, whatever their factors
-Base.:(==)(a::NCMul, b::Number) = isscalar(a) && prefactor(a) == b
-Base.:(==)(a::Number, b::NCMul) = b == a
-Base.:(==)(a::NCMul, b::NCMul) = iszero(a) ? iszero(b) : prefactor(a) == prefactor(b) && factors_equal(a.factors, b.factors)
+# Equality is by value, so all zero products are equal, to each other and to 0, whatever their factors. isequal
+# compares the coefficients with isequal, so it gives a Bool also for coefficients whose == is symbolic.
+for eq in (:(==), :isequal)
+    @eval begin
+        Base.$eq(a::NCMul, b::Number) = isscalar(a) && $eq(prefactor(a), b)
+        Base.$eq(a::Number, b::NCMul) = $eq(b, a)
+        Base.$eq(a::NCMul, b::NCMul) = iszero(a) ? iszero(b) : $eq(prefactor(a), prefactor(b)) && factors_equal(a.factors, b.factors)
+    end
+end
 # Equality and hashing ignore the factors container, so that Tuple-backed and Vector-backed products
 # can be used interchangeably as keys of the same Dict
 factors_equal(a::F, b::F) where {F} = a == b

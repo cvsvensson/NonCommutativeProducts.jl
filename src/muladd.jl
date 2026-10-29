@@ -11,14 +11,18 @@ end
 Base.zero(nc::NCMul{C,S}) where {C,S} = NCMul(zero(C), convert(Vector{S}, factors_vector(nc.factors)))
 Base.zero(nc::NCAdd) = _set_zero_grades!(zero(typeof(nc)), _grades(nc))
 Base.one(nc::Union{<:NCAdd,<:NCMul}) = one(typeof(nc))
-function Base.:(==)(a::NCAdd, b::NCMul)
-    isscalar(b) && return isempty(a.dict) && additive_coeff(a) == prefactor(b)
-    iszero(additive_coeff(a)) || return false
-    length(a.dict) == 1 || return false
-    ncmul, coeff = only(a.dict)
-    NCMul(coeff, ncmul.factors) == b
+for eq in (:(==), :isequal)
+    @eval begin
+        function Base.$eq(a::NCAdd, b::NCMul)
+            isscalar(b) && return isempty(a.dict) && $eq(additive_coeff(a), prefactor(b))
+            iszero(additive_coeff(a)) || return false
+            length(a.dict) == 1 || return false
+            ncmul, coeff = only(a.dict)
+            $eq(NCMul(coeff, ncmul.factors), b)
+        end
+        Base.$eq(a::NCMul, b::NCAdd) = $eq(b, a)
+    end
 end
-Base.:(==)(a::NCMul, b::NCAdd) = b == a
 
 function Base.:+(a::NCMul{C1}, b::NCMul{C2}) where {C1,C2}
     C = promote_type(C1, C2)
@@ -107,6 +111,8 @@ macro nc_common(T)
 
         Base.:(==)(a::$(esc(T)), b::Union{NCMul,NCAdd}) = NCMul(a) == b
         Base.:(==)(a::Union{NCMul,NCAdd}, b::$(esc(T))) = b == a
+        Base.isequal(a::$(esc(T)), b::Union{NCMul,NCAdd}) = isequal(NCMul(a), b)
+        Base.isequal(a::Union{NCMul,NCAdd}, b::$(esc(T))) = isequal(b, a)
 
         # the zero of an atom keeps it as a factor for its grade, with the same type as zero(T)
         Base.zero(a::$(esc(T))) = NCMul(0, typeof(a)[a])
