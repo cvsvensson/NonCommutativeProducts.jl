@@ -26,3 +26,13 @@ end
     c = Fermion(1)
     @test sprint(show, x + y + c) == "(x + y)I + c[1]"
 end
+
+@testitem "Symbolics: substitute acts on coefficients" setup = [Fermions] begin
+    using Symbolics
+    @variables x y
+    c = Fermion.(1:2)
+    a = x * c[1] * c[2] + y * c[2] + x
+    @test isequal(substitute(a, Dict(x => 2)), 2 * c[1] * c[2] + y * c[2] + 2)
+    @test isequal(substitute(x * c[1], Dict(x => y)), y * c[1])
+    @test iszero(substitute(a, Dict(x => 0, y => 0)))
+end

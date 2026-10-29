@@ -14,14 +14,17 @@ VectorInterface = "409d34a3-91d5-4945-b6ec-7529ddf182d8"
 
 [weakdeps]
 KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
+SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 
 [extensions]
 NonCommutativeProductsKrylovKitExt = "KrylovKit"
+NonCommutativeProductsSymbolicUtilsExt = "SymbolicUtils"
 
 [compat]
 BangBang = "0.4"
 KrylovKit = "0.10"
 LinearAlgebra = "1"
 PrecompileTools = "1"
+SymbolicUtils = "4"
 VectorInterface = "0.5, 0.6, 0.7"
 julia = "1.12"
