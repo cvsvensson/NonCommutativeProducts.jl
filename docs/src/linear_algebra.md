@@ -41,9 +41,9 @@ true
 
 ## Fast inner products
 
-`inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. With [`contraction_key`](@ref NonCommutativeProducts.contraction_key) defined, `inner` skips the pairs whose first factors have different keys, which takes time proportional to the number of terms when each key matches few terms.
+`inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. With [`contraction_key`](@ref NonCommutativeProducts.contraction_key) defined, `inner` looks at the *keyed run* of each term: the keys of its leading factors, up to the first factor without a key. It skips the pairs whose keyed runs differ before one of them ends, and contracts the common prefix directly to a scalar, factor by factor. This takes time proportional to the number of terms when each run matches few others, even for long products such as spin chains whose first factor has only a few values.
 
-Keys must not change the result of sorting `x' * y`; the docstring lists the conditions. For example, if an operator `O` had `mul_effect(O', ⟨1|) = ⟨2|`, then `(|1⟩O)' * |2⟩` would sort to `⟨2|2⟩ = 1`, so kets could not have keys.
+Keys must not change the result of sorting `x' * y`; the docstring lists the conditions. In particular, `mul_effect(k', l)` must be zero for atoms with different keys and a `Number` for atoms with equal keys, and nothing may act on `k'` from the left. For example, if an operator `O` had `mul_effect(O', ⟨1|) = ⟨2|`, then `(|1⟩O)' * |2⟩` would sort to `⟨2|2⟩ = 1`, so kets could not have keys.
 
 For the kets above, `⟨n|m⟩` is zero unless `n == m`, and nothing acts on a bra from the left, so kets are keyed by their label. Bras get no key, since `⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero.
 ```jldoctest kets
