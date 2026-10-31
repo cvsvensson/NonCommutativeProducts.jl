@@ -143,6 +143,27 @@ const x_keyed = sum(randn() * KeyedKet(n) for n in 1:N_keyed)
 const y_keyed = sum(randn() * KeyedKet(n) for n in 1:N_keyed)
 SUITE["vector"]["inner_keyed"] = @benchmarkable VI.inner($x_keyed, $y_keyed)
 
+# Product states of a spin chain, with a ket per site keyed by (site, state), so that `inner` prunes pairs of terms
+# by their keys site by site
+struct SiteKet
+    site::Int
+    s::Int
+    bra::Bool
+end
+SiteKet(site, s) = SiteKet(site, s, false)
+Base.adjoint(k::SiteKet) = SiteKet(k.site, k.s, !k.bra)
+Base.hash(k::SiteKet, h::UInt) = hash(k.site, hash(k.s, hash(k.bra, hash(0x082efa98ec4e6c89, h))))
+NonCommutativeProducts.@nc SiteKet
+NonCommutativeProducts.mul_effect(a::SiteKet, b::SiteKet) = a.bra && !b.bra ? Int(a.site == b.site && a.s == b.s) : nothing
+NonCommutativeProducts.contraction_key(k::SiteKet) = k.bra ? nothing : (k.site, k.s)
+
+const N_sites = 32
+random_product_state() = prod(SiteKet(site, rand(1:2)) for site in 1:N_sites)
+const x_keyed_chain = sum(randn() * random_product_state() for _ in 1:200)
+const y_keyed_chain = sum(randn() * random_product_state() for _ in 1:200)
+SUITE["vector"]["inner_keyed_chain"] = @benchmarkable VI.inner($x_keyed_chain, $y_keyed_chain)
+SUITE["vector"]["norm_keyed_chain"] = @benchmarkable norm($x_keyed_chain)
+
 # |n⟩⟨m| applied to a sum of kets is the coefficient of |m⟩ times |n⟩, found by a scan over the terms of the sum.
 # Other products go through the default method.
 _isket(fs) = length(fs) == 1 && !only(fs).bra

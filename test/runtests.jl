@@ -989,6 +989,48 @@ end
     NonCommutativeProducts.disable_autosort!()
 end
 
+@testitem "VectorInterface: inner with contraction keys on products" begin
+    using LinearAlgebra, VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort, NCMul
+
+    # a ket |s⟩ on a site, or its bra. State 0 has no key, so a keyed run can stop in the middle.
+    struct SKet
+        site::Int
+        s::Int
+        bra::Bool
+    end
+    SKet(site, s) = SKet(site, s, false)
+    Base.adjoint(k::SKet) = SKet(k.site, k.s, !k.bra)
+    @nc SKet
+    mul_effect(a::SKet, b::SKet) = a.bra && !b.bra ? Int(a.site == b.site && a.s == b.s) : nothing
+    NonCommutativeProducts.contraction_key(k::SKet) = k.bra || k.s == 0 ? nothing : (k.site, k.s)
+
+    NonCommutativeProducts.enable_autosort!()
+    a1, a2, b1, b2, u2 = SKet(1, 1), SKet(2, 1), SKet(1, 2), SKet(2, 2), SKet(2, 0)
+    @test inner(a1 * a2 + 2im * b1 * a2, a1 * a2 + b1 * a2) == 1 - 2im
+    @test norm(a1 * a2 + 2b1 * a2 - a1 * b2) ≈ sqrt(6)
+    @test inner(a1 * u2 + b1 * a2, a1 * u2) == 1
+    with_autosort(false) do
+        @test inner(a1 * a2 + 2im * b1 * a2, a1 * a2 + b1 * a2) == 1 - 2im
+    end
+    # products backed by a Tuple
+    @test inner(a1 * a2, NCMul(1, (a1, a2))) == 1
+    # products of different lengths that don't reduce to a scalar
+    @test_throws ArgumentError inner(a1 * a2, a1)
+
+    # mul_effect between atoms with equal keys must return a Number
+    struct BKet
+        n::Int
+        bra::Bool
+    end
+    Base.adjoint(k::BKet) = BKet(k.n, !k.bra)
+    @nc BKet
+    mul_effect(a::BKet, b::BKet) = a.bra && !b.bra ? (a.n == b.n ? 2 * BKet(0, false) : 0) : nothing
+    NonCommutativeProducts.contraction_key(k::BKet) = k.bra ? nothing : k.n
+    @test_throws ArgumentError inner(BKet(1, false), BKet(1, false))
+    NonCommutativeProducts.disable_autosort!()
+end
+
 @testitem "mul_terms!! hook" begin
     import NonCommutativeProducts: @nc, mul_effect, with_autosort, add!!, terms, nterms, NCMul, NCAdd
 
