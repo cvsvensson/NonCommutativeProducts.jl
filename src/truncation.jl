@@ -19,7 +19,8 @@ is no such bound. Terms with an atom without a bound are never dropped by [`trun
 For products and sums, `opnorm_bound` is computed from the bounds of the atoms: a product `c * a₁ * … * aₙ` has the
 bound [`coefficient_bound`](@ref)`(c) *` [`opnorm_bound_factors`](@ref)`([a₁, …, aₙ])`, and a sum has the sum of the
 bounds of its terms, with `1` for the factors of its scalar part. The result is `nothing` if the bound of a term is
-unknown, and `Inf` if a coefficient is `NaN` or infinite. These are floating-point numbers, rounded up.
+unknown, and `Inf` if a coefficient is `NaN` or infinite. These are floating-point numbers, rounded up: `Float64`, or
+a wider type such as `BigFloat` if a coefficient or bound is wider.
 
 # Example
 ```julia
@@ -31,7 +32,14 @@ opnorm_bound(c[1] + 0.5 * b) === nothing # if b has no bound
 opnorm_bound(x) = nothing
 opnorm_bound(x::Number) = _bound_value(coefficient_bound(x))
 opnorm_bound(x::NCMul) = _sum_weights(_term_weight(fs, c) for (fs, c) in termpairs(x))
-opnorm_bound(x::NCAdd) = _sum_weights(_term_weight(fs, c) for (fs, c) in termpairs(x))
+function opnorm_bound(x::NCAdd)
+    # the scalar part separately, since iterating over termpairs(x) isn't inferred
+    coeff = additive_coeff(x)
+    scalar_weight = iszero(coeff) ? 0.0 : _term_weight(_scalar_factors(x), coeff)
+    weight = _sum_weights(_term_weight(k.factors, c) for (k, c) in x.dict)
+    (isnothing(scalar_weight) || isnothing(weight)) && return nothing
+    return _add_up(scalar_weight, weight)
+end
 
 """
     opnorm_bound_factors(factors)
@@ -43,8 +51,10 @@ bound `1`.
 
 Define methods to give tighter bounds for whole products, valid in the same representations as `opnorm_bound`. For
 example, a product of fermion operators is zero or a partial isometry, so its norm is at most `1` however long it is.
-A method can dispatch on the element type of `factors`, which may be abstract, e.g. `Any`, for products of atoms of
-several types.
+A method can dispatch on the element type of `factors`. If the element type is not concrete, e.g. `Any`, the default
+splits the product into maximal runs of factors of the same type and multiplies the bounds of the runs, each given by
+`opnorm_bound_factors` of a `Vector` of that type, so methods for one atom type apply to the runs. A method for
+products of atoms of several types applies only if `factors` has a matching element type.
 
 # Example
 ```julia
@@ -52,11 +62,30 @@ NonCommutativeProducts.opnorm_bound_factors(fs::AbstractVector{<:Fermion}) = 1
 ```
 """
 function opnorm_bound_factors(factors)
+    isconcretetype(eltype(factors)) || return _opnorm_bound_runs(factors)
     b = 1.0
     for f in factors
         bf = _bound_value(opnorm_bound(f))
         isnothing(bf) && return nothing
         b = _mul_up(b, bf)
+    end
+    return b
+end
+# The product of the bounds of maximal runs of factors of one type, a bound by submultiplicativity
+function _opnorm_bound_runs(factors)
+    fs = collect(factors)
+    b = 1.0
+    i = firstindex(fs)
+    while i <= lastindex(fs)
+        S = typeof(fs[i])
+        j = i
+        while j < lastindex(fs) && typeof(fs[j+1]) === S
+            j += 1
+        end
+        br = _bound_value(opnorm_bound_factors(convert(Vector{S}, fs[i:j])))
+        isnothing(br) && return nothing
+        b = _mul_up(b, br)
+        i = j + 1
     end
     return b
 end
@@ -76,6 +105,7 @@ coefficient_bound(c) = nothing
 coefficient_bound(c::Number) = _coefficient_bound(c, abs(c))
 # widened, since abs(typemin(Int)) < 0
 coefficient_bound(c::Integer) = abs(widen(c))
+coefficient_bound(c::Rational) = abs(widen(c))
 coefficient_bound(c::Bool) = c
 coefficient_bound(::VectorInterface.Zero) = false
 coefficient_bound(::One) = true
@@ -105,6 +135,7 @@ _bound_value(::Nothing) = nothing
 function _bound_value(b)
     _is_comparable(b) || return nothing
     f = _float_up(b)
+    isnothing(f) && return nothing
     isnan(f) && return oftype(f, Inf)
     f >= 0 || throw(ArgumentError("bounds on norms must be nonnegative, got $b"))
     return f
@@ -112,16 +143,33 @@ end
 _float_up(x::AbstractFloat) = x
 function _float_up(x::Real)
     f = float(x)
+    f isa AbstractFloat || return nothing # e.g. a dual number
     # the comparison of a float with an integer, rational or irrational number is exact
     return f < x ? nextfloat(f) : f
 end
+# x as a T, rounded down
+function _float_down(::Type{T}, x::Real) where T
+    f = convert(T, x)
+    return f > x ? prevfloat(f) : f
+end
 
-# a * b and a + b for nonnegative floats, rounded up. Error-free transformations detect inexact results.
+# a * b and a + b for nonnegative floats, rounded up, and a * b rounded down. fma and TwoSum detect inexact results,
+# but the fma residual of a product below floatmin may underflow, so such products are rounded outward.
 function _mul_up(a::AbstractFloat, b::AbstractFloat)
     a, b = promote(a, b)
     p = a * b
     isnan(p) && return oftype(p, Inf) # 0 * Inf
-    return isfinite(p) && fma(a, b, -p) > 0 ? nextfloat(p) : p
+    (iszero(a) || iszero(b) || !isfinite(p)) && return p
+    p < floatmin(p) && return nextfloat(p)
+    return fma(a, b, -p) > 0 ? nextfloat(p) : p
+end
+function _mul_down(a::AbstractFloat, b::AbstractFloat)
+    a, b = promote(a, b)
+    (iszero(a) || iszero(b)) && return zero(a) # also for 0 * Inf
+    p = a * b
+    isfinite(p) || return p
+    p < floatmin(p) && return max(prevfloat(p), zero(p))
+    return fma(a, b, -p) < 0 ? prevfloat(p) : p
 end
 function _add_up(a::AbstractFloat, b::AbstractFloat)
     a, b = promote(a, b)
@@ -141,7 +189,7 @@ function _term_weight(factors, c)
     return _mul_up(cb, fb)
 end
 function _sum_weights(weights)
-    total = 0.0
+    total = 0.0 # promoted by _add_up if a weight is wider
     for w in weights
         isnothing(w) && return nothing
         total = _add_up(total, w)
@@ -152,92 +200,100 @@ end
 """
     truncate_terms(x; atol=0, rtol=0)
 
-Drop terms of `x` whose total contribution has a certified bound, and return the named tuple `(; expr, error)` of the
-truncated expression `expr` and a bound `error` with
+Drop terms of `x` whose total contribution has a certified bound, and return the named tuple `(; expr, err)` of the
+truncated expression `expr` and a bound `err` with
 ```
-opnorm(x - expr) ≤ error ≤ max(atol, rtol * B)
+opnorm(x - expr) ≤ err ≤ max(atol, rtol * B)
 ```
 in every representation of the atoms by bounded operators where [`opnorm_bound`](@ref) holds. `x` can be a sum, a
 product, a number or an atom.
 
 For `x = Σᵢ cᵢ Pᵢ`, the weight of the term `cᵢ Pᵢ` is `|cᵢ| b(Pᵢ)`, where `|cᵢ|` is [`coefficient_bound`](@ref)`(cᵢ)`
 and `b(Pᵢ)` is [`opnorm_bound_factors`](@ref) of its factors, or `1` for the scalar part. By the triangle inequality,
-dropping a set of terms changes `x` by at most the sum of their weights, which is `error`. The terms are dropped in
-order of increasing weight while the sum stays within the budget `max(atol, rtol * B)`, where `B` is the sum of the
-weights of the terms that can be dropped, which is `opnorm_bound(x)` if all terms have finite weights. Dropping the
-smallest weights first drops as many terms as possible within the budget, except that terms with the same weight are
-dropped together or not at all, so that the result doesn't depend on the order of the terms.
+dropping a set of terms changes `x` by at most the sum of their weights, which is `err`. With the budget
+`max(atol, rtol * B)`, where `B` is the sum of the weights of the terms that can be dropped, `truncate_terms` drops all
+droppable terms with weight `≤ t` for the largest threshold `t` whose total weight fits the budget. Without ties, this
+drops as many terms as possible. Terms with the same weight are dropped together or not at all, so that the result
+doesn't depend on the order of the terms. `B` is `opnorm_bound(x)` if all terms have finite weights. Otherwise it is
+the bound of the droppable (bounded, numeric) part, which can be much smaller than the norm of `x`.
 
 Terms with an unknown weight are never dropped: those with an atom without a bound, such as a boson, and those with a
 coefficient without a bound, such as a symbolic one. Terms with a `NaN` or infinite coefficient are never dropped
 either. With `atol = rtol = 0`, only terms of weight exactly zero are dropped.
 
-The weights and `error` are computed in floating point and rounded up, so `error` is never smaller than the exact sum
-of the dropped weights. The bound holds whether or not the terms of `x` are sorted and combined, but combining like
-terms first, e.g. with autosort enabled, makes the best use of the budget, since cancelling terms then don't use it.
-The bound is often pessimistic, by about the square root of the number of dropped terms.
+The weights and `err` are computed in floating point and rounded up, so `err` is never smaller than the exact sum of
+the dropped weights. `err` is a `Float64`, or a wider float type if a weight is wider, as with `BigFloat` coefficients.
+The budget is rounded down to that type, so an exact budget, e.g. a `Rational` `atol`, may be compared conservatively.
+The bound holds whether or not the terms of `x` are sorted and combined, but combining like terms first, e.g. with
+autosort enabled, makes the best use of the budget, since cancelling terms then don't use it. For unrelated terms, the
+bound is typically pessimistic by about the square root of the number of dropped terms.
 
 # Example
 ```julia
 NonCommutativeProducts.opnorm_bound(::Fermion) = 1
-expr, error = truncate_terms(c[1]' * c[2] + 0.01 * c[1] + 0.001 * c[2]; atol=0.005)
-# expr == c[1]' * c[2] + 0.01 * c[1] and error == 0.001
+expr, err = truncate_terms(c[1]' * c[2] + 0.01 * c[1] + 0.001 * c[2]; atol=0.005)
+# expr == c[1]' * c[2] + 0.01 * c[1] and err == 0.001
 ```
 """
 function truncate_terms(x::NCAdd{C,K}; atol::Real=0, rtol::Real=0) where {C,K}
-    _check_tolerance(atol, :atol)
-    _check_tolerance(rtol, :rtol)
     coeff = additive_coeff(x)
     ps = collect(x.dict)
-    # index 0 is the scalar part, with weight nothing if it is zero, which keeps it
-    weights = [i == 0 ? (iszero(coeff) ? nothing : _term_weight(_scalar_factors(x), coeff)) :
-               _term_weight(ps[i][1].factors, ps[i][2]) for i in 0:length(ps)]
+    # a zero scalar part has weight nothing, which keeps it
+    scalar_weight = iszero(coeff) ? nothing : _term_weight(_scalar_factors(x), coeff)
+    weights = [scalar_weight; [_term_weight(k.factors, c) for (k, c) in ps]]
     dropped, err = _greedy_drop(weights, atol, rtol)
     newcoeff = dropped[1] ? zero(coeff) : coeff
     dict = Dict{K,C}(ps[i] for i in eachindex(ps) if !dropped[i+1])
     result = NCAdd{C,K}(newcoeff, dict; filter_zeros=false, filter_scalars=false)
-    return (; expr=_with_zero_grades(result, () -> _grades(x)), error=err)
+    return (; expr=_with_zero_grades(result, () -> _grades(x)), err)
 end
 function truncate_terms(x::NCMul; atol::Real=0, rtol::Real=0)
-    _check_tolerance(atol, :atol)
-    _check_tolerance(rtol, :rtol)
-    iszero(x) && return (; expr=x, error=0.0)
-    dropped, err = _greedy_drop([_term_weight(x.factors, prefactor(x))], atol, rtol)
+    weight = iszero(x) ? nothing : _term_weight(x.factors, prefactor(x))
+    dropped, err = _greedy_drop([weight], atol, rtol)
     # a zero product keeps its factors, for its grade
-    return (; expr=only(dropped) ? NCMul(zero(prefactor(x)), x.factors) : x, error=err)
+    return (; expr=only(dropped) ? NCMul(_zero_coefficient(prefactor(x)), x.factors) : x, err)
 end
+# zero(One()) is a Zero, which isn't a Number
+_zero_coefficient(c) = zero(c)
+_zero_coefficient(::One) = false
 function truncate_terms(x::Number; atol::Real=0, rtol::Real=0)
-    _check_tolerance(atol, :atol)
-    _check_tolerance(rtol, :rtol)
-    iszero(x) && return (; expr=x, error=0.0)
-    dropped, err = _greedy_drop([_bound_value(coefficient_bound(x))], atol, rtol)
-    return (; expr=only(dropped) ? zero(x) : x, error=err)
+    weight = iszero(x) ? nothing : _bound_value(coefficient_bound(x))
+    dropped, err = _greedy_drop([weight], atol, rtol)
+    return (; expr=only(dropped) ? zero(x) : x, err)
 end
 function truncate_terms(x; kwargs...)
     _is_atom(typeof(x)) || throw(ArgumentError("truncate_terms needs a sum, a product, a number or an atom, got $x"))
     return truncate_terms(NCMul(x); kwargs...)
 end
 
-function _check_tolerance(tol, name)
-    (tol >= 0) === true || throw(ArgumentError("`$name` must be a nonnegative number, got $tol"))
-    return nothing
+# max(atol, rtol * scale), rounded down. rtol * 0 is 0 also for rtol = Inf.
+function _budget(atol, rtol, scale::T) where T
+    for (tol, name) in ((atol, :atol), (rtol, :rtol))
+        (tol >= 0) === true || throw(ArgumentError("`$name` must be a nonnegative number, got $tol"))
+    end
+    return max(_float_down(T, atol), _mul_down(_float_down(T, rtol), scale))
+end
+
+# The float type of the bounds: Float64, or wider if a weight is wider
+function _weight_type(weights::AbstractVector{W}) where W
+    T = typeintersect(W, AbstractFloat)
+    isconcretetype(T) && return promote_type(Float64, T)
+    return mapreduce(typeof, promote_type, (w for w in weights if w isa AbstractFloat); init=Float64)
 end
 
 # Which of the terms with `weights` to drop, and the bound on the dropped part. Finite weights are dropped in
 # increasing order, a group of equal weights at a time, while their sum is within the budget.
 function _greedy_drop(weights, atol, rtol)
+    T = _weight_type(weights)
     droppable = [i for i in eachindex(weights) if !isnothing(weights[i]) && isfinite(weights[i])]
-    budget = atol
-    if rtol > 0
-        scale = foldl((s, i) -> _add_up(s, weights[i]), droppable; init=0.0)
-        budget = max(budget, rtol * scale)
-    end
+    scale = foldl((s, i) -> _add_up(s, T(weights[i])), droppable; init=zero(T))
+    budget = _budget(atol, rtol, scale)
     sort!(droppable; by=i -> weights[i])
     dropped = falses(length(weights))
-    err = 0.0
+    err = zero(T)
     i = 1
     while i <= length(droppable)
-        w = weights[droppable[i]]
+        w = T(weights[droppable[i]])
         j = i
         total = err
         while j <= length(droppable) && weights[droppable[j]] == w

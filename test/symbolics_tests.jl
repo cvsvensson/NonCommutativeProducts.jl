@@ -52,6 +52,6 @@ end
     y = x * c[1] + 0.001 * c[2] + 2 * c[3]
     result = NC.truncate_terms(y; atol=1)
     @test isequal(result.expr, x * c[1] + 2 * c[3])
-    @test result.error == 0.001
+    @test result.err == 0.001
     @test NC.opnorm_bound(y) === nothing
 end

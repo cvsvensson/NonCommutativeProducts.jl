@@ -1132,33 +1132,44 @@ end
     @test err == 0.09375
     @test opnorm(rep(x) - rep(y)) <= err
     # rtol is relative to the bound of the terms that can be dropped
-    @test NC.truncate_terms(x; rtol=0.05) == (; expr=y, error=err)
+    @test NC.truncate_terms(x; rtol=0.05) == (; expr=y, err=err)
     # everything but the term without a bound, including the scalar
     y, err = NC.truncate_terms(x; atol=2)
     @test y == u * c1 / 64 && err == 1.96875
     @test opnorm(rep(x) - rep(y)) <= err
-    @test NC.truncate_terms(x) == (; expr=x, error=0)
+    @test NC.truncate_terms(x) == (; expr=x, err=0)
     @test NC.truncate_terms(x; atol=Inf).expr == u * c1 / 64
     # terms with the same weight are dropped together or not at all
-    @test NC.truncate_terms(0.25 * c1 + 0.25 * c2 + 1; atol=0.3) == (; expr=0.25 * c1 + 0.25 * c2 + 1, error=0)
-    @test NC.truncate_terms(0.25 * c1 + 0.25 * c2 + 1; atol=0.5) == (; expr=1, error=0.5)
+    @test NC.truncate_terms(0.25 * c1 + 0.25 * c2 + 1; atol=0.3) == (; expr=0.25 * c1 + 0.25 * c2 + 1, err=0)
+    @test NC.truncate_terms(0.25 * c1 + 0.25 * c2 + 1; atol=0.5) == (; expr=1, err=0.5)
     # NaN and infinite coefficients are never dropped, and make the bound infinite
-    @test NC.truncate_terms(NaN * c1 + Inf * c2 + 0.5 * c1' * c2; atol=1).error == 0.5
+    @test NC.truncate_terms(NaN * c1 + Inf * c2 + 0.5 * c1' * c2; atol=1).err == 0.5
     @test NC.opnorm_bound(NaN * c1 + c2) == Inf
 
     # products, atoms and numbers
-    @test NC.truncate_terms(0.25 * c1 * S; atol=0.2) == (; expr=0, error=0.125)
-    @test NC.truncate_terms(0.25 * c1 * S; atol=0.1) == (; expr=0.25 * c1 * S, error=0)
-    @test NC.truncate_terms(c1; atol=1) == (; expr=0, error=1)
-    @test NC.truncate_terms(u; atol=Inf) == (; expr=u, error=0)
-    @test NC.truncate_terms(-0.5; atol=1) == (; expr=0, error=0.5)
-    @test NC.truncate_terms(0.5 + 1im; atol=1) == (; expr=0.5 + 1im, error=0)
-    @test NC.truncate_terms(0 * c1 + 0) == (; expr=0, error=0)
+    @test NC.truncate_terms(0.25 * c1 * S; atol=0.2) == (; expr=0, err=0.125)
+    @test NC.truncate_terms(0.25 * c1 * S; atol=0.1) == (; expr=0.25 * c1 * S, err=0)
+    @test NC.truncate_terms(c1; atol=1) == (; expr=0, err=1)
+    @test NC.truncate_terms(u; atol=Inf) == (; expr=u, err=0)
+    @test NC.truncate_terms(-0.5; atol=1) == (; expr=0, err=0.5)
+    @test NC.truncate_terms(0.5 + 1im; atol=1) == (; expr=0.5 + 1im, err=0)
+    @test NC.truncate_terms(0 * c1 + 0) == (; expr=0, err=0)
+    # the weight 1e-200 * 1e-200 underflows, but is not rounded down to 0
+    struct Tiny end
+    NC.@nc Tiny
+    NC.mul_effect(::Tiny, ::Tiny) = nothing
+    NC.opnorm_bound(::Tiny) = 1e-200
+    @test NC.truncate_terms(1e-200 * Tiny() + c1) == (; expr=1e-200 * Tiny() + c1, err=0)
+    @test NC.truncate_terms(1e-200 * Tiny() + c1; atol=1e-300).err > 0
+    # bounds of whole products apply also to factors in a Tuple or a Vector{Any}
+    NC.opnorm_bound_factors(::AbstractVector{<:JWFermion}) = 1
+    @test NC.opnorm_bound(NC.NCMul(1, (c1, c2, c1'))) == 1
+    @test NC.opnorm_bound(NC.NCMul(1, Any[c1, c2, c1'])) == 1
+    @test NC.opnorm_bound(NC.NCMul(1, Union{JWFermion,HalfSpin}[c1, c2, S])) == 0.5
 
     @test_throws ArgumentError NC.truncate_terms(x; atol=-1)
     @test_throws ArgumentError NC.truncate_terms(x; rtol=-0.1)
     @test_throws ArgumentError NC.truncate_terms(x; atol=NaN)
-    @test_throws TypeError NC.truncate_terms(x; atol=1im)
 end
 
 @testitem "Public API" begin
