@@ -165,8 +165,9 @@ const H_keyed = sum(KeyedKet(n) * KeyedKet(n + 1)' + KeyedKet(n + 1) * KeyedKet(
 const x_keyed_large = sum(randn() * KeyedKet(n) for n in 1:N_large)
 SUITE["vector"]["mul_hook"] = @benchmarkable $H_keyed * $x_keyed_large
 
-# Three fermion species with an abstract supertype, as in packages whose atoms subtype a common abstract type. Products
-# of different species have factors in a Vector{Species}, and @commutative orders the species as listed.
+# Three commuting species of fermion-like operators with an abstract supertype, as in packages whose atoms subtype a
+# common abstract type. Products of different species have factors in a Vector{Species}. @commutative makes the species
+# commute and orders them as listed (real fermion species would anticommute).
 abstract type Species end
 for T in (:FermionA, :FermionB, :FermionC)
     @eval begin
@@ -192,11 +193,11 @@ NonCommutativeProducts.@commutative FermionA FermionB FermionC
 const species_ops = [rand((FermionA, FermionB, FermionC))(l, isodd(l)) for l in shuffle(1:16)]
 const homogeneous_product = NCMul(1, [FermionA(x.label, x.creation) for x in species_ops])
 const species_product = NCMul(1, Species[species_ops...])
-SUITE["mixed"] = BenchmarkGroup()
-SUITE["mixed"]["homogeneous_sort"] = @benchmarkable sort($homogeneous_product)
-SUITE["mixed"]["abstract_sort"] = @benchmarkable sort($species_product)
+SUITE["abstract_eltype"] = BenchmarkGroup()
+SUITE["abstract_eltype"]["homogeneous_sort"] = @benchmarkable sort($homogeneous_product)
+SUITE["abstract_eltype"]["abstract_sort"] = @benchmarkable sort($species_product)
 const h_species = sum(T(n)' * S(n) + S(n) * T(n + 1)' for n in 1:6 for (T, S) in ((FermionA, FermionB), (FermionB, FermionC)))
-SUITE["mixed"]["abstract_sum_cube"] = @benchmarkable $h_species^3
+SUITE["abstract_eltype"]["abstract_sum_cube"] = @benchmarkable $h_species^3
 
 # Splitting a long mixed product into its runs of one species: 300 runs of one to four factors
 const species_runs = [(rand((FermionA, FermionB, FermionC)), rand(1:4)) for _ in 1:300]
@@ -208,5 +209,5 @@ function sum_segment_labels(x)
 end
 # Older versions have no foreach_segment
 if isdefined(NonCommutativeProducts, :foreach_segment)
-    SUITE["mixed"]["foreach_segment"] = @benchmarkable sum_segment_labels($long_species_product)
+    SUITE["abstract_eltype"]["foreach_segment"] = @benchmarkable sum_segment_labels($long_species_product)
 end
