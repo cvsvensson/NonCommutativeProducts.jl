@@ -35,6 +35,14 @@ NonCommutativeProducts.grade_part
 NonCommutativeProducts.check_grading
 ```
 
+## Groups and segments
+
+```@docs
+NonCommutativeProducts.group
+NonCommutativeProducts.foreach_segment
+NonCommutativeProducts.split_by_group
+```
+
 ## Sorting
 
 ```@docs

@@ -158,7 +158,8 @@ function _sort_pending!!(acc::A, pending) where {A}
     return acc
 end
 # Mixed-type products dispatch mul_effect at runtime anyway. The inference barrier keeps the compiled sorting loop
-# independent of the mul_effect methods, so downstream methods don't invalidate the precompiled code.
+# independent of the mul_effect methods, so downstream methods don't invalidate the precompiled code. Factors of an
+# abstract type other than Any keep the direct call, which is faster: inference still narrows the possible effects.
 _mul_effect(::Vector{Any}, a, b) = Base.inferencebarrier(mul_effect)(a, b)
 _mul_effect(factors, a, b) = mul_effect(a, b)
 
@@ -215,9 +216,15 @@ function apply_effect!!(coeff, factors, i, effect)
     return coeff * λ, replace_pair!!(factors, i, replacement)
 end
 
+# A swap exchanges two factors of the same vector, so it always fits in place. This avoids building the pair as a tuple,
+# whose type is not known at compile time when the factors have an abstract element type.
+function apply_effect!!(coeff, factors, i, effect::Swap)
+    factors[i], factors[i+1] = factors[i+1], factors[i]
+    return coeff * effect.λ, factors
+end
+
 # The scale factor and the replacement factors of an effect on the pair a*b
 _effect_parts(λ::Number, a, b) = (λ, ())
-_effect_parts(swap::Swap, a, b) = (swap.λ, (b, a))
 _effect_parts(term::NCMul, a, b) = (prefactor(term), term.factors)
 # NCMul(atom) is defined by @nc, so values of other types throw a MethodError
 function _effect_parts(atom, a, b)
