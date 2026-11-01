@@ -1031,6 +1031,65 @@ end
     NonCommutativeProducts.disable_autosort!()
 end
 
+@testitem "VectorInterface: inner with keys over several groups" begin
+    using VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort, scalar
+
+    # kets |n⟩ of several groups, keyed by (group, n). A bra and a ket of different groups don't act on each other.
+    struct GKet
+        g::Int
+        n::Int
+        bra::Bool
+    end
+    GKet(g, n) = GKet(g, n, false)
+    Base.adjoint(k::GKet) = GKet(k.g, k.n, !k.bra)
+    @nc GKet
+    mul_effect(a::GKet, b::GKet) = a.bra && !b.bra && a.g == b.g ? Int(a.n == b.n) : nothing
+    NonCommutativeProducts.contraction_key(k::GKet) = k.bra ? nothing : (k.g, k.n)
+
+    NonCommutativeProducts.enable_autosort!()
+    ψ = sum((m + 2im * n) * GKet(1, m) * GKet(2, n) for m in 1:5, n in 1:5)
+    φ = GKet(1, 2) * GKet(2, 3) - 2 * GKet(1, 4) * GKet(2, 3) + GKet(1, 2) * GKet(2, 5)
+    ket = GKet(1, 3) * GKet(2, 4)
+    for (a, b) in ((ψ, ψ), (ψ, φ), (φ, ψ), (ket, ψ), (ψ, ket))
+        @test inner(a, b) == scalar(with_autosort(() -> a' * b))
+    end
+    # keys define orthogonality: states of group 3 alone are orthogonal to those of groups 1 and 2, although x' * y
+    # doesn't sort to a scalar
+    @test inner(φ + 2 * GKet(3, 1), ψ + 3 * GKet(3, 1)) == inner(φ, ψ) + 6
+    @test inner(zero(ψ), ψ) == inner(ψ, zero(ψ)) == 0
+    NonCommutativeProducts.disable_autosort!()
+end
+
+@testitem "VectorInterface: inner compares keys with isequal" begin
+    using VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, NCMul
+
+    # keys whose hashes all collide
+    struct HashKey
+        n::Int
+    end
+    Base.hash(::HashKey, h::UInt) = h
+    struct CKet
+        n::Int
+        bra::Bool
+    end
+    CKet(n) = CKet(n, false)
+    Base.adjoint(k::CKet) = CKet(k.n, !k.bra)
+    @nc CKet
+    # nonzero for different keys, which define orthogonality, so inner never uses it
+    mul_effect(a::CKet, b::CKet) = a.bra && !b.bra ? (a.n == b.n ? 2 : 5) : nothing
+    NonCommutativeProducts.contraction_key(k::CKet) = k.bra ? nothing : HashKey(k.n)
+
+    NonCommutativeProducts.enable_autosort!()
+    x = CKet(1) * CKet(2) + 3 * CKet(2) * CKet(1) + 5 * CKet(1) * CKet(1)
+    y = CKet(1) * CKet(2) + CKet(2) * CKet(2) + 7 * CKet(1) * CKet(1)
+    @test inner(x, y) == 4 + 35 * 4
+    @test inner(y, x) == 4 + 35 * 4
+    @test inner(NCMul(1, Any[CKet(1), CKet(2)]), x) == 4
+    NonCommutativeProducts.disable_autosort!()
+end
+
 @testitem "mul_terms!! hook" begin
     import NonCommutativeProducts: @nc, mul_effect, with_autosort, add!!, terms, nterms, NCMul, NCAdd
 

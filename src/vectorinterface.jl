@@ -73,14 +73,15 @@ VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
 # product of the scalar types, so its type doesn't depend on which terms vanish or on the autosort setting.
 function _inner(x, y)
     xterms, yterms = _collect_terms(x), _collect_terms(y)
-    bras = [NCMul(adjoint(prefactor(t)), adjoint_factors(t.factors)) for t in xterms]
+    candidates, needed = _contracting_pairs(xterms, yterms)
+    bras = _bras(xterms, needed)
     S = _factor_eltype(eltype(bras), eltype(yterms))
     C = promote_type(_scalartype(x), _scalartype(y))
     acc = zero(NCAdd{Base.promote_op(+, C, C),NCMul{Int,S,Vector{S}}})
     buffer = S[]
     z = with_autosort(false) do
-        fold_retyping!!(acc, _contracting_pairs(xterms, yterms)) do acc, (i, j, p)
-            _inner_pair!!(acc, bras[i], yterms[j], p, buffer)
+        fold_retyping!!(acc, candidates) do acc, (i, j, d)
+            _inner_pair!!(acc, xterms[i].factors, bras[i], yterms[j], d, buffer)
         end
     end
     _reduces_to_scalar(z) || throw(_inner_error())
@@ -91,15 +92,15 @@ _collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
 """
     contraction_key(atom)
 
-A key that lets `inner(x, y)` skip products that vanish, or `nothing` (the default). The *keyed run* of a term is the
-keys of its leading factors, up to the first factor without a key. `inner` forms `a' * b` for a term `a` of `x` and a
-term `b` of `y` only if one of their keyed runs is a prefix of the other, and contracts the factors of the common
-prefix directly. This gives the same result as sorting `x' * y` when, for all atoms `k` and `l` with keys:
-- `mul_effect(k', l)` is zero whenever their keys differ (by `isequal`),
-- `mul_effect(k', l)` is a `Number` whenever their keys are equal, and
-- `mul_effect(u, k')` is `nothing` for every atom `u`.
-
-Then once `a₁' * b₁` reduces to a scalar, `a₂'` meets `b₂`, and so on along the common prefix.
+A key that lets `inner(x, y)` skip pairs of terms that are orthogonal, or `nothing` (the default). Keys are compared
+with `isequal` and hashed with `hash`. The *keyed run* of a term is the keys of its leading factors, up to the first
+factor without a key. `inner` treats a term of `x` and a term of `y` as orthogonal, and skips them without calling
+`mul_effect`, when their keyed runs disagree: at the first position where both have keys and the keys differ, all
+earlier keys are equal. So keys define orthogonality, and `inner` equals sorting `x' * y` when such pairs sort to
+zero, as for orthonormal kets. Atoms of different subsystems whose `mul_effect` swaps them can have different keys
+too, since such pairs are skipped. For all atoms `k`, `l` with keys and every atom `u`, it is required that
+- `mul_effect(k', l)` is a `Number` when the keys of `k` and `l` are equal, and
+- `mul_effect(u, k')` is `nothing`.
 
 Kets of an orthonormal basis can have keys when nothing acts on a bra from the left. Bras can't, since
 `⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero:
@@ -108,90 +109,208 @@ NonCommutativeProducts.contraction_key(k::Ket) = k.bra ? nothing : k.n
 ```
 """
 contraction_key(atom) = nothing
-# A trie over the keyed runs of the kets. Node 1 is the root, and the kets whose runs end at node n are
-# order[own[n]], and those in its subtree are order[sub[n]].
-struct _KeyTrie
-    children::Vector{Dict{Any,Int}}
+# The bras of the terms of x, formed for the terms in the mask `needed` (all of them if it is `nothing`), with the
+# others left undefined
+function _bras(xterms, needed)
+    isnothing(needed) && return [NCMul(adjoint(prefactor(t)), adjoint_factors(t.factors)) for t in xterms]
+    is = findall(needed)
+    formed = [NCMul(adjoint(prefactor(xterms[i])), adjoint_factors(xterms[i].factors)) for i in is]
+    length(is) == length(xterms) && return formed
+    bras = similar(formed, length(xterms))
+    bras[is] = formed
+    return bras
+end
+_key_at(t, d) = d > length(t.factors) ? nothing : contraction_key(t.factors[d])
+# An index over the keyed runs of the kets: a tree whose node n (node 1 is the root) is reached by the keys keys[m] of
+# the nodes m on its path. The kets whose runs end at node n are order[ending[n]], and those whose runs pass through it
+# are order[below[n]]. The root and the nodes with more than one ket below are split into children: the first child
+# of node n with a key of hash h is children[(n, h)], and next_sibling chains the children whose keys share a hash.
+struct _KeyIndex{K}
+    children::Dict{Tuple{Int,UInt},Int}
+    next_sibling::Vector{Int}
+    keys::Vector{K}
     order::Vector{Int}
-    own::Vector{UnitRange{Int}}
-    sub::Vector{UnitRange{Int}}
+    ending::Vector{UnitRange{Int}}
+    below::Vector{UnitRange{Int}}
 end
-function _KeyTrie(kets)
-    children, ends = [Dict{Any,Int}()], [Int[]]
-    for (j, t) in pairs(kets)
-        node = 1
-        for f in t.factors
-            key = contraction_key(f)
-            isnothing(key) && break
-            node = get!(children[node], key) do
-                push!(children, Dict{Any,Int}()), push!(ends, Int[])
-                length(children)
-            end
-        end
-        push!(ends[node], j)
-    end
-    n = length(children)
-    return _number_subtrees!(_KeyTrie(children, Int[], fill(1:0, n), fill(1:0, n)), ends)
-end
-# Lists the kets of each subtree contiguously in trie.order, those whose runs end at its root first. Depth first with
-# an explicit stack, since a path is as long as a product.
-function _number_subtrees!(trie, ends)
-    stack = [(1, false)]
+_issplit(idx::_KeyIndex, node) = node == 1 || length(idx.below[node]) > 1
+# Splits the nodes by the keys at their depth, with an explicit stack since a path is as long as a product
+function _KeyIndex(kets)
+    K = Base.promote_op(contraction_key, _factor_eltype(eltype(kets)))
+    n = length(kets)
+    idx = _KeyIndex{K}(Dict{Tuple{Int,UInt},Int}(), [0], Vector{K}(undef, 1), collect(1:n), [1:0], [1:n])
+    # scratch space: the child that each ket goes to (0 if its run ends), the numbers of kets of the new children, and
+    # the kets in their new order
+    child_of, counts, sorted = zeros(Int, n), Int[], similar(idx.order)
+    stack = [(1, 0)]
     while !isempty(stack)
-        node, finished = pop!(stack)
-        if finished
-            trie.sub[node] = first(trie.own[node]):length(trie.order)
-        else
-            start = length(trie.order) + 1
-            append!(trie.order, ends[node])
-            trie.own[node] = start:length(trie.order)
-            push!(stack, (node, true))
-            foreach(child -> push!(stack, (child, false)), values(trie.children[node]))
+        node, d = pop!(stack)
+        for c in _split_node!(idx, kets, node, d, child_of, counts, sorted)
+            length(idx.below[c]) > 1 && push!(stack, (c, d + 1))
         end
     end
-    return trie
+    return idx
 end
-# The triples (i, j, p) such that xterms[i] and kets[j] can contract, with p the length of the common prefix of their
-# keyed runs. Each pair appears once.
-function _contracting_pairs(xterms, kets)
-    trie = _KeyTrie(kets)
-    isempty(trie.children[1]) && return ((i, j, 0) for (i, j) in Iterators.product(eachindex(xterms), eachindex(kets)))
+# Adds the children of `node`, at depth d, by the keys at depth d + 1, and sorts the kets below it stably: first those
+# whose runs end at node, then those of each child in turn. Returns the range of the children.
+function _split_node!(idx, kets, node, d, child_of, counts, sorted)
+    r = idx.below[node]
+    first_child = length(idx.keys) + 1
+    empty!(counts)
+    nending = 0
+    for k in r
+        key = _key_at(kets[idx.order[k]], d + 1)
+        if isnothing(key)
+            child_of[k] = 0
+            nending += 1
+        else
+            c = _child!(idx, node, key)
+            child_of[k] = c
+            if c - first_child + 1 > length(counts)
+                push!(counts, 0)
+            end
+            counts[c-first_child+1] += 1
+        end
+    end
+    idx.ending[node] = first(r):first(r)+nending-1
+    children = first_child:length(idx.keys)
+    start = first(r) + nending
+    for (m, c) in enumerate(children)
+        idx.below[c] = start:start+counts[m]-1
+        start += counts[m]
+    end
+    # the next free slots of the kets whose runs end here and of each child (counted back from its end)
+    ending_slot = first(r)
+    for k in r
+        c = child_of[k]
+        if c == 0
+            sorted[ending_slot] = idx.order[k]
+            ending_slot += 1
+        else
+            m = c - first_child + 1
+            sorted[last(idx.below[c])-counts[m]+1] = idx.order[k]
+            counts[m] -= 1
+        end
+    end
+    copyto!(idx.order, first(r), sorted, first(r), length(r))
+    return children
+end
+# The child of `node` with the key `key`, which is added if there is none
+function _child!(idx, node, key)
+    h = hash(key)
+    c = get(idx.children, (node, h), 0)
+    if c == 0
+        c = _add_node!(idx, key)
+        idx.children[(node, h)] = c
+        return c
+    end
+    while !isequal(idx.keys[c], key)
+        if idx.next_sibling[c] == 0
+            idx.next_sibling[c] = _add_node!(idx, key)
+            return idx.next_sibling[c]
+        end
+        c = idx.next_sibling[c]
+    end
+    return c
+end
+function _add_node!(idx, key)
+    push!(idx.keys, key)
+    push!(idx.next_sibling, 0)
+    push!(idx.ending, 1:0)
+    push!(idx.below, 1:0)
+    return length(idx.keys)
+end
+# The child of `node` with the key `key`, or 0 if there is none
+function _find_child(idx, node, key)
+    c = get(idx.children, (node, hash(key)), 0)
+    while c != 0 && !isequal(idx.keys[c], key)
+        c = idx.next_sibling[c]
+    end
+    return c
+end
+# The triples (i, j, d) such that xterms[i] and yterms[j] may contract, where the first d keys of their runs are equal,
+# and a mask of the terms of x that appear in them, or `nothing` if all do. The index is over the side with fewer
+# terms.
+function _contracting_pairs(xterms, yterms)
+    index_x = length(xterms) < length(yterms)
+    indexed, walking = index_x ? (xterms, yterms) : (yterms, xterms)
+    if all(t -> isnothing(_key_at(t, 1)), indexed)
+        return Iterators.map(((i, j),) -> (i, j, 0), Iterators.product(eachindex(xterms), eachindex(yterms))), nothing
+    end
+    idx = _KeyIndex(indexed)
+    # (term of the walking side, range of idx.order, d)
     segments = Tuple{Int,UnitRange{Int},Int}[]
-    for (i, t) in pairs(xterms)
-        _push_segments!(segments, trie, i, t.factors)
+    for (w, t) in enumerate(walking)
+        _push_segments!(segments, idx, w, t.factors)
     end
-    return ((i, trie.order[k], p) for (i, range, p) in segments for k in range)
+    if index_x
+        return ((idx.order[k], j, d) for (j, r, d) in segments for k in r), _covered(idx.order, segments)
+    end
+    needed = falses(length(xterms))
+    for (i, _, _) in segments
+        needed[i] = true
+    end
+    return ((i, idx.order[k], d) for (i, r, d) in segments for k in r), needed
 end
-# Walks the trie along the keyed run of `factors`, pairing term i with the kets whose runs end on the way, and with
-# the whole subtree where its own run ends
-function _push_segments!(segments, trie, i, factors)
-    node = 1
-    for d in 0:length(factors)
-        children = trie.children[node]
-        key = d == length(factors) || isempty(children) ? nothing : contraction_key(factors[d+1])
-        isnothing(key) && return push!(segments, (i, trie.sub[node], d))
-        isempty(trie.own[node]) || push!(segments, (i, trie.own[node], d))
-        node = get(children, key, 0)
+# A mask of the terms order[k] for the k in any range of the segments
+function _covered(order, segments)
+    starts_minus_ends = zeros(Int, length(order) + 1)
+    for (_, r, _) in segments
+        if !isempty(r)
+            starts_minus_ends[first(r)] += 1
+            starts_minus_ends[last(r)+1] -= 1
+        end
+    end
+    covered = falses(length(order))
+    nopen = 0
+    for k in eachindex(order)
+        nopen += starts_minus_ends[k]
+        covered[order[k]] = nopen > 0
+    end
+    return covered
+end
+# Walks the index along the keyed run of `factors`, pairing term w with the kets whose runs end on the way, and with
+# all kets below the node where its run ends or the index stops splitting. Keys are compared with isequal on the way.
+function _push_segments!(segments, idx, w, factors)
+    node, d = 1, 0
+    while true
+        key = _issplit(idx, node) && d < length(factors) ? contraction_key(factors[d+1]) : nothing
+        if isnothing(key)
+            push!(segments, (w, idx.below[node], d))
+            return segments
+        end
+        isempty(idx.ending[node]) || push!(segments, (w, idx.ending[node], d))
+        node = _find_child(idx, node, key)
         node == 0 && return segments
+        d += 1
     end
-    return segments
 end
-# acc + bra * ket sorted, where the first p factors of ket contract with the last p factors of bra to a scalar. The
-# rest of the product is formed in `buffer`.
-function _inner_pair!!(acc, bra, ket, p, buffer)
-    p == 0 && return _mul_term_pair!!(acc, bra, ket, buffer)
-    coeff = prefactor(bra) * prefactor(ket)
-    iszero(coeff) && return acc
+# acc + bra * ket sorted, contracting the common prefix of the keyed runs of the term of x (with factors xfactors)
+# and ket, of which the first d keys are known to be equal. The rest of the product is formed in `buffer`.
+function _inner_pair!!(acc, xfactors, bra, ket, d, buffer)
     bf, kf = bra.factors, ket.factors
+    # an optimization: factors whose type has no keys contract nothing, which is known at compile time
+    Base.promote_op(contraction_key, eltype(kf)) === Nothing && return _mul_term_pair!!(acc, bra, ket, buffer)
     nb = length(bf)
-    for d in 1:p
-        effect = _mul_effect(buffer, bf[nb-d+1], kf[d])
-        effect isa Number || throw(_contraction_key_error(bf[nb-d+1], kf[d]))
-        coeff *= effect
-        iszero(coeff) && return acc
+    effect = true
+    p = 0
+    while p < min(nb, length(kf))
+        if p >= d
+            kk = contraction_key(kf[p+1])
+            isnothing(kk) && break
+            kx = contraction_key(xfactors[p+1])
+            isnothing(kx) && break
+            isequal(kx, kk) || return acc
+        end
+        e = _mul_effect(buffer, bf[nb-p], kf[p+1])
+        e isa Number || throw(_contraction_key_error(bf[nb-p], kf[p+1]))
+        effect *= e
+        iszero(effect) && return acc
+        p += 1
     end
+    p == 0 && return _mul_term_pair!!(acc, bra, ket, buffer)
     append!(empty!(buffer), Iterators.take(bf, nb - p), Iterators.drop(kf, p))
-    return sort_into!!(acc, coeff, buffer)
+    return sort_into!!(acc, prefactor(bra) * prefactor(ket) * effect, buffer)
 end
 function _contraction_key_error(a, b)
     return ArgumentError(string("mul_effect(", a, ", ", b, ") must be a Number, since contraction_key(", a,
