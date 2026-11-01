@@ -1094,11 +1094,78 @@ end
 end
 
 
+@testitem "Truncation with a certified bound" begin
+    using NonCommutativeProducts, LinearAlgebra
+    import NonCommutativeProducts as NC
+    # Jordan-Wigner fermions on two modes, a spin-1/2 component and an atom without a bound
+    struct JWFermion
+        mode::Int
+        dagger::Bool
+    end
+    struct HalfSpin end
+    struct Unbounded end
+    NC.@nc JWFermion HalfSpin Unbounded
+    NC.mul_effect(::Union{JWFermion,HalfSpin,Unbounded}, ::Union{JWFermion,HalfSpin,Unbounded}) = nothing
+    Base.adjoint(f::JWFermion) = JWFermion(f.mode, !f.dagger)
+    NC.opnorm_bound(::JWFermion) = 1
+    NC.opnorm_bound(::HalfSpin) = 1 // 2
+
+    # a representation on two fermion modes and a spin, by 8×8 matrices
+    lower = [0 1; 0 0]
+    Z = [1 0; 0 -1]
+    rep(f::JWFermion) = (c = f.mode == 1 ? kron(lower, I(2), I(2)) : kron(Z, lower, I(2)); f.dagger ? c' : c)
+    rep(::HalfSpin) = kron(I(2), I(2), [1 0; 0 -1] / 2)
+    rep(::Unbounded) = 3.0 * I(8)
+    rep(x) = sum((c * prod(rep, fs; init=Matrix(1.0I, 8, 8)) for (fs, c) in NC.termpairs(x)); init=zeros(8, 8))
+
+    c1, c2 = JWFermion(1, false), JWFermion(2, false)
+    S, u = HalfSpin(), Unbounded()
+    bounded = 0.5 * c1' * c2 + 0.25 * c2' * c1 + 0.125 * c1 + 0.125 * S + 0.03125 * c1' * c1 * c2 + 1
+    x = bounded + u * c1 / 64
+    # weights: 0.03125 < 0.0625 (the spin) < 0.125 < 0.25 < 0.5 < 1 (the scalar), and no weight for u * c1
+    @test NC.opnorm_bound(bounded) == 1.96875
+    @test NC.opnorm_bound(x) === nothing
+    @test opnorm(rep(bounded)) <= NC.opnorm_bound(bounded)
+
+    y, err = NC.truncate_terms(x; atol=0.1)
+    @test y == x - 0.125 * S - 0.03125 * c1' * c1 * c2
+    @test err == 0.09375
+    @test opnorm(rep(x) - rep(y)) <= err
+    # rtol is relative to the bound of the terms that can be dropped
+    @test NC.truncate_terms(x; rtol=0.05) == (; expr=y, error=err)
+    # everything but the term without a bound, including the scalar
+    y, err = NC.truncate_terms(x; atol=2)
+    @test y == u * c1 / 64 && err == 1.96875
+    @test opnorm(rep(x) - rep(y)) <= err
+    @test NC.truncate_terms(x) == (; expr=x, error=0)
+    @test NC.truncate_terms(x; atol=Inf).expr == u * c1 / 64
+    # terms with the same weight are dropped together or not at all
+    @test NC.truncate_terms(0.25 * c1 + 0.25 * c2 + 1; atol=0.3) == (; expr=0.25 * c1 + 0.25 * c2 + 1, error=0)
+    @test NC.truncate_terms(0.25 * c1 + 0.25 * c2 + 1; atol=0.5) == (; expr=1, error=0.5)
+    # NaN and infinite coefficients are never dropped, and make the bound infinite
+    @test NC.truncate_terms(NaN * c1 + Inf * c2 + 0.5 * c1' * c2; atol=1).error == 0.5
+    @test NC.opnorm_bound(NaN * c1 + c2) == Inf
+
+    # products, atoms and numbers
+    @test NC.truncate_terms(0.25 * c1 * S; atol=0.2) == (; expr=0, error=0.125)
+    @test NC.truncate_terms(0.25 * c1 * S; atol=0.1) == (; expr=0.25 * c1 * S, error=0)
+    @test NC.truncate_terms(c1; atol=1) == (; expr=0, error=1)
+    @test NC.truncate_terms(u; atol=Inf) == (; expr=u, error=0)
+    @test NC.truncate_terms(-0.5; atol=1) == (; expr=0, error=0.5)
+    @test NC.truncate_terms(0.5 + 1im; atol=1) == (; expr=0.5 + 1im, error=0)
+    @test NC.truncate_terms(0 * c1 + 0) == (; expr=0, error=0)
+
+    @test_throws ArgumentError NC.truncate_terms(x; atol=-1)
+    @test_throws ArgumentError NC.truncate_terms(x; rtol=-0.1)
+    @test_throws ArgumentError NC.truncate_terms(x; atol=NaN)
+    @test_throws TypeError NC.truncate_terms(x; atol=1im)
+end
+
 @testitem "Public API" begin
     using NonCommutativeProducts
     public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :enable_autosort!,
         :disable_autosort!, :autosort, :with_autosort, :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors,
-        :coefficient]
+        :coefficient, :opnorm_bound, :opnorm_bound_factors, :coefficient_bound, :truncate_terms]
     for name in public_names
         @test Base.ispublic(NonCommutativeProducts, name)
         @test Base.Docs.hasdoc(NonCommutativeProducts, name)
@@ -1122,7 +1189,7 @@ end
     test_explicit_imports(NonCommutativeProducts;
         # Base internals without a public equivalent, KrylovKit operator hooks, and package internals used by the extensions
         all_qualified_accesses_are_public=(; ignore=(:_growat!, :inferencebarrier, :literal_pow, :power_by_squaring, :promote_op,
-            :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients)),
+            :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic)),
         # qualified names in macro-generated code
         no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
             :mul_effect, :ncmapreduce, :terms, :coefficient, :factors, :nterms)),

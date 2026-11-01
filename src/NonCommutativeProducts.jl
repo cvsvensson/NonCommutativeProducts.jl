@@ -15,7 +15,8 @@ using VectorInterface: VectorInterface, One
 using PrecompileTools: @setup_workload, @compile_workload
 
 public NCMul, NCAdd, @nc, @commutative, mul_effect, enable_autosort!, disable_autosort!, autosort, with_autosort,
-    ncmap, ncmapreduce, scalar, add!!, terms, nterms, factors, coefficient
+    ncmap, ncmapreduce, scalar, add!!, terms, nterms, factors, coefficient, opnorm_bound, opnorm_bound_factors,
+    coefficient_bound, truncate_terms
 
 include("mul.jl")
 include("add.jl")
@@ -26,6 +27,7 @@ include("sorting.jl")
 include("grading.jl")
 include("traversal.jl")
 include("vectorinterface.jl")
+include("truncation.jl")
 include("precompile.jl")
 
 end

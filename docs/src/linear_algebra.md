@@ -54,3 +54,26 @@ julia> using NonCommutativeProducts.VectorInterface: inner
 julia> inner(k0 + 2k1, k1)
 2
 ```
+
+## Truncation with a certified error bound
+
+[`truncate_terms`](@ref NonCommutativeProducts.truncate_terms) drops small terms of an expression and returns a bound on the error that holds without a Hilbert space. For `x = Σᵢ cᵢ Pᵢ`, dropping a set `D` of terms gives `x̃` with
+```
+‖x - x̃‖ ≤ Σ_{i ∈ D} |cᵢ| b(Pᵢ)
+```
+in the operator norm, in every representation of the atoms by bounded operators where the bounds hold. This follows from the triangle inequality, with `b(P)` a bound on the norm of the product `P`: by default the product of the bounds of its factors, given by [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound). The scalar part has `b = 1`. Terms are dropped in order of increasing weight `|cᵢ| b(Pᵢ)` while the total stays within `max(atol, rtol * B)`, where `B` is the sum of the weights that can be dropped. This drops as many terms as possible within the budget, except that terms with equal weights are dropped together or not at all. The weights and the bound are rounded up, so the reported bound is never too small.
+
+Define `opnorm_bound` for your atom types, with a bound that holds in every representation you will use: `1` for a fermion `c`, a Majorana with `γ^2 = 1`, a Pauli matrix or a ket-bra of normalized states, and `s` for a component of a spin `s`. Atoms without a method, such as bosons, have no bound, and terms that contain them are never dropped. Neither are terms with a coefficient without a bound, such as a symbolic coefficient, or terms with a `NaN` or infinite coefficient. Tighter bounds for whole products can be given by [`opnorm_bound_factors`](@ref NonCommutativeProducts.opnorm_bound_factors), e.g. `1` for any product of fermion operators.
+
+The bound holds whether or not like terms are combined, but truncating after they are, e.g. with autosort enabled, makes better use of the budget. For the kets above, a ket-bra of normalized states has norm 1:
+```jldoctest kets
+julia> NC.opnorm_bound(::Ket) = 1
+
+julia> y, err = NC.truncate_terms(H + 0.01 * k0 * k0' + 0.001 * k1 * k1'; atol=0.005);
+
+julia> y
+0.01*|0⟩*⟨0| + |0⟩*⟨1| + |1⟩*⟨0|
+
+julia> err
+0.001
+```

@@ -36,3 +36,22 @@ end
     @test isequal(substitute(x * c[1], Dict(x => y)), y * c[1])
     @test iszero(substitute(a, Dict(x => 0, y => 0)))
 end
+
+@testitem "Symbolics: truncation keeps terms with symbolic coefficients" begin
+    using Symbolics
+    import NonCommutativeProducts as NC
+    struct BoundedAtom
+        n::Int
+    end
+    NC.@nc BoundedAtom
+    NC.mul_effect(::BoundedAtom, ::BoundedAtom) = nothing
+    NC.opnorm_bound(::BoundedAtom) = 1
+    @variables x
+    c = BoundedAtom.(1:3)
+    # constants have the bound of their value
+    y = x * c[1] + 0.001 * c[2] + 2 * c[3]
+    result = NC.truncate_terms(y; atol=1)
+    @test isequal(result.expr, x * c[1] + 2 * c[3])
+    @test result.error == 0.001
+    @test NC.opnorm_bound(y) === nothing
+end
