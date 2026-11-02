@@ -26,6 +26,7 @@ include("sorting.jl")
 include("grading.jl")
 include("traversal.jl")
 include("vectorinterface.jl")
+include("truncation.jl")
 include("precompile.jl")
 
 end

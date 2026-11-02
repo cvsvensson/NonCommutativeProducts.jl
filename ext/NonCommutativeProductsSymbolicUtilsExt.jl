@@ -9,4 +9,9 @@ const NC = NonCommutativeProducts
 SymbolicUtils.substitute(x::NC.MulAdd, dict; kwargs...) =
     NC.map_coefficients((_, c) -> SymbolicUtils.substitute(c, dict; kwargs...), x)
 
+# Symbolic constants have the bound of their value, and other symbolic coefficients have no bound.
+NC._unwrap_symbolic(c) = SymbolicUtils.unwrap(c)
+NC._coefficient_bound(c::SymbolicUtils.BasicSymbolic) =
+    SymbolicUtils.isconst(c) ? NC._coefficient_bound(SymbolicUtils.unwrap_const(c)) : nothing
+
 end

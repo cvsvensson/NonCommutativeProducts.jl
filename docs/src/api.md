@@ -62,6 +62,13 @@ NonCommutativeProducts.ncmap
 NonCommutativeProducts.ncmapreduce
 ```
 
+## Truncation
+
+```@docs
+NonCommutativeProducts.truncate_terms
+NonCommutativeProducts.opnorm_bound
+```
+
 ## Index
 
 ```@index
