@@ -223,9 +223,8 @@ end
 """
     @commutative T1 T2 ...
 
-Define mixed arithmetic for types that commute with each other, and order them as listed: `mul_effect(x::Ti, y::Tj)`
-is `nothing` if `i < j` and `Swap(1)`, which replaces `x*y` by `y*x`, if `i > j`. The types must already be
-registered with `@nc`.
+Define mixed arithmetic for types that commute with each other, and order them as listed: for `x::Ti` and `y::Tj`,
+`x*y` stays if `i < j` and becomes `y*x` if `i > j`. The types must already be registered with `@nc`.
 """
 macro commutative(types...)
     mul_effect = Expr[]

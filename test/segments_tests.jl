@@ -60,7 +60,54 @@ end
     t = NCMul(2, (f1, b, f2))
     @test split_by_group(t) == [NCMul(2, [f1]), NCMul(1, [b]), NCMul(1, [f2])]
     @test segment_ranges(t) == [Fermion{Int} => 1:1, Boson => 2:2, Fermion{Int} => 3:3]
+end
 
-    # A sum has no segments of its own
-    @test_throws ArgumentError foreach_segment((g, seg) -> nothing, NCMul(1, [f1]) + NCMul(1, [b]))
+@testitem "Segment inputs and result types" begin
+    import NonCommutativeProducts
+    import NonCommutativeProducts: NCMul, NCAdd, foreach_segment, split_by_group, segment_ranges, with_autosort
+    struct A
+        n::Int
+    end
+    struct B
+        n::Int
+    end
+    NonCommutativeProducts.@nc A B
+    NonCommutativeProducts.@commutative A B
+    NonCommutativeProducts.mul_effect(::A, ::A) = nothing
+    NonCommutativeProducts.mul_effect(::B, ::B) = nothing
+    segments(x) = (out = []; foreach_segment((g, seg) -> push!(out, g => collect(seg)), x); out)
+
+    # A sum with one term counts as that term, also from sort
+    for x in (with_autosort(() -> 2 * A(1) * B(1), true), sort(NCMul(2, Any[B(1), A(1)])))
+        @test x isa NCAdd
+        @test segment_ranges(x) == [A => 1:1, B => 2:2]
+        @test segments(x) == [A => [A(1)], B => [B(1)]]
+        @test split_by_group(x) == [NCMul(2, [A(1)]), NCMul(1, [B(1)])]
+    end
+
+    # A sum with several terms has no segments of its own
+    y = NCMul(1, [A(1)]) + NCMul(1, [B(1)])
+    @test_throws ArgumentError segment_ranges(y)
+    @test_throws ArgumentError foreach_segment((g, seg) -> nothing, y)
+    @test_throws ArgumentError split_by_group(y)
+
+    # An atom is a product with one factor
+    @test segment_ranges(A(1)) == [A => 1:1]
+    @test segments(A(1)) == [A => [A(1)]]
+    @test split_by_group(A(1)) == [NCMul(1, [A(1)])]
+
+    # Sorting does not mutate the caller's factors, also when it swaps them
+    v = Any[B(1), A(1)]
+    v0 = copy(v)
+    @test sort(NCMul(1, v)) == NCMul(1, [A(1), B(1)])
+    @test v == v0
+
+    # The parts of a view-backed product are Vector-backed, with or without factors
+    pv = [A(1), A(2), A(3)]
+    @test (@inferred split_by_group(NCMul(2, view(pv, 1:2)))) == [NCMul(2, [A(1), A(2)])]
+    @test split_by_group(NCMul(2, view(pv, 1:2))) isa Vector{NCMul{Int,A,Vector{A}}}
+    @test (@inferred split_by_group(NCMul(2, view(pv, 1:0)))) == [2]
+
+    @test isempty(segment_ranges(NCMul(1, A[])))
+    @test segment_ranges(NCMul(1, A[])) isa Vector{<:Pair}
 end
