@@ -72,12 +72,14 @@ VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
 # The sorted sum of a' * b over the pairs of terms a of x and b of y that can contract. The result is promoted to the
 # product of the scalar types, so its type doesn't depend on which terms vanish or on the autosort setting.
 function _inner(x, y)
+    C = promote_type(_scalartype(x), _scalartype(y))
+    T = Base.promote_op(+, C, C)
+    (iszero(x) || iszero(y)) && return zero(_scalartype(x))' * zero(_scalartype(y)) + zero(T)
     xterms, yterms = _collect_terms(x), _collect_terms(y)
     candidates, needed = _contracting_pairs(xterms, yterms)
     bras = _bras(xterms, needed)
     S = _factor_eltype(eltype(bras), eltype(yterms))
-    C = promote_type(_scalartype(x), _scalartype(y))
-    acc = zero(NCAdd{Base.promote_op(+, C, C),NCMul{Int,S,Vector{S}}})
+    acc = zero(NCAdd{T,NCMul{Int,S,Vector{S}}})
     buffer = S[]
     z = with_autosort(false) do
         fold_retyping!!(acc, candidates) do acc, (i, j, d)

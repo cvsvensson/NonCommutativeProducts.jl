@@ -943,6 +943,13 @@ end
         @test inner(k0 + k1, k1) == dot(k0 + k1, k1) == 1
         @test_throws ArgumentError inner(k0, k0 * k1')
     end
+    # a zero sum on either side gives a zero of the same type as a nonzero sum. Bool + Bool is an Int.
+    for v in (NonCommutativeProducts.NCMul(true, [k0]), x)
+        for z in (inner(zero(v), v), inner(v, zero(v)))
+            @test iszero(z)
+            @test typeof(z) == typeof(inner(v, v))
+        end
+    end
     NonCommutativeProducts.disable_autosort!()
 end
 
