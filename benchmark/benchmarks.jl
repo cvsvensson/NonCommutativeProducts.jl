@@ -224,3 +224,50 @@ const H_keyed = sum(KeyedKet(n) * KeyedKet(n + 1)' + KeyedKet(n + 1) * KeyedKet(
     sum(0.1n * KeyedKet(n) * KeyedKet(n)' for n in 1:N_large)
 const x_keyed_large = sum(randn() * KeyedKet(n) for n in 1:N_large)
 SUITE["vector"]["mul_hook"] = @benchmarkable $H_keyed * $x_keyed_large
+
+# Three commuting species of fermion-like operators with an abstract supertype, as in packages whose atoms subtype a
+# common abstract type. Products of different species have factors in a Vector{Species}. @commutative makes the species
+# commute and orders them as listed (real fermion species would anticommute).
+abstract type Species end
+for T in (:FermionA, :FermionB, :FermionC)
+    @eval begin
+        struct $T <: Species
+            label::Int
+            creation::Bool
+        end
+        $T(k) = $T(k, false)
+        Base.adjoint(x::$T) = $T(x.label, !x.creation)
+        Base.hash(x::$T, h::UInt) = hash(x.label, hash(x.creation, hash($(QuoteNode(T)), h)))
+        NonCommutativeProducts.@nc $T
+        function NonCommutativeProducts.mul_effect(a::$T, b::$T)
+            a == b && return 0
+            (!a.creation, a.label) > (!b.creation, b.label) || return nothing
+            a.label == b.label && return NonCommutativeProducts.AddTerms((NonCommutativeProducts.Swap(-1), 1))
+            return NonCommutativeProducts.Swap(-1)
+        end
+    end
+end
+NonCommutativeProducts.@commutative FermionA FermionB FermionC
+
+# The same shuffled 16 operators, all of one species (concrete factors) or of random species (Vector{Species})
+const species_ops = [rand((FermionA, FermionB, FermionC))(l, isodd(l)) for l in shuffle(1:16)]
+const homogeneous_product = NCMul(1, [FermionA(x.label, x.creation) for x in species_ops])
+const species_product = NCMul(1, Species[species_ops...])
+SUITE["abstract_eltype"] = BenchmarkGroup()
+SUITE["abstract_eltype"]["homogeneous_sort"] = @benchmarkable sort($homogeneous_product)
+SUITE["abstract_eltype"]["abstract_sort"] = @benchmarkable sort($species_product)
+const h_species = sum(T(n)' * S(n) + S(n) * T(n + 1)' for n in 1:6 for (T, S) in ((FermionA, FermionB), (FermionB, FermionC)))
+SUITE["abstract_eltype"]["abstract_sum_cube"] = @benchmarkable $h_species^3
+
+# Splitting a long mixed product into its runs of one species: 300 runs of one to four factors
+const species_runs = [(rand((FermionA, FermionB, FermionC)), rand(1:4)) for _ in 1:300]
+const long_species_product = NCMul(1, Species[T(l) for (l, (T, n)) in enumerate(species_runs) for _ in 1:n])
+function sum_segment_labels(x)
+    total = Ref(0)
+    NonCommutativeProducts.foreach_segment((g, seg) -> (total[] += sum(f -> f.label, seg)), x)
+    return total[]
+end
+# Older versions have no foreach_segment
+if isdefined(NonCommutativeProducts, :foreach_segment)
+    SUITE["abstract_eltype"]["foreach_segment"] = @benchmarkable sum_segment_labels($long_species_product)
+end
