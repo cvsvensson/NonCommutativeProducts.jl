@@ -21,51 +21,61 @@ function atom_group(atom)
     return typeof(atom)
 end
 
-# Call h(g, range) for each maximal run of factors with isequal groups, from left to right. The group of each factor
-# is computed once: the group that ends a run is carried over as the group of the next run.
-function _foreach_run(h, factors)
-    i, last = firstindex(factors), lastindex(factors)
-    i > last && return nothing
-    g = atom_group(factors[i])
-    while i <= last
-        j = i
-        gnext = g
-        while j < last
-            gnext = atom_group(factors[j+1])
-            isequal(gnext, g) || break
-            j += 1
-        end
-        h(g, i:j)
-        i = j + 1
-        g = gnext
-    end
-    return nothing
-end
-
 # An atom is a product with one factor, as for `factors` and `terms`
 function _as_product(x, name)
     _is_atom(typeof(x)) || throw(ArgumentError("$name takes a product or an atom, not a $(typeof(x))"))
     return NCMul(x)
 end
 
+# Iterates `g => range` over the maximal runs of factors with isequal groups. The group of each factor is computed once:
+# the group that ends a run is in the state as the group of the next run.
+struct SegmentRanges{F}
+    factors::F
+end
+Base.IteratorSize(::Type{<:SegmentRanges}) = Base.SizeUnknown()
+Base.IteratorEltype(::Type{<:SegmentRanges}) = Base.EltypeUnknown()
+@inline function Base.iterate(s::SegmentRanges)
+    factors = s.factors
+    isempty(factors) && return nothing
+    i = firstindex(factors)
+    return iterate(s, (i, atom_group(factors[i])))
+end
+@inline function Base.iterate(s::SegmentRanges, (i, g))
+    factors = s.factors
+    last = lastindex(factors)
+    i > last && return nothing
+    j = i
+    gnext = g
+    while j < last
+        gnext = atom_group(factors[j+1])
+        isequal(gnext, g) || break
+        j += 1
+    end
+    return g => i:j, (j + 1, gnext)
+end
+
 """
     segment_ranges(x)
 
-The segments of `x` (see [`foreach_segment`](@ref)) as a `Vector` of pairs `g => range`, from left to right, where `g`
-is the [`atom_group`](@ref) of the segment and `range` the indices of its factors in `factors(x)`.
+A lazy iterator over the segments of `x` (see [`foreach_segment`](@ref)), from left to right. It gives pairs
+`g => range`, where `g` is the [`atom_group`](@ref) of the segment and `range` the indices of its factors in
+`factors(x)`. Use `collect` to get a `Vector`.
 
 # Example
 ```julia
-segment_ranges(NCMul(2, [a1, a2, b, a3])) # [A => 1:2, B => 3:3, A => 4:4], with A the group of `a` and B that of `b`
+collect(segment_ranges(NCMul(2, [a1, a2, b, a3]))) # [A => 1:2, B => 3:3, A => 4:4], with A the group of `a` and B that of `b`
+
+# Whether a product with factors has them all in one group, and which
+g, r = first(segment_ranges(x))
+length(r) == length(factors(x))
 ```
 """
-function segment_ranges(x::NCMul)
-    out = Pair[]
-    _foreach_run((g, r) -> push!(out, g => r), x.factors)
-    return isempty(out) ? out : [p for p in out]
-end
+segment_ranges(x::NCMul) = SegmentRanges(x.factors)
 segment_ranges(x::NCAdd) = segment_ranges(_only_term(x, "segment_ranges"))
-segment_ranges(x) = segment_ranges(_as_product(x, "segment_ranges"))
+function segment_ranges(x)
+    _is_atom(typeof(x)) || throw(ArgumentError("segment_ranges takes a product or an atom, not a $(typeof(x))"))
+    return SegmentRanges((x,))
+end
 
 """
     foreach_segment(f, x)
@@ -89,7 +99,9 @@ foreach_segment(f, x::NCMul) = _foreach_segment(f, factors_vector(x.factors))
 foreach_segment(f, x::NCAdd) = foreach_segment(f, _only_term(x, "foreach_segment"))
 foreach_segment(f, x) = foreach_segment(f, _as_product(x, "foreach_segment"))
 function _foreach_segment(f, factors::AbstractVector)
-    _foreach_run((g, r) -> f(g, _segment(factors, r)), factors)
+    for (g, r) in SegmentRanges(factors)
+        f(g, _segment(factors, r))
+    end
     return nothing
 end
 # The factors in `range`, with a concrete element type if they share a concrete type
@@ -105,38 +117,43 @@ _copy_as(::Type{U}, factors, range) where {U} = U[factors[k] for k in range]
 """
     split_by_group(x)
 
-The segments of `x` as a `Vector` of products, from left to right. The first has the coefficient of `x`, the others
-one, so their unsorted product equals `x`. A product without factors gives `[x]`. Inferable for factors of a concrete
-element type; otherwise prefer [`foreach_segment`](@ref) in hot paths.
+The segments of `x` (see [`foreach_segment`](@ref)) as a `Vector` of pairs `g => part`, from left to right, where `g` is
+the [`atom_group`](@ref) of the segment and `part` a product of its factors. The first part has the coefficient of `x`,
+the others one, so the unsorted product of the parts equals `x`. A product without factors gives an empty `Vector`.
+
+Segments are runs, not groups: interleaved factors give several parts with the same `g`. A part may share its factors
+with `x`. For factors of an abstract element type, prefer [`segment_ranges`](@ref) or [`foreach_segment`](@ref) in hot
+paths.
 
 # Example
 ```julia
-split_by_group(2 * a1 * a2 * b) # [2 * a1 * a2, 1 * b]
+split_by_group(2 * a1 * a2 * b) # [A => 2 * a1 * a2, B => 1 * b], with A the group of `a` and B that of `b`
 ```
 """
 split_by_group(x::NCAdd) = split_by_group(_only_term(x, "split_by_group"))
 split_by_group(x) = split_by_group(_as_product(x, "split_by_group"))
 function split_by_group(x::NCMul{C}) where {C}
     factors = factors_vector(x.factors)
-    return _split_by_group(x, C, prefactor(x), factors, Val(isconcretetype(eltype(factors))))
-end
-# The parts are Vector-backed whatever the factors of `x` are, so that the result type depends only on their eltype
-function _split_by_group(_, ::Type{C}, c, factors::AbstractVector{T}, ::Val{true}) where {C,T}
-    parts = Vector{NCMul{C,T,Vector{T}}}()
-    _foreach_run(factors) do _, r
-        push!(parts, NCMul{C}(isempty(parts) ? c : one(c), _owned_copy(view(factors, r))))
+    T = eltype(factors)
+    # Fixed pair types, as a comprehension or `g => part` is 2-4x slower for abstract T, where pair types are made at runtime
+    G = Base.promote_op(atom_group, T)
+    P = isconcretetype(T) ? NCMul{C,T,Vector{T}} : NCMul{C}
+    parts = Pair{G,P}[]
+    for (g, r) in SegmentRanges(factors)
+        push!(parts, Pair{G,P}(g, _part(x, factors, r)))
     end
-    isempty(parts) && push!(parts, NCMul{C}(c, T[]))
     return parts
 end
-function _split_by_group(x, ::Type{C}, c, factors, ::Val{false}) where {C}
-    isempty(factors) && return [x]
-    parts = NCMul[]
-    _foreach_segment(factors) do _, seg
-        push!(parts, NCMul{C}(isempty(parts) ? c : one(c), _owned_copy(seg)))
-    end
-    return [p for p in parts]
+# Without a copy if `x` is already what the only part would be
+function _part(x::NCMul{C,T,Vector{T}}, factors, r) where {C,T}
+    isconcretetype(T) && length(r) == length(factors) && return x
+    return _copied_part(x, factors, r)
 end
-# `seg` as a Vector that can be stored in a product: the copy made by foreach_segment, or a copy of anything else
+_part(x, factors, r) = _copied_part(x, factors, r)
+function _copied_part(x::NCMul{C}, factors, r) where {C}
+    c = prefactor(x)
+    return NCMul{C}(first(r) == firstindex(factors) ? c : one(c), _owned_copy(_segment(factors, r)))
+end
+# `seg` as a Vector that can be stored in a product: the copy made by _segment, or a copy of anything else
 _owned_copy(seg::Vector) = seg
 _owned_copy(seg::AbstractVector) = collect(seg)

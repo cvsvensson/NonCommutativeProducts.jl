@@ -270,4 +270,7 @@ end
 # Older versions have no foreach_segment
 if isdefined(NonCommutativeProducts, :foreach_segment)
     SUITE["abstract_eltype"]["foreach_segment"] = @benchmarkable sum_segment_labels($long_species_product)
+    SUITE["abstract_eltype"]["split_by_group"] = @benchmarkable NonCommutativeProducts.split_by_group($long_species_product)
+    SUITE["abstract_eltype"]["split_by_group_single"] = @benchmarkable NonCommutativeProducts.split_by_group($homogeneous_product)
+    SUITE["abstract_eltype"]["first_segment_range"] = @benchmarkable first(NonCommutativeProducts.segment_ranges($homogeneous_product))
 end
