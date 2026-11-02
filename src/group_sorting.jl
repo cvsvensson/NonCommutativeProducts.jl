@@ -50,9 +50,9 @@ end
 #
 # Only factors of type Any or of an abstract type that is not a Union take this path: for others, mul_effect is resolved
 # at compile time. Nor do products shorter than `_group_sort_min_length`: finding their groups and their order takes
-# about as long as it saves (for three groups of fermions and spins, it is 4 times slower for 8 factors, about as fast
-# for 12 to 16, and 3 times faster for 24).
-const _group_sort_min_length = 16
+# about as long as it saves (for three groups of fermions and spins, with eltype Any and abstract: 0.85x and 0.77x as
+# fast for 8 factors, 1.4x and 1.0x for 12, 1.7x and 1.1x for 16, 2.7x and 1.9x for 24).
+const _group_sort_min_length = 12
 _sort_by_groups!!(acc, coeff, factors) = bubble!!(acc, coeff, factors, nothing, 1)
 function _sort_by_groups!!(acc, coeff, factors::Vector{T}) where {T}
     (T isa Union || isconcretetype(T) || length(factors) < _group_sort_min_length) &&
@@ -89,7 +89,10 @@ function _group_plan(factors)
     for (i, x) in enumerate(factors)
         g = _atom_group(factors, x)
         if current == 0 || !_same_group(g, groups[current])
-            current = something(findfirst(h -> _same_group(h, g), groups), 0)
+            current = 0
+            for (j, h) in enumerate(groups)
+                _same_group(h, g) && (current = j; break)
+            end
             if current == 0
                 push!(nbefore, 0)
                 for (j, h) in enumerate(groups)
@@ -115,17 +118,25 @@ end
 # isequal(g, h), which for two types is a slow type comparison. DataTypes are unique, so they are equal only if they
 # are identical.
 @inline _same_group(g, h) = g === h || (!(g isa DataType && h isa DataType) && isequal(g, h))
-# Whether the group g of `a` comes after the group h of `b`, for a before b, from mul_effect(a, b), which must be
-# `nothing` or the swap of commutation `c`
+# Whether the group g of `a` comes after the group h of `b`, from mul_effect(a, b), which must be `nothing` or the swap
+# of commutation `c`, and if it is `nothing`, from mul_effect(b, a), which must be that swap. The order of the groups
+# then doesn't depend on which comes first in the product.
 function _swaps_groups(factors, a, b, c, g, h)
-    effect = _mul_effect(factors, a, b)
-    isnothing(effect) && return false
     λ = c === :graded && _atom_parity(factors, a) && _atom_parity(factors, b) ? -1 : 1
-    effect isa Swap && effect.λ == λ && return true
-    throw(ArgumentError("group_commutation($(repr(g)), $(repr(h))) is $(repr(c)), so mul_effect($(repr(a)), \
-        $(repr(b))) must be nothing or Swap($λ), but it is $(repr(effect)); define mul_effect to order these groups, \
-        or don't declare their commutation"))
+    effect = _mul_effect(factors, a, b)
+    if !isnothing(effect)
+        effect isa Swap && effect.λ == λ && return true
+        throw(_swap_error(c, g, h, a, b, λ, effect))
+    end
+    effect = _mul_effect(factors, b, a)
+    effect isa Swap && effect.λ == λ && return false
+    isnothing(effect) && throw(ArgumentError("groups $(repr(g)) and $(repr(h)) are declared to commute but \
+        mul_effect does not order them; define mul_effect to return Swap($λ) in one order"))
+    throw(_swap_error(c, h, g, b, a, λ, effect))
 end
+_swap_error(c, g, h, a, b, λ, effect) = ArgumentError("group_commutation($(repr(g)), $(repr(h))) is $(repr(c)), so \
+    mul_effect($(repr(a)), $(repr(b))) must be nothing or Swap($λ), but it is $(repr(effect)); define mul_effect to \
+    order these groups, or don't declare their commutation")
 
 # Whether moving the factors to the order of their groups crosses an odd number of pairs of odd atoms in graded groups
 function _crossing_sign(factors, (; ids, flips))

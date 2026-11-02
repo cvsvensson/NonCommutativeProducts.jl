@@ -110,13 +110,13 @@ The declaration is a promise that `mul_effect` orders the two groups by group al
 for two odd atoms of graded groups, as above and as [`@commutative`](@ref NonCommutativeProducts.@commutative) does.
 The order of the groups is taken from `mul_effect` on the first atom of each group in the product. These checks throw
 an `ArgumentError`: `group_commutation` returns `:commute`, `:graded` or `nothing`, and the same for both orders of the
-groups; `mul_effect` on the first atoms of two groups is `nothing` or the declared swap; and the order of the groups is
-transitive. That all other atoms of the groups, in both orders, behave the same, and that `atom_parity` is right,
+groups; `mul_effect` on the first atoms of two groups is the declared swap in one order, checked in the order they
+appear and, if that gives `nothing`, in the other; and the order of the groups is transitive. That all other atoms of the groups, in both orders, behave the same, and that `atom_parity` is right,
 remains your responsibility. Sorting then gives the same result as without the declaration, including the order of
 the factors, provided the sorted form that `mul_effect` gives is unique, and the declaration only makes it faster.
 
-The declarations are used for long products (16 factors or more, as above) whose factors have the element type `Any`
-or an abstract type that is not a `Union`, and whose groups all have a declared commutation with each other. Other
+The declarations are used for long products (a dozen factors or more, as above) whose factors have the element type
+`Any` or an abstract type that is not a `Union`, and whose groups all have a declared commutation with each other. Other
 products, e.g. those with a pair of groups whose commutation is `nothing`, are sorted by `mul_effect` alone.
 
 ## Performance of mixed products

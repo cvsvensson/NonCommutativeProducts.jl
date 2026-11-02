@@ -92,7 +92,8 @@ end
     NCP.@nc HookX HookY
     NCP.mul_effect(x::T, y::T) where {T<:Union{HookX,HookY}} = x.n > y.n ? Swap(1) : nothing
     NCP.mul_effect(::HookX, ::HookY) = nothing
-    NCP.mul_effect(::HookY, ::HookX) = Swap(1)
+    const yx = Ref{Any}(Swap(1)) # mul_effect(::HookY, ::HookX)
+    NCP.mul_effect(::HookY, ::HookX) = yx[]
     NCP.atom_parity(::Union{HookX,HookY}) = true
     m = 2 * NCP._group_sort_min_length
     atom(n) = isodd(n) ? HookY(n) : HookX(n)
@@ -102,11 +103,15 @@ end
     NCP.group_commutation(::Type{HookX}, ::Type{HookY}) = declared[][1]
     NCP.group_commutation(::Type{HookY}, ::Type{HookX}) = declared[][2]
     @test_throws "not symmetric" sort(x)
+    declared[] = (:yes, :yes)
+    @test_throws "must return :commute, :graded or nothing" sort(x)
     # declared graded, but mul_effect swaps odd atoms with Swap(1)
     declared[] = (:graded, :graded)
     @test_throws "must be nothing or Swap(-1)" sort(x)
     declared[] = (:commute, :commute)
     @test sort(x) == NCMul(1, Any[atom(n) for n in [2:2:m; 1:2:m]])
+    yx[] = nothing
+    @test_throws "mul_effect does not order them" sort(x)
 end
 
 @testitem "Groups without declared commutation keep their order" begin
@@ -122,7 +127,8 @@ end
     NCP.@nc LeftLabel RightLabel
     const Label = Union{LeftLabel,RightLabel}
     NCP.mul_effect(x::Label, y::Label) = x.n > y.n ? Swap(1) : nothing
-    labels = [4, 3, 2, 1, 8, 7, 6, 5, 12, 11, 10, 9, 16, 15, 14, 13]
+    m = 4 * cld(NCP._group_sort_min_length, 4)
+    labels = [4j + k for j in 0:m÷4-1 for k in 4:-1:1] # 4, 3, 2, 1, 8, 7, ...
     atom(n) = isodd(n) ? LeftLabel(n) : RightLabel(n)
-    @test sort(NCMul(1, Any[atom(n) for n in labels])) == NCMul(1, Any[atom(n) for n in 1:16])
+    @test sort(NCMul(1, Any[atom(n) for n in labels])) == NCMul(1, Any[atom(n) for n in 1:m])
 end
