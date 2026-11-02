@@ -69,8 +69,8 @@ VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β
 VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β)
 
 VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
-# The sorted sum of a' * b over the pairs of terms a of x and b of y that can contract. The result is promoted to the
-# product of the scalar types, so its type doesn't depend on which terms vanish or on the autosort setting.
+# The sorted sum of a' * b over the pairs of terms a of x and b of y that can contract, promoted to at least the
+# product of the scalar types.
 function _inner(x, y)
     C = promote_type(_scalartype(x), _scalartype(y))
     T = Base.promote_op(+, C, C)
