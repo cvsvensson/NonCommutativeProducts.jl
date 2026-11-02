@@ -1161,8 +1161,7 @@ end
     NC.opnorm_bound(::Tiny) = 1e-200
     @test NC.truncate_terms(1e-200 * Tiny() + c1) == (; expr=1e-200 * Tiny() + c1, err=0)
     @test NC.truncate_terms(1e-200 * Tiny() + c1; atol=1e-300).err > 0
-    # bounds of whole products apply also to factors in a Tuple or a Vector{Any}
-    NC.opnorm_bound_factors(::AbstractVector{<:JWFermion}) = 1
+    # factors in a Tuple or an abstractly typed Vector
     @test NC.opnorm_bound(NC.NCMul(1, (c1, c2, c1'))) == 1
     @test NC.opnorm_bound(NC.NCMul(1, Any[c1, c2, c1'])) == 1
     @test NC.opnorm_bound(NC.NCMul(1, Union{JWFermion,HalfSpin}[c1, c2, S])) == 0.5

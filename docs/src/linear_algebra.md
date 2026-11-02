@@ -61,9 +61,9 @@ julia> inner(k0 + 2k1, k1)
 ```
 ‖x - x̃‖ ≤ Σ_{i ∈ D} |cᵢ| b(Pᵢ)
 ```
-by the triangle inequality, where `b(P)` bounds the operator norm of the product `P`. For unrelated terms, this is typically pessimistic by about the square root of the number of dropped terms.
+by the triangle inequality, where `b(P)` is the product of the operator norm bounds of the factors of `P`. For unrelated terms, this is typically pessimistic by about the square root of the number of dropped terms.
 
-To make terms droppable, define [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound) for your atoms. Terms containing an atom without a bound, such as a boson, are kept. Tighter bounds for whole products can be given by [`opnorm_bound_factors`](@ref NonCommutativeProducts.opnorm_bound_factors).
+To make terms droppable, define [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound) for your atoms. Terms containing an atom without a bound, such as a boson, are kept.
 
 `rtol` is relative to the bound on the droppable terms, not to `‖x‖`, so it allows less than you might expect when kept terms dominate. Combine like terms before truncating, e.g. with autosort, since terms that would cancel otherwise use up the budget.
 

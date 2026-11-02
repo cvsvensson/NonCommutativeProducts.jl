@@ -67,7 +67,6 @@ NonCommutativeProducts.ncmapreduce
 ```@docs
 NonCommutativeProducts.truncate_terms
 NonCommutativeProducts.opnorm_bound
-NonCommutativeProducts.opnorm_bound_factors
 NonCommutativeProducts.coefficient_bound
 ```
 

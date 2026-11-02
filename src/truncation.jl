@@ -27,47 +27,6 @@ function opnorm_bound(x::NCAdd)
 end
 
 """
-    opnorm_bound_factors(factors)
-
-An upper bound on the operator norm of the product of the atoms in the vector `factors`, or `nothing` if no bound is
-known. The default multiplies their [`opnorm_bound`](@ref)s. Define a method to give a tighter bound.
-
-# Example
-A product of fermion operators has norm at most 1, however long it is:
-```julia
-NonCommutativeProducts.opnorm_bound_factors(::AbstractVector{<:Fermion}) = 1
-```
-"""
-function opnorm_bound_factors(factors)
-    isconcretetype(eltype(factors)) || return _opnorm_bound_runs(factors)
-    b = 1.0
-    for f in factors
-        bf = _bound_value(opnorm_bound(f))
-        isnothing(bf) && return nothing
-        b = _mul_up(b, bf)
-    end
-    return b
-end
-# The product of the bounds of maximal runs of factors of one type, a bound by submultiplicativity
-function _opnorm_bound_runs(factors)
-    fs = collect(factors)
-    b = 1.0
-    i = firstindex(fs)
-    while i <= lastindex(fs)
-        S = typeof(fs[i])
-        j = i
-        while j < lastindex(fs) && typeof(fs[j+1]) === S
-            j += 1
-        end
-        br = _bound_value(opnorm_bound_factors(convert(Vector{S}, fs[i:j])))
-        isnothing(br) && return nothing
-        b = _mul_up(b, br)
-        i = j + 1
-    end
-    return b
-end
-
-"""
     coefficient_bound(c)
 
 An upper bound on the absolute value of the coefficient `c`, or `nothing` if it is unknown, as for a symbolic
@@ -156,9 +115,13 @@ end
 function _term_weight(factors, c)
     cb = _bound_value(coefficient_bound(c))
     isnothing(cb) && return nothing
-    fb = _bound_value(opnorm_bound_factors(factors_vector(factors)))
-    isnothing(fb) && return nothing
-    return _mul_up(cb, fb)
+    b = cb
+    for f in factors
+        bf = _bound_value(opnorm_bound(f))
+        isnothing(bf) && return nothing
+        b = _mul_up(b, bf)
+    end
+    return b
 end
 function _sum_weights(weights)
     total = 0.0 # promoted by _add_up if a weight is wider
