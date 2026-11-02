@@ -180,6 +180,10 @@ const long_keyed_chain = sum(randn() * random_product_state() for _ in 1:2000) +
 SUITE["vector"]["dot_ket_chain"] = @benchmarkable VI.inner($ket_in_chain, $long_keyed_chain)
 SUITE["vector"]["dot_chain_ket"] = @benchmarkable VI.inner($long_keyed_chain, $ket_in_chain)
 
+# A long sum against a zero sum, where no term should be collected and no bra formed
+const zero_chain = zero(long_keyed_chain)
+SUITE["vector"]["inner_zero_sum"] = @benchmarkable VI.inner($long_keyed_chain, $zero_chain)
+
 # A small sum of most of the 256 states of 8 sites, like H²ψ for a Heisenberg chain, where the runs share prefixes
 site_state(b) = prod(SiteKet(site, s + 1) for (site, s) in enumerate(digits(b; base=2, pad=8)))
 const small_shared_chain = sum(randn() * site_state(b) for b in shuffle(0:255)[1:226])
