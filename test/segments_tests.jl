@@ -77,9 +77,6 @@ end
     a = NCMul(2, Any[f1, f2])
     @test last(only(split_by_group(a))) == x
     @test eltype(last(only(split_by_group(a))).factors) == Fermion{Int}
-    # The group type of abstract factors does not depend on which `atom_group` methods exist
-    @test split_by_group(a) isa Vector{Pair{Any,NCMul{Int}}}
-    @test collect(segment_ranges(a)) isa Vector{Pair{Any,UnitRange{Int}}}
 end
 
 @testitem "Segment inputs and result types" begin

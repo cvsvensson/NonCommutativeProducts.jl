@@ -35,8 +35,6 @@ end
 Base.IteratorSize(::Type{<:SegmentRanges}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:SegmentRanges}) = Base.EltypeUnknown()
 # Fixed G, so that the state and the pairs are not built with runtime types if the group type is unknown.
-# Any for abstract T, so that the result type does not change when someone defines a new `atom_group` method.
-_group_type(::Type{T}) where {T} = isconcretetype(T) ? Base.promote_op(atom_group, T) : Any
 struct SegmentState{G}
     i::Int
     g::G
@@ -45,7 +43,7 @@ end
     factors = s.factors
     isempty(factors) && return nothing
     i = firstindex(factors)
-    return iterate(s, SegmentState{_group_type(eltype(factors))}(i, atom_group(factors[i])))
+    return iterate(s, SegmentState{Base.promote_op(atom_group, eltype(factors))}(i, atom_group(factors[i])))
 end
 @inline function Base.iterate(s::SegmentRanges, st::SegmentState{G}) where {G}
     factors = s.factors
@@ -172,7 +170,7 @@ function split_by_group(x::NCMul{C}) where {C}
     factors = factors_vector(x.factors)
     T = eltype(factors)
     # Fixed pair types, as a comprehension or `g => part` is 2-4x slower for abstract T, where pair types are made at runtime
-    G = _group_type(T)
+    G = Base.promote_op(atom_group, T)
     P = isconcretetype(T) ? NCMul{C,T,Vector{T}} : NCMul{C}
     PP = Pair{G,P}
     segments = SegmentRanges(factors)
