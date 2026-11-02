@@ -1,6 +1,6 @@
 # Linear algebra
 
-Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left (apart from pairs of terms skipped by keys, see [Fast inner products](@ref)), so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts `x' * y` whether or not autosort is enabled.
+Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left (apart from pairs of terms skipped by keys, see [Fast inner products](@ref)), so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts the pairs it doesn't skip, whether or not autosort is enabled.
 
 With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. These features live in a package extension, which `using KrylovKit` loads.
 
@@ -43,7 +43,7 @@ true
 
 `inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. With [`contraction_key`](@ref NonCommutativeProducts.contraction_key) defined, `inner` skips the pairs whose keys show that they are orthogonal, which takes time proportional to the number of terms when each term matches few others.
 
-Keys define orthogonality: `inner` skips pairs whose keys disagree, whatever `mul_effect` gives. Here `⟨n|m⟩` is zero unless `n == m`, so kets are keyed by their label:
+Keys define orthogonality: `inner` skips pairs whose keys disagree, whatever `mul_effect` gives and without sorting them first, so terms must list subsystems in the same order. Here `⟨n|m⟩` is zero unless `n == m`, so kets are keyed by their label:
 ```jldoctest kets
 julia> NC.contraction_key(k::Ket) = k.bra ? nothing : k.n
 

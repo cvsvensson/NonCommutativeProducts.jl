@@ -16,7 +16,10 @@ factors is set by `mul_effect` alone.
 NonCommutativeProducts.atom_group(f::Fermion) = f.site # fermions on the same site form one group
 ```
 """
-atom_group(atom) = typeof(atom)
+function atom_group(atom)
+    _is_atom(typeof(atom)) || throw(ArgumentError("$(typeof(atom)) has no group: it is not declared with `@nc`, and `atom_group` is not defined for it"))
+    return typeof(atom)
+end
 
 # Call h(g, range) for each maximal run of factors with isequal groups, from left to right. The group of each factor
 # is computed once: the group that ends a run is carried over as the group of the next run.

@@ -91,6 +91,10 @@ end
     @test_throws ArgumentError foreach_segment((g, seg) -> nothing, y)
     @test_throws ArgumentError split_by_group(y)
 
+    # Only atoms have a group
+    @test_throws ArgumentError NonCommutativeProducts.atom_group("not an atom")
+    @test_throws ArgumentError NonCommutativeProducts.atom_group(NCMul(1, [A(1)]))
+
     # An atom is a product with one factor
     @test segment_ranges(A(1)) == [A => 1:1]
     @test segments(A(1)) == [A => [A(1)]]

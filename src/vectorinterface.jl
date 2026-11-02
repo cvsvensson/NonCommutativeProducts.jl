@@ -97,12 +97,12 @@ _collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
 Return a key that lets `inner(x, y)` skip orthogonal pairs of terms, or `nothing` (the default).
 
 `inner` treats two terms as orthogonal if their keys differ at any position before the first
-factor without a key. Terms must list subsystems in the same order: `|a⟩|b⟩` and `|b⟩|a⟩`
-count as orthogonal.
+factor without a key, without sorting them first. Terms must list subsystems in the same order:
+`|a⟩|b⟩` and `|b⟩|a⟩` count as orthogonal. Keys must differ between subsystems.
 
 For atoms `k`, `l` with keys and any atom `u`:
 - `mul_effect(k', l)` must be a `Number` when the keys are equal.
-- `mul_effect(u, k')` must be `nothing`.
+- `mul_effect(u, k')` must be `nothing` or a `Swap`.
 
 Kets of an orthonormal basis can have keys; bras can't. See [Fast inner products](@ref).
 """

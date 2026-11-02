@@ -1053,6 +1053,31 @@ end
     NonCommutativeProducts.disable_autosort!()
 end
 
+@testitem "VectorInterface: inner with keys over signed swaps" begin
+    using VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, NCMul, Swap
+
+    # kets of two sites whose factors anticommute: the signs cancel within each pair of terms
+    struct SwapKet
+        site::Int
+        n::Int
+        bra::Bool
+    end
+    SwapKet(site, n) = SwapKet(site, n, false)
+    Base.adjoint(k::SwapKet) = SwapKet(k.site, k.n, !k.bra)
+    @nc SwapKet
+    function mul_effect(a::SwapKet, b::SwapKet)
+        a.site == b.site || return a.site > b.site ? Swap(-1) : nothing
+        return a.bra && !b.bra ? Int(a.n == b.n) : nothing
+    end
+    NonCommutativeProducts.contraction_key(k::SwapKet) = k.bra ? nothing : (k.site, k.n)
+
+    state(a, b) = NCMul(1, [SwapKet(1, a), SwapKet(2, b)])
+    x = 2 * state(0, 0) + 3 * state(0, 1) + 5 * state(1, 1)
+    y = 7 * state(0, 1) + 11 * state(1, 1) + 13 * state(1, 0)
+    @test inner(x, y) == 3 * 7 + 5 * 11
+end
+
 @testitem "VectorInterface: inner compares keys with isequal" begin
     using VectorInterface
     import NonCommutativeProducts: @nc, mul_effect, NCMul
@@ -1346,12 +1371,13 @@ end
     using NonCommutativeProducts
     public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :enable_autosort!,
         :disable_autosort!, :autosort, :with_autosort, :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors,
-        :coefficient, :atom_group, :foreach_segment, :split_by_group, :segment_ranges]
+        :coefficient]
     for name in public_names
         @test Base.ispublic(NonCommutativeProducts, name)
         @test Base.Docs.hasdoc(NonCommutativeProducts, name)
     end
-    for name in [:Swap, :AddTerms, :bubble_sort, :MulAdd, :_autosort, :grade, :mul!!, :anyadd, :isscalar]
+    for name in [:Swap, :AddTerms, :bubble_sort, :MulAdd, :_autosort, :grade, :mul!!, :anyadd, :isscalar,
+        :atom_group, :foreach_segment, :split_by_group, :segment_ranges]
         @test !Base.ispublic(NonCommutativeProducts, name)
     end
     @test !Base.isexported(NonCommutativeProducts, :NCMul)
