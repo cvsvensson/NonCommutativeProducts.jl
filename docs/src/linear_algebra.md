@@ -61,11 +61,13 @@ julia> inner(k0 + 2k1, k1)
 ```
 ‖x - x̃‖ ≤ Σ_{i ∈ D} |cᵢ| b(Pᵢ)
 ```
-in the operator norm, in every representation of the atoms by bounded operators where the bounds hold. This follows from the triangle inequality, with `b(P)` a bound on the norm of the product `P`: by default the product of the bounds of its factors, given by [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound). The scalar part has `b = 1`. With the budget `max(atol, rtol * B)`, where `B` is the sum of the weights `|cᵢ| b(Pᵢ)` of the terms that can be dropped, all droppable terms with weight at most `t` are dropped, for the largest threshold `t` whose total weight fits the budget. Without ties, this drops as many terms as possible; terms with equal weights are dropped together or not at all. `rtol` is relative to the bound of the droppable (bounded, numeric) part, which can be much smaller than `‖x‖` when terms without a bound dominate. The weights and the bound are rounded up, and the budget is rounded down, so the reported bound is never too small, and an exact budget such as a `Rational` `atol` may be compared conservatively. For unrelated terms, the bound is typically pessimistic by about the square root of the number of dropped terms.
+by the triangle inequality, where `b(P)` bounds the operator norm of the product `P`. For unrelated terms, this is typically pessimistic by about the square root of the number of dropped terms.
 
-Define `opnorm_bound` for your atom types, with a bound that holds in every representation you will use: `1` for a fermion `c`, a Majorana with `γ^2 = 1`, a Pauli matrix, or a normalized ket or bra, which has norm 1, so that ket-bras get the bound 1, and `s` for a component of a spin `s`. Atoms without a method, such as bosons, have no bound, and terms that contain them are never dropped. Neither are terms with a coefficient without a bound, such as a symbolic coefficient, or terms with a `NaN` or infinite coefficient. Tighter bounds for whole products can be given by [`opnorm_bound_factors`](@ref NonCommutativeProducts.opnorm_bound_factors), e.g. `1` for any product of fermion operators.
+To make terms droppable, define [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound) for your atoms. Terms containing an atom without a bound, such as a boson, are kept. Tighter bounds for whole products can be given by [`opnorm_bound_factors`](@ref NonCommutativeProducts.opnorm_bound_factors).
 
-The bound holds whether or not like terms are combined, but truncating after they are, e.g. with autosort enabled, makes better use of the budget. For the kets above, normalized kets and bras have norm 1:
+`rtol` is relative to the bound on the droppable terms, not to `‖x‖`, so it allows less than you might expect when kept terms dominate. Combine like terms before truncating, e.g. with autosort, since terms that would cancel otherwise use up the budget.
+
+For the kets above, normalized kets and bras have norm 1:
 ```jldoctest kets
 julia> NC.opnorm_bound(::Ket) = 1
 

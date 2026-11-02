@@ -1176,7 +1176,7 @@ end
     using NonCommutativeProducts
     public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :enable_autosort!,
         :disable_autosort!, :autosort, :with_autosort, :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors,
-        :coefficient, :opnorm_bound, :opnorm_bound_factors, :coefficient_bound, :truncate_terms]
+        :coefficient]
     for name in public_names
         @test Base.ispublic(NonCommutativeProducts, name)
         @test Base.Docs.hasdoc(NonCommutativeProducts, name)
@@ -1200,7 +1200,7 @@ end
     test_explicit_imports(NonCommutativeProducts;
         # Base internals without a public equivalent, KrylovKit operator hooks, and package internals used by the extensions
         all_qualified_accesses_are_public=(; ignore=(:_growat!, :inferencebarrier, :literal_pow, :power_by_squaring, :promote_op,
-            :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic)),
+            :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic, :coefficient_bound)),
         # qualified names in macro-generated code
         no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
             :mul_effect, :ncmapreduce, :terms, :coefficient, :factors, :nterms)),

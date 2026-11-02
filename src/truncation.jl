@@ -5,28 +5,13 @@
 """
     opnorm_bound(x)
 
-An upper bound on the operator norm of `x`, or `nothing` if no bound is known.
-
-Define methods for your atom types. A method must return a nonnegative real number that bounds the operator norm of the
-atom in every representation of the atoms by bounded operators that you will use, or `nothing`, the default, when there
-is no such bound. Terms with an atom without a bound are never dropped by [`truncate_terms`](@ref). For example:
-- a fermion `c` or `c'` with `c' * c + c * c' == 1`: `1`
-- a Majorana `γ` with `γ^2 == 1`, a Pauli matrix: `1`
-- a component of a spin `s`, such as `Sz`: `s`
-- a ket-bra `|a⟩⟨b|` of normalized states: `1`
-- a boson `a`: no method, since `a` is unbounded. Return a bound only for an explicit cutoff, e.g. `sqrt(nmax)`.
-
-For products and sums, `opnorm_bound` is computed from the bounds of the atoms: a product `c * a₁ * … * aₙ` has the
-bound [`coefficient_bound`](@ref)`(c) *` [`opnorm_bound_factors`](@ref)`([a₁, …, aₙ])`, and a sum has the sum of the
-bounds of its terms, with `1` for the factors of its scalar part. The result is `nothing` if the bound of a term is
-unknown, and `Inf` if a coefficient is `NaN` or infinite. These are floating-point numbers, rounded up: `Float64`, or
-a wider type such as `BigFloat` if a coefficient or bound is wider.
+An upper bound on the operator norm of `x`, or `nothing` if no bound is known. Define it for your atom types, with a
+bound that holds in every representation you use, so that [`truncate_terms`](@ref) can drop terms containing them.
+Products and sums get their bound from their atoms and coefficients.
 
 # Example
 ```julia
 NonCommutativeProducts.opnorm_bound(::Fermion) = 1
-opnorm_bound(0.5 * c[1]' * c[2] - 2 * c[1] + 1) == 3.5
-opnorm_bound(c[1] + 0.5 * b) === nothing # if b has no bound
 ```
 """
 opnorm_bound(x) = nothing
@@ -44,21 +29,13 @@ end
 """
     opnorm_bound_factors(factors)
 
-An upper bound on the operator norm of the product of `factors`, which is an `AbstractVector` of atoms, or `nothing`
-if no bound is known. The default is the product of [`opnorm_bound`](@ref) of the factors, by
-submultiplicativity of the operator norm, and `nothing` if one of them is `nothing`. The product of no factors has the
-bound `1`.
-
-Define methods to give tighter bounds for whole products, valid in the same representations as `opnorm_bound`. For
-example, a product of fermion operators is zero or a partial isometry, so its norm is at most `1` however long it is.
-A method can dispatch on the element type of `factors`. If the element type is not concrete, e.g. `Any`, the default
-splits the product into maximal runs of factors of the same type and multiplies the bounds of the runs, each given by
-`opnorm_bound_factors` of a `Vector` of that type, so methods for one atom type apply to the runs. A method for
-products of atoms of several types applies only if `factors` has a matching element type.
+An upper bound on the operator norm of the product of the atoms in the vector `factors`, or `nothing` if no bound is
+known. The default multiplies their [`opnorm_bound`](@ref)s. Define a method to give a tighter bound.
 
 # Example
+A product of fermion operators has norm at most 1, however long it is:
 ```julia
-NonCommutativeProducts.opnorm_bound_factors(fs::AbstractVector{<:Fermion}) = 1
+NonCommutativeProducts.opnorm_bound_factors(::AbstractVector{<:Fermion}) = 1
 ```
 """
 function opnorm_bound_factors(factors)
@@ -93,13 +70,8 @@ end
 """
     coefficient_bound(c)
 
-An upper bound on the absolute value of the coefficient `c`, or `nothing` if it is unknown. The default is `abs(c)` for
-numbers, rounded up for complex numbers, and `nothing` for other values. A coefficient is also treated as unknown if
-its bound is not a real number that can be compared with `0`, as for symbolic coefficients. With SymbolicUtils loaded,
-symbolic constants have the bound of their value.
-
-Terms with coefficients without a bound are never dropped by [`truncate_terms`](@ref). Define methods for your own
-coefficient types if `abs` doesn't give a bound.
+An upper bound on the absolute value of the coefficient `c`, or `nothing` if it is unknown, as for a symbolic
+coefficient. Define it for your own coefficient types if `abs` doesn't give a bound.
 """
 coefficient_bound(c) = nothing
 coefficient_bound(c::Number) = _coefficient_bound(c, abs(c))
@@ -200,33 +172,14 @@ end
 """
     truncate_terms(x; atol=0, rtol=0)
 
-Drop terms of `x` whose total contribution has a certified bound, and return the named tuple `(; expr, err)` of the
-truncated expression `expr` and a bound `err` with
+Drop small terms of `x`. Returns `(; expr, err)`, the truncated expression and a bound on the error:
 ```
 opnorm(x - expr) ≤ err ≤ max(atol, rtol * B)
 ```
-in every representation of the atoms by bounded operators where [`opnorm_bound`](@ref) holds. `x` can be a sum, a
-product, a number or an atom.
-
-For `x = Σᵢ cᵢ Pᵢ`, the weight of the term `cᵢ Pᵢ` is `|cᵢ| b(Pᵢ)`, where `|cᵢ|` is [`coefficient_bound`](@ref)`(cᵢ)`
-and `b(Pᵢ)` is [`opnorm_bound_factors`](@ref) of its factors, or `1` for the scalar part. By the triangle inequality,
-dropping a set of terms changes `x` by at most the sum of their weights, which is `err`. With the budget
-`max(atol, rtol * B)`, where `B` is the sum of the weights of the terms that can be dropped, `truncate_terms` drops all
-droppable terms with weight `≤ t` for the largest threshold `t` whose total weight fits the budget. Without ties, this
-drops as many terms as possible. Terms with the same weight are dropped together or not at all, so that the result
-doesn't depend on the order of the terms. `B` is `opnorm_bound(x)` if all terms have finite weights. Otherwise it is
-the bound of the droppable (bounded, numeric) part, which can be much smaller than the norm of `x`.
-
-Terms with an unknown weight are never dropped: those with an atom without a bound, such as a boson, and those with a
-coefficient without a bound, such as a symbolic one. Terms with a `NaN` or infinite coefficient are never dropped
-either. With `atol = rtol = 0`, only terms of weight exactly zero are dropped.
-
-The weights and `err` are computed in floating point and rounded up, so `err` is never smaller than the exact sum of
-the dropped weights. `err` is a `Float64`, or a wider float type if a weight is wider, as with `BigFloat` coefficients.
-The budget is rounded down to that type, so an exact budget, e.g. a `Rational` `atol`, may be compared conservatively.
-The bound holds whether or not the terms of `x` are sorted and combined, but combining like terms first, e.g. with
-autosort enabled, makes the best use of the budget, since cancelling terms then don't use it. For unrelated terms, the
-bound is typically pessimistic by about the square root of the number of dropped terms.
+in every representation where [`opnorm_bound`](@ref) holds. A term `c * P` has the weight `|c|` times the bound on `P`,
+and `B` is the total weight of the terms that can be dropped. Terms are dropped from the smallest weight up, while
+their total fits the budget. Terms with an unknown or infinite weight are always kept, such as those containing an atom
+without a bound.
 
 # Example
 ```julia
