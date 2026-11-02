@@ -193,7 +193,7 @@ const group_keys_sum = sum(randn() * GroupKet(1, rand(1:300)) * GroupKet(2, rand
     sum(randn() * GroupKet(3, n) for n in 1:100)
 SUITE["vector"]["norm_group_keys"] = @benchmarkable norm($group_keys_sum)
 
-# Terms of a keyed ket times an unkeyed one, with few distinct keys, so that most pairs are contracted
+# Terms of a keyed ket times an unkeyed one, with few distinct keys, so that each term contracts with many others
 NonCommutativeProducts.mul_effect(::KeyedKet, ::Ket) = nothing
 NonCommutativeProducts.mul_effect(::Ket, ::KeyedKet) = nothing
 const mixed_keyed_unkeyed = sum(randn() * KeyedKet(n % 8) * Ket(n) for n in 1:1024)

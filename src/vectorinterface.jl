@@ -92,21 +92,17 @@ _collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
 """
     contraction_key(atom)
 
-A key that lets `inner(x, y)` skip pairs of terms that are orthogonal, or `nothing` (the default). Keys are compared
-with `isequal` and hashed with `hash`. The *keyed run* of a term is the keys of its leading factors, up to the first
-factor without a key. `inner` treats a term of `x` and a term of `y` as orthogonal, and skips them without calling
-`mul_effect`, when their keyed runs disagree: at the first position where both have keys and the keys differ, all
-earlier keys are equal. So keys define orthogonality, and `inner` equals sorting `x' * y` when such pairs sort to
-zero, as for orthonormal kets. Atoms of different subsystems whose `mul_effect` swaps them can have different keys
-too, since such pairs are skipped. For all atoms `k`, `l` with keys and every atom `u`, it is required that
-- `mul_effect(k', l)` is a `Number` when the keys of `k` and `l` are equal, and
-- `mul_effect(u, k')` is `nothing`.
+Return a key that lets `inner(x, y)` skip orthogonal pairs of terms, or `nothing` (the default).
 
-Kets of an orthonormal basis can have keys when nothing acts on a bra from the left. Bras can't, since
-`⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero:
-```julia
-NonCommutativeProducts.contraction_key(k::Ket) = k.bra ? nothing : k.n
-```
+`inner` treats two terms as orthogonal if their keys differ at any position before the first
+factor without a key. Terms must list subsystems in the same order: `|a⟩|b⟩` and `|b⟩|a⟩`
+count as orthogonal.
+
+For atoms `k`, `l` with keys and any atom `u`:
+- `mul_effect(k', l)` must be a `Number` when the keys are equal.
+- `mul_effect(u, k')` must be `nothing`.
+
+Kets of an orthonormal basis can have keys; bras can't. See [Fast inner products](@ref).
 """
 contraction_key(atom) = nothing
 # The bras of the terms of x, formed for the terms in the mask `needed` (all of them if it is `nothing`), with the
@@ -121,17 +117,15 @@ function _bras(xterms, needed)
     return bras
 end
 _key_at(t, d) = d > length(t.factors) ? nothing : contraction_key(t.factors[d])
-# An index over the keyed runs of the kets: a tree whose node n (node 1 is the root) is reached by the keys keys[m] of
-# the nodes m on its path. The kets whose runs end at node n are order[ending[n]], and those whose runs pass through it
-# are order[below[n]]. The root and the nodes with more than one ket below are split into children: the first child
-# of node n with a key of hash h is children[(n, h)], and next_sibling chains the children whose keys share a hash.
+# An index over the keyed runs of the kets (the keys of their leading factors, up to the first factor without a key):
+# a tree with root node 1, where only the root and the nodes with more than one ket below have children
 struct _KeyIndex{K}
-    children::Dict{Tuple{Int,UInt},Int}
-    next_sibling::Vector{Int}
-    keys::Vector{K}
-    order::Vector{Int}
-    ending::Vector{UnitRange{Int}}
-    below::Vector{UnitRange{Int}}
+    children::Dict{Tuple{Int,UInt},Int} # (node, hash of key) => first child with that hash
+    next_sibling::Vector{Int} # next child whose key has the same hash, or 0
+    keys::Vector{K} # key that leads to each node
+    order::Vector{Int} # ket indices, grouped by node
+    ending::Vector{UnitRange{Int}} # order[ending[n]]: kets whose runs end at split node n
+    below::Vector{UnitRange{Int}} # order[below[n]]: kets whose runs pass through node n
 end
 _issplit(idx::_KeyIndex, node) = node == 1 || length(idx.below[node]) > 1
 # Splits the nodes by the keys at their depth, with an explicit stack since a path is as long as a product
@@ -243,34 +237,20 @@ function _contracting_pairs(xterms, yterms)
     for (w, t) in enumerate(walking)
         _push_segments!(segments, idx, w, t.factors)
     end
-    if index_x
-        return ((idx.order[k], j, d) for (j, r, d) in segments for k in r), _covered(idx.order, segments)
-    end
     needed = falses(length(xterms))
+    if index_x
+        for (_, r, _) in segments, k in r
+            needed[idx.order[k]] = true
+        end
+        return ((idx.order[k], j, d) for (j, r, d) in segments for k in r), needed
+    end
     for (i, _, _) in segments
         needed[i] = true
     end
     return ((i, idx.order[k], d) for (i, r, d) in segments for k in r), needed
 end
-# A mask of the terms order[k] for the k in any range of the segments
-function _covered(order, segments)
-    starts_minus_ends = zeros(Int, length(order) + 1)
-    for (_, r, _) in segments
-        if !isempty(r)
-            starts_minus_ends[first(r)] += 1
-            starts_minus_ends[last(r)+1] -= 1
-        end
-    end
-    covered = falses(length(order))
-    nopen = 0
-    for k in eachindex(order)
-        nopen += starts_minus_ends[k]
-        covered[order[k]] = nopen > 0
-    end
-    return covered
-end
 # Walks the index along the keyed run of `factors`, pairing term w with the kets whose runs end on the way, and with
-# all kets below the node where its run ends or the index stops splitting. Keys are compared with isequal on the way.
+# all kets below the node where its run ends or the index stops splitting.
 function _push_segments!(segments, idx, w, factors)
     node, d = 1, 0
     while true
@@ -289,7 +269,7 @@ end
 # and ket, of which the first d keys are known to be equal. The rest of the product is formed in `buffer`.
 function _inner_pair!!(acc, xfactors, bra, ket, d, buffer)
     bf, kf = bra.factors, ket.factors
-    # an optimization: factors whose type has no keys contract nothing, which is known at compile time
+    # Known at compile time: factors whose type has no keys contract nothing
     Base.promote_op(contraction_key, eltype(kf)) === Nothing && return _mul_term_pair!!(acc, bra, ket, buffer)
     nb = length(bf)
     effect = true
