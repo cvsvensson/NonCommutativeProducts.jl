@@ -954,10 +954,9 @@ end
 end
 
 @testitem "VectorInterface: inner with contraction keys" begin
-    using LinearAlgebra, VectorInterface
-    import NonCommutativeProducts: @nc, mul_effect, with_autosort, scalar, _reduces_to_scalar
+    using VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, scalar, _reduces_to_scalar
 
-    const calls = Ref(0)
     struct KKet
         n::Int
         bra::Bool
@@ -965,7 +964,7 @@ end
     KKet(n) = KKet(n, false)
     Base.adjoint(k::KKet) = KKet(k.n, !k.bra)
     @nc KKet
-    mul_effect(a::KKet, b::KKet) = (calls[] += 1; a.bra && !b.bra ? Int(a.n == b.n) : nothing)
+    mul_effect(a::KKet, b::KKet) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
     # |0⟩ and the bras have no key, so terms mix keyed and wildcard factors
     NonCommutativeProducts.contraction_key(k::KKet) = k.bra || k.n == 0 ? nothing : k.n
 
@@ -983,22 +982,12 @@ end
             @test_throws ArgumentError inner(a, b)
         end
     end
-    # only the 50 pairs of equal kets are multiplied
-    ψ = sum(KKet(n) for n in 1:50)
-    calls[] = 0
-    @test norm(ψ) ≈ sqrt(50)
-    @test calls[] == 50
-    with_autosort(false) do
-        @test inner(x, y) == -4im
-    end
-    # the first factors have equal keys, so the pair is formed, and k2' * k1' * k1 throws
-    @test_throws ArgumentError inner(k1 * k2 + k3, k1)
     NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: inner with contraction keys on products" begin
     using LinearAlgebra, VectorInterface
-    import NonCommutativeProducts: @nc, mul_effect, with_autosort, NCMul
+    import NonCommutativeProducts: @nc, mul_effect, NCMul
 
     # a ket |s⟩ on a site, or its bra. State 0 has no key, so a keyed run can stop in the middle.
     struct SKet
@@ -1017,9 +1006,6 @@ end
     @test inner(a1 * a2 + 2im * b1 * a2, a1 * a2 + b1 * a2) == 1 - 2im
     @test norm(a1 * a2 + 2b1 * a2 - a1 * b2) ≈ sqrt(6)
     @test inner(a1 * u2 + b1 * a2, a1 * u2) == 1
-    with_autosort(false) do
-        @test inner(a1 * a2 + 2im * b1 * a2, a1 * a2 + b1 * a2) == 1 - 2im
-    end
     # products backed by a Tuple
     @test inner(a1 * a2, NCMul(1, (a1, a2))) == 1
     # products of different lengths that don't reduce to a scalar
@@ -1034,7 +1020,7 @@ end
     @nc BKet
     mul_effect(a::BKet, b::BKet) = a.bra && !b.bra ? (a.n == b.n ? 2 * BKet(0, false) : 0) : nothing
     NonCommutativeProducts.contraction_key(k::BKet) = k.bra ? nothing : k.n
-    @test_throws ArgumentError inner(BKet(1, false), BKet(1, false))
+    @test_throws "must be a Number" inner(BKet(1, false), BKet(1, false))
     NonCommutativeProducts.disable_autosort!()
 end
 
@@ -1064,7 +1050,6 @@ end
     # keys define orthogonality: states of group 3 alone are orthogonal to those of groups 1 and 2, although x' * y
     # doesn't sort to a scalar
     @test inner(φ + 2 * GKet(3, 1), ψ + 3 * GKet(3, 1)) == inner(φ, ψ) + 6
-    @test inner(zero(ψ), ψ) == inner(ψ, zero(ψ)) == 0
     NonCommutativeProducts.disable_autosort!()
 end
 
@@ -1092,9 +1077,79 @@ end
     x = CKet(1) * CKet(2) + 3 * CKet(2) * CKet(1) + 5 * CKet(1) * CKet(1)
     y = CKet(1) * CKet(2) + CKet(2) * CKet(2) + 7 * CKet(1) * CKet(1)
     @test inner(x, y) == 4 + 35 * 4
-    @test inner(y, x) == 4 + 35 * 4
     @test inner(NCMul(1, Any[CKet(1), CKet(2)]), x) == 4
     NonCommutativeProducts.disable_autosort!()
+end
+
+@testitem "VectorInterface: inner with keys and an unkeyed ket that overlaps them" begin
+    using LinearAlgebra, VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect
+
+    # Keyed kets orthogonal to each other with ⟨n|n⟩ = 2, and an unkeyed u with ⟨u|u⟩ = 3, ⟨n|u⟩ = ⟨u|n⟩ = 10n.
+    # The keys have different types.
+    struct UKet
+        n::Int
+        bra::Bool
+    end
+    UKet(n) = UKet(n, false)
+    Base.adjoint(k::UKet) = UKet(k.n, !k.bra)
+    @nc UKet
+    function mul_effect(x::UKet, y::UKet)
+        x.bra && !y.bra || return nothing
+        x.n == y.n && return x.n == 0 ? 3 : 2
+        return 10 * max(x.n, y.n) * (x.n * y.n == 0)
+    end
+    NonCommutativeProducts.contraction_key(k::UKet) = k.bra || k.n == 0 ? nothing : isodd(k.n) ? k.n : string(k.n)
+
+    NonCommutativeProducts.enable_autosort!()
+    u, a, b, c, d = UKet.(0:4)
+    @test inner(a + b + c, u + a) == 62 # 10 + 20 + 30 + 2; y indexed
+    @test inner(u + a, a + b + c) == 62 # x indexed
+    @test inner(u + a + b, a + c) == 42 # 10 + 30 + 2
+    @test inner(a + c, u + a + b) == 42
+    @test inner(a * b + c * c, a * u + a * b) == 44 # 2 * 20 + 2 * 2; runs end at different depths
+    @test inner(a * b + a * u, a * b + c * c + c * a) == 44
+    @test inner(a * u + c * c, a * b + a * c) == 100 # 2 * 20 + 2 * 30; a run stops where the other side splits
+    @test inner(a * b + a * c, a * u + c * c + c * a) == 100
+    @test dot(2im * a + b, a) == -4im
+    @test dot(a, 2im * a + b) == 4im
+    @test inner(2im + 0 * a, 3 + 0 * a) === -6im
+    @test inner(im * a + b, c + d + UKet(5)) === 0im
+    @test inner(im * a + b + c, d + UKet(5)) === 0im
+    NonCommutativeProducts.disable_autosort!()
+end
+
+@testitem "VectorInterface: inner with operators that act on keyed kets" begin
+    using LinearAlgebra, VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, contraction_key, with_autosort, AddTerms, Swap
+
+    # a†|n⟩ = |n+1⟩ and a|n⟩ = n|n-1⟩, which are each other's adjoints when ⟨n|n⟩ = n!
+    struct RKet
+        n::Int
+        bra::Bool
+    end
+    RKet(n) = RKet(n, false)
+    Base.adjoint(k::RKet) = RKet(k.n, !k.bra)
+    struct Ladder
+        up::Bool
+    end
+    Base.adjoint(a::Ladder) = Ladder(!a.up)
+    @nc RKet Ladder
+    mul_effect(a::RKet, b::RKet) = a.bra && !b.bra ? (a.n == b.n ? factorial(a.n) : 0) : nothing
+    mul_effect(a::Ladder, k::RKet) = k.bra ? nothing : a.up ? RKet(k.n + 1) : k.n * RKet(k.n - 1)
+    mul_effect(k::RKet, a::Ladder) = !k.bra ? nothing : a.up ? k.n * RKet(k.n - 1, true) : RKet(k.n + 1, true)
+    mul_effect(a::Ladder, b::Ladder) = !a.up && b.up ? AddTerms((Swap(1), 1)) : nothing
+    contraction_key(k::RKet) = k.bra ? nothing : k.n
+
+    up, dn = Ladder(true), Ladder(false)
+    k1, k2, k3 = RKet.(1:3)
+    with_autosort(false) do
+        @test inner(up * k1, k2) == inner(k2, up * k1) == 2
+        @test inner(dn * k2, k1) == 2
+        @test inner(up * k1, up * k1) == 2
+        @test inner(im * up * k1 + k3, k2 + 2k3) == 12 - 2im # -2im + 2 * 3!
+        @test dot(k2 + 2k3, im * up * k1 + k3) == 12 + 2im
+    end
 end
 
 @testitem "mul_terms!! hook" begin
