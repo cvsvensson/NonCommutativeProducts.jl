@@ -69,10 +69,60 @@ julia> split_by_group(x)
 A group can also encode a kind of atom. For example, a downstream package can use `(space_id, :ket)` and
 `(space_id, :op)` as groups, to keep the kets and the operators of the same subsystem in separate segments.
 
+## Commuting groups
+
+Sorting a product of several groups calls `mul_effect` on every pair of neighbouring factors, also to move factors of
+one group past those of another. If the factors of two groups commute, or commute up to a sign, declare it with
+[`group_commutation`](@ref NonCommutativeProducts.group_commutation), which returns `:commute`, `:graded` or `nothing`
+(unknown, the default). For `:graded` groups, two atoms anticommute if both are odd, as given by
+[`atom_parity`](@ref NonCommutativeProducts.atom_parity). Sorting then first moves the factors to the order of their
+groups, with the sign of the odd atoms that cross, and sorts each group on its own, with compiled `mul_effect` calls
+when the factors of the group have the same type:
+```jldoctest groups
+julia> import NonCommutativeProducts as NCP
+
+julia> struct Up
+           n::Int
+       end
+
+julia> struct Down
+           n::Int
+       end
+
+julia> NCP.@nc Up Down
+
+julia> NCP.mul_effect(a::T, b::T) where {T<:Union{Up,Down}} = a.n == b.n ? 0 : a.n > b.n ? NCP.Swap(-1) : nothing
+
+julia> NCP.mul_effect(::Up, ::Down) = nothing
+
+julia> NCP.mul_effect(::Down, ::Up) = NCP.Swap(-1)
+
+julia> NCP.group_commutation(::Type{Up}, ::Type{Down}) = :graded;
+
+julia> NCP.group_commutation(::Type{Down}, ::Type{Up}) = :graded;
+
+julia> NCP.atom_parity(::Union{Up,Down}) = true;
+
+julia> sort(NCP.NCMul(1, Any[Down(1), Up(2), Down(2), Up(1)]))
+Up(1)*Up(2)*Down(1)*Down(2)
+```
+The declaration is a promise about `mul_effect`, which must still be defined between the groups: it must order the
+factors of the two groups by group alone, with `Swap(1)`, or `Swap(-1)` for two odd atoms of graded groups, as above
+and as [`@commutative`](@ref NonCommutativeProducts.@commutative) does. The order of the groups is taken from
+`mul_effect`, or from [`group_isless`](@ref NonCommutativeProducts.group_isless) if it is defined, which must agree with
+it. Sorting then gives exactly the same result as without the declaration, including the order of the factors, and the
+declaration only makes it faster. The hooks are opt-in: without them, nothing changes.
+
+The group order is used for products whose factors have an abstract element type, have at least 16 factors, and whose
+groups all have a declared commutation with each other. Other products, e.g. those with a pair of groups whose
+commutation is `nothing`, are sorted by `mul_effect` alone. The results of `group_commutation` and `group_isless` for
+groups that are types are cached until methods are next defined, so they must depend only on their arguments.
+
 ## Performance of mixed products
 
 Products whose factors have a concrete type, such as a single atom type, sort fastest, since each `mul_effect` call
 is resolved when the sorting code is compiled. The same holds for a `Union` of two concrete types. Factors of several
 types are otherwise stored in a vector with an abstract element type, e.g. `Vector{Any}` or a vector of a common
 abstract supertype of the atoms, and each `mul_effect` is then found at runtime. To work on the factors of one type at
-a time with compiled code, use [`foreach_segment`](@ref NonCommutativeProducts.foreach_segment).
+a time with compiled code, use [`foreach_segment`](@ref NonCommutativeProducts.foreach_segment). To sort long products of
+groups that commute faster, declare their commutation, see [Commuting groups](@ref).

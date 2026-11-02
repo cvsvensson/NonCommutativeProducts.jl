@@ -16,7 +16,7 @@ using PrecompileTools: @setup_workload, @compile_workload
 
 public NCMul, NCAdd, @nc, @commutative, mul_effect, enable_autosort!, disable_autosort!, autosort, with_autosort,
     ncmap, ncmapreduce, scalar, add!!, terms, nterms, factors, coefficient, atom_group, foreach_segment, split_by_group,
-    segment_ranges
+    segment_ranges, group_commutation, group_isless, atom_parity
 
 include("mul.jl")
 include("add.jl")
@@ -27,6 +27,7 @@ include("sorting.jl")
 include("grading.jl")
 include("traversal.jl")
 include("segments.jl")
+include("group_sorting.jl")
 include("vectorinterface.jl")
 include("precompile.jl")
 

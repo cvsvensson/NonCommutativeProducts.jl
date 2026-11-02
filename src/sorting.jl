@@ -110,8 +110,9 @@ end
 _fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V, x) : x
 
 # Sorts `coeff * factors` and adds the result to `acc`, using `factors` as scratch space. Callers disable autosort, so
-# that the products that mul_effect forms are not sorted recursively.
-sort_into!!(acc, coeff, factors) = iszero(coeff) ? acc : bubble!!(acc, coeff, factors, nothing, 1)
+# that the products that mul_effect forms are not sorted recursively. Factors are first ordered by group when the
+# group hooks allow it (see group_sorting.jl).
+sort_into!!(acc, coeff, factors) = iszero(coeff) ? acc : _sort_by_groups!!(acc, coeff, factors)
 
 # Applies mul_effect to neighbouring factors from position `start` until none applies, and adds the sorted product to
 # `acc`. Effects that split the product (AddTerms, NCAdd) push the other products onto `pending`, a stack that the
