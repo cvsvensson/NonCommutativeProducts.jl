@@ -103,20 +103,21 @@ julia> NCP.group_commutation(::Type{Down}, ::Type{Up}) = :graded;
 
 julia> NCP.atom_parity(::Union{Up,Down}) = true;
 
-julia> sort(NCP.NCMul(1, Any[Down(1), Up(2), Down(2), Up(1)]))
-Up(1)*Up(2)*Down(1)*Down(2)
+julia> sort(NCP.NCMul(1, Any[T(n) for n in 8:-1:1 for T in (Down, Up)]))
+Up(1)*Up(2)*Up(3)*Up(4)*Up(5)*Up(6)*Up(7)*Up(8)*Down(1)*Down(2)*Down(3)*Down(4)*Down(5)*Down(6)*Down(7)*Down(8)
 ```
-The declaration is a promise about `mul_effect`, which must still be defined between the groups: it must order the
-factors of the two groups by group alone, with `Swap(1)`, or `Swap(-1)` for two odd atoms of graded groups, as above
-and as [`@commutative`](@ref NonCommutativeProducts.@commutative) does. The order of the groups is taken from
-`mul_effect`, or from [`group_isless`](@ref NonCommutativeProducts.group_isless) if it is defined, which must agree with
-it. Sorting then gives exactly the same result as without the declaration, including the order of the factors, and the
-declaration only makes it faster. The hooks are opt-in: without them, nothing changes.
+The declaration is a promise that `mul_effect` orders the two groups by group alone, with `Swap(1)`, or `Swap(-1)`
+for two odd atoms of graded groups, as above and as [`@commutative`](@ref NonCommutativeProducts.@commutative) does.
+The order of the groups is taken from `mul_effect` on the first atom of each group in the product. These checks throw
+an `ArgumentError`: `group_commutation` returns `:commute`, `:graded` or `nothing`, and the same for both orders of the
+groups; `mul_effect` on the first atoms of two groups is `nothing` or the declared swap; and the order of the groups is
+transitive. That all other atoms of the groups, in both orders, behave the same, and that `atom_parity` is right,
+remains your responsibility. Sorting then gives the same result as without the declaration, including the order of
+the factors, provided the sorted form that `mul_effect` gives is unique, and the declaration only makes it faster.
 
-The group order is used for products whose factors have an abstract element type, have at least 16 factors, and whose
-groups all have a declared commutation with each other. Other products, e.g. those with a pair of groups whose
-commutation is `nothing`, are sorted by `mul_effect` alone. The results of `group_commutation` and `group_isless` for
-groups that are types are cached until methods are next defined, so they must depend only on their arguments.
+The declarations are used for long products (16 factors or more, as above) whose factors have the element type `Any`
+or an abstract type that is not a `Union`, and whose groups all have a declared commutation with each other. Other
+products, e.g. those with a pair of groups whose commutation is `nothing`, are sorted by `mul_effect` alone.
 
 ## Performance of mixed products
 

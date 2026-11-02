@@ -43,7 +43,6 @@ NonCommutativeProducts.foreach_segment
 NonCommutativeProducts.split_by_group
 NonCommutativeProducts.segment_ranges
 NonCommutativeProducts.group_commutation
-NonCommutativeProducts.group_isless
 NonCommutativeProducts.atom_parity
 ```
 

@@ -7,46 +7,14 @@ without calling [`mul_effect`](@ref) on each pair of their factors:
 - `:graded`: `a*b == (-1)^(p(a)*p(b)) * b*a`, with `p` the [`atom_parity`](@ref) of an atom;
 - `nothing` (the default): unknown, and products with factors of both groups are sorted by `mul_effect` alone.
 
-It must be symmetric, and is called with the groups in either order. A declaration is a promise about `mul_effect`,
-which must still be defined for these pairs: for `a` in `g1` and `b` in `g2`, either `mul_effect(a, b)` is `nothing`
-for all such pairs, or it is the swap (`Swap(1)`, or `Swap(-1)` for two odd atoms of graded groups) for all of them.
-So the order of the two groups is the same for all their atoms, as with [`@commutative`](@ref). Sorting then gives
-the same result as without the declaration, including the order of the factors, and only gets faster; see
-[`group_isless`](@ref) for the order of groups.
-
-The declarations are used to sort products whose factors have an abstract element type, have at least 16 factors, and
-whose groups all have a declared commutation with each other; other products are sorted by `mul_effect` alone. The
-results for groups that are types are cached until methods are next defined, so they must depend only on the groups.
-
-# Example
-```julia
-# Fermions of two species anticommute, and both commute with bosons
-NonCommutativeProducts.group_commutation(::Type{<:Union{FermionA,FermionB}}, ::Type{<:Union{FermionA,FermionB}}) = :graded
-NonCommutativeProducts.group_commutation(::Type{Boson}, ::Type{<:Union{FermionA,FermionB}}) = :commute
-NonCommutativeProducts.group_commutation(::Type{<:Union{FermionA,FermionB}}, ::Type{Boson}) = :commute
-NonCommutativeProducts.atom_parity(::Union{FermionA,FermionB}) = true
-```
+A declaration is a promise that `mul_effect` orders the two groups by group alone: for all `a` in `g1` and `b` in
+`g2`, either `mul_effect(a, b)` is `nothing` and `mul_effect(b, a)` is the swap, or the other way around, where the
+swap is `Swap(-1)` for two odd atoms of `:graded` groups and `Swap(1)` otherwise, as with [`@commutative`](@ref). The
+order of the groups is taken from `mul_effect` on one atom of each, and the groups of a product must then be in a
+strict total order. Sorting gives the same result as without the declaration, including the order of the factors, if
+`mul_effect` gives unique sorted forms, and only gets faster. See [Commuting groups](@ref) for what is checked.
 """
 group_commutation(g1, g2) = nothing
-
-"""
-    group_isless(g1, g2)
-
-Whether the factors of the group `g1` come before those of the group `g2` in a sorted product, for groups whose
-[`group_commutation`](@ref) is not `nothing`. Returns `true`, `false`, or `nothing` (the default) to take the order
-from `mul_effect`: `g1` comes first if `mul_effect(a, b)` is `nothing` for an atom `a` of `g1` and an atom `b` of `g2`.
-
-Define it to avoid these calls. It must give the same order as `mul_effect`, which by the promise of
-`group_commutation` depends only on the groups, so the default never reorders products differently from `mul_effect`.
-It must be a strict total order on the groups that occur in one product.
-
-# Example
-```julia
-NonCommutativeProducts.group_isless(::Type{FermionA}, ::Type{FermionB}) = true
-NonCommutativeProducts.group_isless(::Type{FermionB}, ::Type{FermionA}) = false
-```
-"""
-group_isless(g1, g2) = nothing
 
 """
     atom_parity(atom)
@@ -59,42 +27,43 @@ the charge of fermions it is `isodd(grade(atom))`.
 atom_parity(atom) = throw(ArgumentError("atom_parity is not defined for $(typeof(atom)), whose group is declared \
     `:graded` by group_commutation; define `NonCommutativeProducts.atom_parity(::$(typeof(atom)))`"))
 
-# For factors of type Any, the hooks are called behind an inference barrier, as mul_effect is (see _mul_effect): the
-# default methods would otherwise be inlined into the precompiled sorting code, and downstream methods would
-# invalidate it
+# The hooks are called behind an inference barrier, as mul_effect is (see _mul_effect), so that downstream methods
+# don't invalidate the precompiled sorting code
 _atom_group(::Vector{Any}, x) = Base.inferencebarrier(atom_group)(x)
 _atom_group(factors, x) = atom_group(x)
-_group_commutation(g1, g2) = _check_commutation(Base.inferencebarrier(group_commutation)(g1, g2), g1, g2)
-_group_isless(g1, g2) = Base.inferencebarrier(group_isless)(g1, g2)
 _atom_parity(::Vector{Any}, x) = Base.inferencebarrier(atom_parity)(x)::Bool
 _atom_parity(factors, x) = atom_parity(x)::Bool
-function _check_commutation(c, g1, g2)
-    (isnothing(c) || c === :commute || c === :graded) && return c
-    throw(ArgumentError("group_commutation($(repr(g1)), $(repr(g2))) returned $(repr(c)), but it must return \
-        :commute, :graded or nothing"))
+function _group_commutation(g1, g2)
+    c = Base.inferencebarrier(group_commutation)(g1, g2)
+    (isnothing(c) || c === :commute || c === :graded) || throw(ArgumentError("group_commutation($(repr(g1)), \
+        $(repr(g2))) returned $(repr(c)), but it must return :commute, :graded or nothing"))
+    c2 = Base.inferencebarrier(group_commutation)(g2, g1)
+    c2 === c || throw(ArgumentError("group_commutation is not symmetric: it returned $(repr(c)) for \
+        ($(repr(g1)), $(repr(g2))) but $(repr(c2)) for ($(repr(g2)), $(repr(g1))); define it for both orders"))
+    return c
 end
 
-# Sorts `coeff * factors` into `acc` as bubble!! does, using `factors` as scratch space, with the same result. When the
-# group hooks allow it, the factors are first moved to the order of their groups. Each group is then sorted in place,
-# on a copy with a concrete element type when its factors share one, as long as its effects are swaps. From the first
-# other effect on, the product is sorted by bubble!!, which then finds the factors before that effect sorted.
+# Sorts `coeff * factors` into `acc` as bubble!! does, using `factors` as scratch space, with the same result. When all
+# groups of the factors have a declared commutation, the factors are first moved to the order of their groups, keeping
+# the order within each group. Each group is then sorted in place, on a copy with a concrete element type when its
+# factors share one, as long as its effects are swaps. From the first other effect on, bubble!! sorts the product.
 #
-# Only products of at least `_group_sort_min_length` factors with an abstract element type take this path: for a
-# concrete one, mul_effect is already resolved at compile time, and for fewer factors, finding the groups and their
-# order takes about as long as it saves (with three groups of fermions, sorting 24 factors is about 6 times faster,
-# while products of 12 factors whose groups give AddTerms are slower).
+# Only factors of type Any or of an abstract type that is not a Union take this path: for others, mul_effect is resolved
+# at compile time. Nor do products shorter than `_group_sort_min_length`: finding their groups and their order takes
+# about as long as it saves (for three groups of fermions and spins, it is 4 times slower for 8 factors, about as fast
+# for 12 to 16, and 3 times faster for 24).
 const _group_sort_min_length = 16
 _sort_by_groups!!(acc, coeff, factors) = bubble!!(acc, coeff, factors, nothing, 1)
 function _sort_by_groups!!(acc, coeff, factors::Vector{T}) where {T}
-    (isconcretetype(T) || length(factors) < _group_sort_min_length) && return bubble!!(acc, coeff, factors, nothing, 1)
-    _first_pair_commutes(factors) || return bubble!!(acc, coeff, factors, nothing, 1)
+    (T isa Union || isconcretetype(T) || length(factors) < _group_sort_min_length) &&
+        return bubble!!(acc, coeff, factors, nothing, 1)
+    return _group_sort!!(acc, coeff, factors)
+end
+function _group_sort!!(acc, coeff, factors)
     plan = _group_plan(factors)
     isnothing(plan) && return bubble!!(acc, coeff, factors, nothing, 1)
-    groups, ids, rank, order, graded = plan
-    # A single group: sort a copy with a concrete element type, behind a function barrier
-    length(groups) == 1 && return bubble!!(acc, coeff, _group_segment(factors, eachindex(factors), factors[1]), nothing, 1)
-    _crossing_sign(factors, ids, rank, graded) && (coeff = -coeff)
-    sorted, ranges = _permute_by_group(factors, ids, order)
+    _crossing_sign(factors, plan) && (coeff = -coeff)
+    sorted, ranges = _permute_by_group(factors, plan)
     start = 0 # where bubble!! continues, or 0 if all groups are sorted
     for r in ranges
         length(r) == 1 && continue
@@ -107,30 +76,84 @@ function _sort_by_groups!!(acc, coeff, factors::Vector{T}) where {T}
     return bubble!!(acc, coeff, sorted, nothing, start)
 end
 
-# Whether the first two groups of `factors` have a declared commutation, or there is one group. A check without
-# allocations, so that products of undeclared groups fall back to bubble!! quickly.
-function _first_pair_commutes(factors)
-    g = _atom_group(factors, factors[1])
-    for i in 2:length(factors)
-        h = _atom_group(factors, factors[i])
-        _same_group(g, h) || return !isnothing(first(_group_hooks(g, h)))
+# The groups of `factors`, numbered by first appearance: the group of each factor (`ids`), the groups in sorted order
+# (`order`), and the pairs (g, h) of graded groups where g comes after h (`flips`). `nothing` if there is one group, or
+# a pair of groups with unknown commutation. The order of each pair of groups is found by mul_effect on their first
+# atoms, which is checked against the declared commutation.
+function _group_plan(factors)
+    groups, reps = Any[], Int[] # the groups, and the index of the first factor of each
+    nbefore = Int[] # the number of groups that come before each group
+    flips = Tuple{Int,Int}[]
+    ids = Vector{Int}(undef, length(factors))
+    current = 0
+    for (i, x) in enumerate(factors)
+        g = _atom_group(factors, x)
+        if current == 0 || !_same_group(g, groups[current])
+            current = something(findfirst(h -> _same_group(h, g), groups), 0)
+            if current == 0
+                push!(nbefore, 0)
+                for (j, h) in enumerate(groups)
+                    c = _group_commutation(h, g)
+                    isnothing(c) && return nothing
+                    swapped = _swaps_groups(factors, factors[reps[j]], x, c, h, g)
+                    nbefore[swapped ? j : end] += 1
+                    c === :graded && push!(flips, swapped ? (j, length(groups) + 1) : (length(groups) + 1, j))
+                end
+                push!(groups, g)
+                push!(reps, i)
+                current = length(groups)
+            end
+        end
+        ids[i] = current
     end
-    return true
+    length(groups) == 1 && return nothing
+    # The order is transitive if and only if the groups have distinct numbers of groups before them
+    allunique(nbefore) || throw(ArgumentError("mul_effect does not order the groups $(join(repr.(groups), ", ")) \
+        consistently: define it so that the order of these groups is transitive"))
+    return (; ids, order = invperm(nbefore .+ 1), flips)
+end
+# isequal(g, h), which for two types is a slow type comparison. DataTypes are unique, so they are equal only if they
+# are identical.
+@inline _same_group(g, h) = g === h || (!(g isa DataType && h isa DataType) && isequal(g, h))
+# Whether the group g of `a` comes after the group h of `b`, for a before b, from mul_effect(a, b), which must be
+# `nothing` or the swap of commutation `c`
+function _swaps_groups(factors, a, b, c, g, h)
+    effect = _mul_effect(factors, a, b)
+    isnothing(effect) && return false
+    λ = c === :graded && _atom_parity(factors, a) && _atom_parity(factors, b) ? -1 : 1
+    effect isa Swap && effect.λ == λ && return true
+    throw(ArgumentError("group_commutation($(repr(g)), $(repr(h))) is $(repr(c)), so mul_effect($(repr(a)), \
+        $(repr(b))) must be nothing or Swap($λ), but it is $(repr(effect)); define mul_effect to order these groups, \
+        or don't declare their commutation"))
 end
 
-# The factors in the order of `order`, the group indices from first to last, keeping the order within each group, and
-# the range of each group in the result
-function _permute_by_group(factors, ids, order)
-    k = length(order)
-    counts = zeros(Int, k)
-    foreach(id -> counts[id] += 1, ids)
-    starts = Vector{Int}(undef, k) # the next position of each group
-    pos = 1
-    for id in order
-        starts[id] = pos
-        pos += counts[id]
+# Whether moving the factors to the order of their groups crosses an odd number of pairs of odd atoms in graded groups
+function _crossing_sign(factors, (; ids, flips))
+    isempty(flips) && return false
+    odd = [any(p -> id in p, flips) && _atom_parity(factors, x) for (x, id) in zip(factors, ids)]
+    crossings = 0
+    for (g, h) in flips # count the odd atoms of g before odd atoms of h
+        seen = 0
+        for (o, id) in zip(odd, ids)
+            o || continue
+            id == g && (seen += 1)
+            id == h && (crossings += seen)
+        end
     end
-    ranges = [starts[id]:starts[id]+counts[id]-1 for id in order]
+    return isodd(crossings)
+end
+
+# The factors in the order of their groups, keeping the order within each group, and the range of each group in it
+function _permute_by_group(factors, (; ids, order))
+    counts = zeros(Int, length(order))
+    foreach(id -> counts[id] += 1, ids)
+    starts = similar(counts) # the next position of each group
+    pos = 1
+    for g in order
+        starts[g] = pos
+        pos += counts[g]
+    end
+    ranges = [starts[g]:starts[g]+counts[g]-1 for g in order]
     sorted = similar(factors)
     for (x, id) in zip(factors, ids)
         sorted[starts[id]] = x
@@ -139,132 +162,11 @@ function _permute_by_group(factors, ids, order)
     return sorted, ranges
 end
 
-# The distinct groups of `factors`, the group index of each factor, the rank of each group in the sorted order, the
-# groups in that order, and the pairs of groups that are graded. `nothing` if some pair of groups has unknown commutation.
-function _group_plan(factors)
-    groups = Any[]
-    ids = Vector{Int}(undef, length(factors))
-    reps = Int[] # the index of the first factor of each group
-    graded = Tuple{Int,Int}[]
-    current = 0
-    for (i, x) in enumerate(factors)
-        g = _atom_group(factors, x)
-        if current == 0 || !_same_group(g, groups[current])
-            k = _find_group(groups, g)
-            if k == 0
-                for (j, h) in enumerate(groups)
-                    c = first(_group_hooks(h, g))
-                    isnothing(c) && return nothing
-                    c === :graded && push!(graded, (j, length(groups) + 1))
-                end
-                push!(groups, g)
-                push!(reps, i)
-                k = length(groups)
-            end
-            current = k
-        end
-        ids[i] = current
-    end
-    # Insertion sort of the few groups by the order of group_isless or mul_effect
-    order = collect(1:length(groups))
-    for m in 2:length(order)
-        for n in m:-1:2
-            a, b = order[n-1], order[n]
-            _group_before(groups[b], groups[a], factors[reps[b]], factors[reps[a]], factors) || break
-            order[n-1], order[n] = b, a
-        end
-    end
-    return groups, ids, invperm(order), order, graded
-end
-function _find_group(groups, g)
-    for (k, h) in enumerate(groups)
-        _same_group(h, g) && return k
-    end
-    return 0
-end
-# isequal(g, h), which for two types is a slow type comparison. DataTypes are unique, so they are equal only if they
-# are identical.
-@inline _same_group(g, h) = g === h || (!(g isa DataType && h isa DataType) && isequal(g, h))
-# Whether the group g1 of the atom `a` comes before the group g2 of the atom `b`
-function _group_before(g1, g2, a, b, factors)
-    before = last(_group_hooks(g1, g2))
-    isnothing(before) || return before::Bool
-    return isnothing(_mul_effect(factors, a, b))
-end
-
-# group_commutation(g1, g2) and group_isless(g1, g2). Hooks that dispatch on types are slow to call at runtime, since
-# their methods are found by subtyping, so their results for pairs of types are cached, in a short list that is
-# searched by identity: hashing types is slow too. The list is never mutated, but replaced by a longer one, so that it
-# is read without a lock. It is cleared whenever methods are defined, since the hooks may then have changed. Other
-# groups are not cached, since they can be many.
-struct _HookCache
-    world::UInt
-    entries::Vector{Tuple{DataType,DataType,Union{Nothing,Symbol},Union{Nothing,Bool}}}
-end
-mutable struct _HookCacheRef
-    @atomic cache::_HookCache
-end
-const _hook_cache = _HookCacheRef(_HookCache(typemax(UInt), []))
-const _hook_cache_lock = ReentrantLock()
-const _hook_cache_size = 256
-_call_group_hooks(g1, g2) = (_group_commutation(g1, g2), _group_isless(g1, g2)::Union{Nothing,Bool})
-# A single method, so that calls with groups of unknown type are not dispatched at runtime: dispatch on the value of a
-# type is slow
-function _group_hooks(g1, g2)
-    (g1 isa DataType && g2 isa DataType) || return _call_group_hooks(g1, g2)
-    cache = @atomic _hook_cache.cache
-    world = Base.get_world_counter()
-    if cache.world == world
-        for (h1, h2, c, before) in cache.entries
-            (h1 === g1 && h2 === g2) && return c, before
-        end
-    end
-    hooks = _call_group_hooks(g1, g2)
-    @lock _hook_cache_lock begin
-        cache = @atomic _hook_cache.cache
-        entries = cache.world == world ? cache.entries : eltype(cache.entries)[]
-        if length(entries) < _hook_cache_size
-            @atomic _hook_cache.cache = _HookCache(world, [entries; (g1, g2, hooks...)])
-        end
-    end
-    return hooks
-end
-
-# Whether moving the factors to the order of their groups crosses an odd number of pairs of odd atoms in graded groups.
-# The relative order of factors in one group is kept.
-function _crossing_sign(factors, ids, rank, graded)
-    isempty(graded) && return false
-    k = length(rank)
-    isgraded = falses(k, k)
-    for (i, j) in graded
-        isgraded[i, j] = isgraded[j, i] = true
-    end
-    hasparity = [any(@view isgraded[:, j]) for j in 1:k]
-    odd = [hasparity[ids[i]] && _atom_parity(factors, factors[i]) for i in eachindex(factors)]
-    oddcount = zeros(Int, k) # the number of odd factors so far in each group
-    negate = false
-    for i in eachindex(factors)
-        odd[i] || continue
-        g = ids[i]
-        for h in 1:k
-            rank[h] > rank[g] && isgraded[h, g] && isodd(oddcount[h]) && (negate = !negate)
-        end
-        oddcount[g] += 1
-    end
-    return negate
-end
-
-# A copy of the factors at `idxs`, with the type U of `x` as element type if they all have that type
-function _group_segment(factors, idxs, ::U) where {U}
-    all(i -> factors[i] isa U, idxs) || return factors[idxs]
-    return U[factors[i] for i in idxs]
-end
-
-# Sorts sorted[r] in place by _swap_sort!, on a copy with the type of its first factor `x` as element type if all its
+# Sorts sorted[r] in place by _swap_sort!, on a copy with the type U of its first factor as element type if all its
 # factors have that type, and returns the result of _swap_sort!. A function barrier, so that sorting is specialized on
 # the type of the factors.
-function _swap_sort_group!(sorted, r, x)
-    seg = _group_segment(sorted, r, x)
+function _swap_sort_group!(sorted, r, ::U) where {U}
+    seg = all(i -> sorted[i] isa U, r) ? U[sorted[i] for i in r] : sorted[r]
     λ, i = _swap_sort!(seg)
     copyto!(sorted, first(r), seg, 1, length(r))
     return λ, i

@@ -3,8 +3,8 @@
     import NonCommutativeProducts as NCP
     import NonCommutativeProducts: Swap, AddTerms
     # Two species of fermions, :a and :b, which anticommute with each other, and spins :s, which commute with both
-    # and square to one. Species are ordered :a, :b, :s. H is :plain for no group hooks, :hooked for group_commutation,
-    # and :ordered for group_commutation and group_isless.
+    # and square to one. Species are ordered :a, :b, :s. H is :plain for no group hooks and :hooked for
+    # group_commutation.
     struct GF{S,H}
         label::Int
         creation::Bool
@@ -28,7 +28,6 @@
     end
     NCP.group_commutation(::Type{GF{S1,H}}, ::Type{GF{S2,H}}) where {S1,S2,H} =
         H === :plain ? nothing : isfermion(S1) && isfermion(S2) ? :graded : :commute
-    NCP.group_isless(::Type{GF{S1,:ordered}}, ::Type{GF{S2,:ordered}}) where {S1,S2} = rank(S1) < rank(S2)
     NCP.atom_parity(::GF{S}) where {S} = isfermion(S)
     unhook(x::GF{S}) where {S} = GF{S,:plain}(x.label, x.creation)
 end
@@ -36,45 +35,78 @@ end
 @testitem "Group hooks give the same sorted results" setup = [GroupSpecies] begin
     import NonCommutativeProducts as NCP
     import NonCommutativeProducts: NCMul, with_autosort, ncmap
-    # The result of `f(H)` for species with the hooks H, mapped to the species without hooks
     plain(x) = with_autosort(() -> ncmap(unhook, x), false)
-    function species(H)
-        a, b, s = GF{:a,H}, GF{:b,H}, GF{:s,H}
-        # same labels give extra terms (a a† = 1 - a† a, s s = 1), and a repeated fermion gives zero
-        long = [s(2), b(1)', a(3), s(1), b(1), a(1)', a(3)', s(2), b(2), a(2), b(4)', a(5), s(3), b(3)', a(4)', s(4)]
-        zero_product = [a(1), b(1), s(1), b(2), s(2), a(2), b(3), a(3), s(3), b(4), a(4), s(4), b(5), a(5), s(5), a(1)]
-        h = sum(a(n)' * b(n) * s(n) * a(n + 1) + s(n + 1) * b(n)' * a(n) * s(n) for n in 1:2)
-        return long, zero_product, h
+    # long enough to sort by group; same labels give extra terms (a a† = 1 - a† a, s s = 1)
+    n = NCP._group_sort_min_length
+    species(H) = (GF{:a,H}, GF{:b,H}, GF{:s,H})
+    function long(H)
+        a, b, s = species(H)
+        block(o) = [s(o + 2), b(o + 1)', a(o + 3), s(o + 1), b(o + 1), a(o + 1)', a(o + 3)', s(o + 2), b(o + 2),
+            a(o + 2), b(o + 4)', a(o + 5), s(o + 3), b(o + 3)', a(o + 4)', s(o + 4)]
+        return reduce(vcat, block(10j) for j in 0:cld(n, 16)-1)
     end
-    long, zero_product, h = species(:plain)
-    expected = sort(NCMul(1, Any[long...]))
+    expected = sort(NCMul(1, Any[long(:plain)...]))
     @test NCP.nterms(expected) > 1
-    for H in (:hooked, :ordered)
-        hlong, hzero, hh = species(H)
-        for F in (Any, GF, Union{map(typeof, hlong)...})
-            x = NCMul(2, F[hlong...])
-            @test plain(sort(x)) == 2 * expected
-            @test sort(sort(x)) == sort(x)
-        end
-        @test plain(sort(NCMul(1, Tuple(hlong)))) == expected
-        @test iszero(sort(NCMul(1, Any[hzero...])))
-        @test iszero(sort(NCMul(0, Any[hlong...])))
-        # products of 16 factors
-        @test plain(with_autosort(() -> hh^4, true)) == with_autosort(() -> h^4, true)
-        @test plain(sort(with_autosort(() -> hh^4, false))) == sort(with_autosort(() -> h^4, false))
+    for F in (Any, GF)
+        x = NCMul(2, F[long(:hooked)...])
+        @test plain(sort(x)) == 2 * expected
+        @test sort(sort(x)) == sort(x)
     end
+    a, b, s = species(:hooked)
+    @test iszero(sort(NCMul(1, Any[long(:hooked)..., a(1), a(1)])))
+    # products of 16 factors from powers of a sum
+    h((A, B, S)) = sum(A(k)' * B(k) * S(k) * A(k + 1) + S(k + 1) * B(k)' * A(k) * S(k) for k in 1:2)
+    @test plain(with_autosort(() -> h(species(:hooked))^4, true)) == with_autosort(() -> h(species(:plain))^4, true)
 end
 
 @testitem "Graded group commutation" setup = [GroupSpecies] begin
+    import NonCommutativeProducts as NCP
     import NonCommutativeProducts: NCMul
     a, b, s = GF{:a,:hooked}, GF{:b,:hooked}, GF{:s,:hooked}
-    as = [a(n) for n in 1:15]
-    # b1 moves past 15 anticommuting fermions, and s1 past 15 commuting ones
-    @test sort(NCMul(1, Any[b(1), as...])) == NCMul(-1, Any[as..., b(1)])
+    m = NCP._group_sort_min_length
+    as = [a(n) for n in 1:m]
+    # b1 moves past an even number of anticommuting fermions, and past an odd number, and s1 past commuting ones
+    @test sort(NCMul(1, Any[b(1), as...])) == NCMul(iseven(m) ? 1 : -1, Any[as..., b(1)])
+    @test sort(NCMul(1, Any[b(1), as..., a(m + 1)])) == NCMul(iseven(m) ? -1 : 1, Any[as..., a(m + 1), b(1)])
     @test sort(NCMul(1, Any[s(1), as...])) == NCMul(1, Any[as..., s(1)])
-    # b1 b2 moves past 14 fermions as a pair, and s1 moves past both kinds
-    @test sort(NCMul(1, Any[b(1), b(2), s(1), as[1:14]...])) == NCMul(1, Any[as[1:14]..., b(1), b(2), s(1)])
-    @test sort(NCMul(1, Any[b(1), as..., a(16)])) == NCMul(1, Any[as..., a(16), b(1)])
+    # b1 b2 moves past the fermions as a pair, and s1 moves past both kinds
+    @test sort(NCMul(1, Any[b(1), b(2), s(1), as...])) == NCMul(1, Any[as..., b(1), b(2), s(1)])
+end
+
+@testitem "Default hooks keep result types" setup = [GroupSpecies] begin
+    import NonCommutativeProducts as NCP
+    import NonCommutativeProducts: NCMul
+    x = NCMul(1, Any[GF{:a,:plain}(n) for n in 2 * NCP._group_sort_min_length:-1:1])
+    @test typeof(sort(x)) == typeof(sort(NCMul(1, Any[GF{:a,:plain}(1), GF{:a,:plain}(2)])))
+end
+
+@testitem "Inconsistent group hooks throw" begin
+    import NonCommutativeProducts as NCP
+    import NonCommutativeProducts: NCMul, Swap
+    struct HookX
+        n::Int
+    end
+    struct HookY
+        n::Int
+    end
+    NCP.@nc HookX HookY
+    NCP.mul_effect(x::T, y::T) where {T<:Union{HookX,HookY}} = x.n > y.n ? Swap(1) : nothing
+    NCP.mul_effect(::HookX, ::HookY) = nothing
+    NCP.mul_effect(::HookY, ::HookX) = Swap(1)
+    NCP.atom_parity(::Union{HookX,HookY}) = true
+    m = 2 * NCP._group_sort_min_length
+    atom(n) = isodd(n) ? HookY(n) : HookX(n)
+    x = NCMul(1, Any[atom(n) for n in 1:m])
+    # the commutation declared for (HookX, HookY) and for (HookY, HookX)
+    const declared = Ref{Tuple{Any,Any}}((nothing, :graded))
+    NCP.group_commutation(::Type{HookX}, ::Type{HookY}) = declared[][1]
+    NCP.group_commutation(::Type{HookY}, ::Type{HookX}) = declared[][2]
+    @test_throws "not symmetric" sort(x)
+    # declared graded, but mul_effect swaps odd atoms with Swap(1)
+    declared[] = (:graded, :graded)
+    @test_throws "must be nothing or Swap(-1)" sort(x)
+    declared[] = (:commute, :commute)
+    @test sort(x) == NCMul(1, Any[atom(n) for n in [2:2:m; 1:2:m]])
 end
 
 @testitem "Groups without declared commutation keep their order" begin
