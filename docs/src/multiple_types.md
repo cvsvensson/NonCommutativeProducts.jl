@@ -39,7 +39,7 @@ Bar => Bar()
 Foo => Foo()
 
 julia> collect(segment_ranges(x))
-3-element Vector{Pair{DataType, UnitRange{Int64}}}:
+3-element Vector{Pair{Any, UnitRange{Int64}}}:
  Foo => 1:2
  Bar => 3:3
  Foo => 4:4

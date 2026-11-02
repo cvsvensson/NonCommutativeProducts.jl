@@ -34,24 +34,59 @@ struct SegmentRanges{F}
 end
 Base.IteratorSize(::Type{<:SegmentRanges}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{<:SegmentRanges}) = Base.EltypeUnknown()
+# Fixed G, so that the state and the pairs are not built with runtime types if the group type is unknown.
+# Any for abstract T, so that the result type does not change when someone defines a new `atom_group` method.
+_group_type(::Type{T}) where {T} = isconcretetype(T) ? Base.promote_op(atom_group, T) : Any
+struct SegmentState{G}
+    i::Int
+    g::G
+end
 @inline function Base.iterate(s::SegmentRanges)
     factors = s.factors
     isempty(factors) && return nothing
     i = firstindex(factors)
-    return iterate(s, (i, atom_group(factors[i])))
+    return iterate(s, SegmentState{_group_type(eltype(factors))}(i, atom_group(factors[i])))
 end
-@inline function Base.iterate(s::SegmentRanges, (i, g))
+@inline function Base.iterate(s::SegmentRanges, st::SegmentState{G}) where {G}
     factors = s.factors
     last = lastindex(factors)
+    i, g = st.i, st.g
     i > last && return nothing
+    j, gnext = _run_end(factors, i, g, last)
+    return Pair{G,UnitRange{Int}}(g, i:j), SegmentState{G}(j + 1, gnext)
+end
+# The last index of the run that starts at i with group g, and the group of the next factor
+@inline function _run_end(factors, i, g, last)
     j = i
+    isconcretetype(eltype(factors)) || return _dynamic_run_end(factors, j, g, last)
     gnext = g
     while j < last
         gnext = atom_group(factors[j+1])
         isequal(gnext, g) || break
         j += 1
     end
-    return g => i:j, (j + 1, gnext)
+    return j, gnext
+end
+@inline function _dynamic_run_end(factors, j, g, last)
+    while j < last
+        r = _scan(factors, j, g, last, factors[j+1])
+        r isa Int || return r[1]::Int, r[2]
+        j = r
+    end
+    return j, g
+end
+# A function barrier: one dispatch for each run of factors of one type, not two for each factor. Gives the new j if the
+# run ended by the end of the factors or by another factor type, or (j, group of the next factor) if it ended by its group.
+function _scan(factors, j, g, last, f::F) where {F}
+    while true
+        h = atom_group(f)
+        isequal(h, g) || return (j, h)
+        j += 1
+        j == last && return j
+        next = factors[j+1]
+        next isa F || return j
+        f = next
+    end
 end
 
 """
@@ -59,7 +94,7 @@ end
 
 A lazy iterator over the segments of `x` (see [`foreach_segment`](@ref)), from left to right. It gives pairs
 `g => range`, where `g` is the [`atom_group`](@ref) of the segment and `range` the indices of its factors in
-`factors(x)`. Use `collect` to get a `Vector`.
+`factors(x)`.
 
 # Example
 ```julia
@@ -67,15 +102,12 @@ collect(segment_ranges(NCMul(2, [a1, a2, b, a3]))) # [A => 1:2, B => 3:3, A => 4
 
 # Whether a product with factors has them all in one group, and which
 g, r = first(segment_ranges(x))
-length(r) == length(factors(x))
+length(r) == length(x.factors)
 ```
 """
 segment_ranges(x::NCMul) = SegmentRanges(x.factors)
 segment_ranges(x::NCAdd) = segment_ranges(_only_term(x, "segment_ranges"))
-function segment_ranges(x)
-    _is_atom(typeof(x)) || throw(ArgumentError("segment_ranges takes a product or an atom, not a $(typeof(x))"))
-    return SegmentRanges((x,))
-end
+segment_ranges(x) = segment_ranges(_as_product(x, "segment_ranges"))
 
 """
     foreach_segment(f, x)
@@ -105,24 +137,28 @@ function _foreach_segment(f, factors::AbstractVector)
     return nothing
 end
 # The factors in `range`, with a concrete element type if they share a concrete type
-_segment(factors::AbstractVector{T}, range) where {T} = isconcretetype(T) ? view(factors, range) : _narrowed_copy(factors, range)
-function _narrowed_copy(factors, range)
-    U = typeof(factors[first(range)])
-    all(k -> factors[k] isa U, range) || return factors[range]
-    return _copy_as(U, factors, range)
+_segment(factors::AbstractVector{T}, range) where {T} = isconcretetype(T) ? view(factors, range) : _narrowed_copy(factors, range, factors[first(range)])
+# A function barrier on the type of the first factor
+function _narrowed_copy(factors, range, ::U) where {U}
+    out = Vector{U}(undef, length(range))
+    for (n, k) in enumerate(range)
+        f = factors[k]
+        f isa U || return factors[range]
+        out[n] = f
+    end
+    return out
 end
-# A function barrier, so that the copy is specialized on U
-_copy_as(::Type{U}, factors, range) where {U} = U[factors[k] for k in range]
 
 """
     split_by_group(x)
 
 The segments of `x` (see [`foreach_segment`](@ref)) as a `Vector` of pairs `g => part`, from left to right, where `g` is
 the [`atom_group`](@ref) of the segment and `part` a product of its factors. The first part has the coefficient of `x`,
-the others one, so the unsorted product of the parts equals `x`. A product without factors gives an empty `Vector`.
+the others one, so the unsorted product of the parts equals `x`, except that a product without factors or a scalar-only
+sum gives an empty `Vector`.
 
 Segments are runs, not groups: interleaved factors give several parts with the same `g`. A part may share its factors
-with `x`. For factors of an abstract element type, prefer [`segment_ranges`](@ref) or [`foreach_segment`](@ref) in hot
+with `x`, so do not mutate it. For factors of an abstract element type, prefer [`segment_ranges`](@ref) or [`foreach_segment`](@ref) in hot
 paths.
 
 # Example
@@ -136,24 +172,39 @@ function split_by_group(x::NCMul{C}) where {C}
     factors = factors_vector(x.factors)
     T = eltype(factors)
     # Fixed pair types, as a comprehension or `g => part` is 2-4x slower for abstract T, where pair types are made at runtime
-    G = Base.promote_op(atom_group, T)
+    G = _group_type(T)
     P = isconcretetype(T) ? NCMul{C,T,Vector{T}} : NCMul{C}
-    parts = Pair{G,P}[]
-    for (g, r) in SegmentRanges(factors)
-        push!(parts, Pair{G,P}(g, _part(x, factors, r)))
+    PP = Pair{G,P}
+    segments = SegmentRanges(factors)
+    y = iterate(segments)
+    y === nothing && return PP[]
+    (g, r), state = y
+    first_part = PP(g, _part(x, factors, r))
+    # One segment is the common case: `push!` would grow a Vector with more capacity, by a slower path
+    if last(r) == lastindex(factors)
+        parts = Vector{PP}(undef, 1)
+        parts[1] = first_part
+        return parts
+    end
+    parts = PP[first_part]
+    y = iterate(segments, state)
+    while y !== nothing
+        (g, r), state = y
+        push!(parts, PP(g, _part(x, factors, r)))
+        y = iterate(segments, state)
     end
     return parts
 end
 # Without a copy if `x` is already what the only part would be
-function _part(x::NCMul{C,T,Vector{T}}, factors, r) where {C,T}
-    isconcretetype(T) && length(r) == length(factors) && return x
-    return _copied_part(x, factors, r)
-end
-_part(x, factors, r) = _copied_part(x, factors, r)
-function _copied_part(x::NCMul{C}, factors, r) where {C}
+function _part(x::NCMul{C}, factors::AbstractVector{T}, r) where {C,T}
     c = prefactor(x)
-    return NCMul{C}(first(r) == firstindex(factors) ? c : one(c), _owned_copy(_segment(factors, r)))
+    c = first(r) == firstindex(factors) ? c : one(c)
+    isconcretetype(T) || return _narrowed_part(C, c, factors, r, factors[first(r)])
+    x.factors isa Vector{T} && length(r) == length(factors) && return x
+    return NCMul{C}(c, collect(view(factors, r)))
 end
-# `seg` as a Vector that can be stored in a product: the copy made by _segment, or a copy of anything else
-_owned_copy(seg::Vector) = seg
-_owned_copy(seg::AbstractVector) = collect(seg)
+# A function barrier, so that the constructor of the product is static
+function _narrowed_part(::Type{C}, c, factors, r, f1::U) where {C,U}
+    out = _narrowed_copy(factors, r, f1)
+    return out isa Vector{U} ? NCMul{C,U,Vector{U}}(c, out) : NCMul{C}(c, out)
+end
