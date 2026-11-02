@@ -143,6 +143,66 @@ const x_keyed = sum(randn() * KeyedKet(n) for n in 1:N_keyed)
 const y_keyed = sum(randn() * KeyedKet(n) for n in 1:N_keyed)
 SUITE["vector"]["inner_keyed"] = @benchmarkable VI.inner($x_keyed, $y_keyed)
 
+# Kets |s⟩ on a site, keyed by (site, state), so that `inner` prunes pairs of terms of a spin chain by their keys site
+# by site. The keys of AbstractKeyKet have different types on odd and even sites, so that the key type isn't concrete.
+# GroupKet is a ket |s⟩ of the group `site`, where a bra and a ket of different groups don't act on each other.
+for (T, key, effect_other_site) in ((:SiteKet, :((k.site, k.s)), 0),
+    (:AbstractKeyKet, :(isodd(k.site) ? (k.site, k.s) : (Int8(k.site), Int16(k.s))), 0),
+    (:GroupKet, :((k.site, k.s)), nothing))
+    @eval begin
+        struct $T
+            site::Int
+            s::Int
+            bra::Bool
+        end
+        $T(site, s) = $T(site, s, false)
+        Base.adjoint(k::$T) = $T(k.site, k.s, !k.bra)
+        Base.hash(k::$T, h::UInt) = hash(k.site, hash(k.s, hash(k.bra, hash($(QuoteNode(T)), h))))
+        NonCommutativeProducts.@nc $T
+        function NonCommutativeProducts.mul_effect(a::$T, b::$T)
+            a.bra && !b.bra || return nothing
+            return a.site == b.site ? Int(a.s == b.s) : $effect_other_site
+        end
+        NonCommutativeProducts.contraction_key(k::$T) = k.bra ? nothing : $key
+    end
+end
+
+const N_sites = 32
+random_product_state() = prod(SiteKet(site, rand(1:2)) for site in 1:N_sites)
+const x_keyed_chain = sum(randn() * random_product_state() for _ in 1:200)
+const y_keyed_chain = sum(randn() * random_product_state() for _ in 1:200)
+SUITE["vector"]["inner_keyed_chain"] = @benchmarkable VI.inner($x_keyed_chain, $y_keyed_chain)
+SUITE["vector"]["norm_keyed_chain"] = @benchmarkable norm($x_keyed_chain)
+
+# One product state against a long sum that contains it, where only a single path of keys is followed
+const ket_in_chain = random_product_state()
+const long_keyed_chain = sum(randn() * random_product_state() for _ in 1:2000) + 0.7 * ket_in_chain
+SUITE["vector"]["dot_ket_chain"] = @benchmarkable VI.inner($ket_in_chain, $long_keyed_chain)
+SUITE["vector"]["dot_chain_ket"] = @benchmarkable VI.inner($long_keyed_chain, $ket_in_chain)
+
+# A long sum against a zero sum, where no term should be collected and no bra formed
+const zero_chain = zero(long_keyed_chain)
+SUITE["vector"]["inner_zero_sum"] = @benchmarkable VI.inner($long_keyed_chain, $zero_chain)
+
+# A small sum of most of the 256 states of 8 sites, like H²ψ for a Heisenberg chain, where the runs share prefixes
+site_state(b) = prod(SiteKet(site, s + 1) for (site, s) in enumerate(digits(b; base=2, pad=8)))
+const small_shared_chain = sum(randn() * site_state(b) for b in shuffle(0:255)[1:226])
+SUITE["vector"]["norm_small_shared_chain"] = @benchmarkable norm($small_shared_chain)
+
+const abstract_keys_chain = sum(randn() * prod(AbstractKeyKet(site, rand(1:2)) for site in 1:N_sites) for _ in 1:2000)
+SUITE["vector"]["norm_abstract_keys_chain"] = @benchmarkable norm($abstract_keys_chain)
+
+# States of group 3 alone are orthogonal to those of groups 1 and 2 only by their keys
+const group_keys_sum = sum(randn() * GroupKet(1, rand(1:300)) * GroupKet(2, rand(1:300)) for _ in 1:1000) +
+    sum(randn() * GroupKet(3, n) for n in 1:100)
+SUITE["vector"]["norm_group_keys"] = @benchmarkable norm($group_keys_sum)
+
+# Terms of a keyed ket times an unkeyed one, with few distinct keys, so that each term contracts with many others
+NonCommutativeProducts.mul_effect(::KeyedKet, ::Ket) = nothing
+NonCommutativeProducts.mul_effect(::Ket, ::KeyedKet) = nothing
+const mixed_keyed_unkeyed = sum(randn() * KeyedKet(n % 8) * Ket(n) for n in 1:1024)
+SUITE["vector"]["inner_mixed_keyed_unkeyed"] = @benchmarkable VI.inner($mixed_keyed_unkeyed, $mixed_keyed_unkeyed)
+
 # |n⟩⟨m| applied to a sum of kets is the coefficient of |m⟩ times |n⟩, found by a scan over the terms of the sum.
 # Other products go through the default method.
 _isket(fs) = length(fs) == 1 && !only(fs).bra
