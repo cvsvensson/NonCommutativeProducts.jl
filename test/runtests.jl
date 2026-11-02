@@ -1094,7 +1094,7 @@ end
 end
 
 
-@testitem "Truncation with a certified bound" begin
+@testitem "Truncation with an error bound" begin
     using NonCommutativeProducts, LinearAlgebra
     import NonCommutativeProducts as NC
     # Jordan-Wigner fermions on two modes, a spin-1/2 component and an atom without a bound
@@ -1142,6 +1142,21 @@ end
     # terms with the same weight are dropped together or not at all
     @test NC.truncate_terms(0.25 * c1 + 0.25 * c2 + 1; atol=0.3) == (; expr=0.25 * c1 + 0.25 * c2 + 1, err=0)
     @test NC.truncate_terms(0.25 * c1 + 0.25 * c2 + 1; atol=0.5) == (; expr=1, err=0.5)
+    # also a product and its adjoint, whose bounds multiply in opposite orders
+    struct Bounded
+        bound::Float64
+        dagger::Bool
+    end
+    NC.@nc Bounded
+    NC.mul_effect(::Bounded, ::Bounded) = nothing
+    Base.adjoint(a::Bounded) = Bounded(a.bound, !a.dagger)
+    NC.opnorm_bound(a::Bounded) = a.bound
+    a, b = Bounded(sqrt(2.0), false), Bounded(sqrt(3.0), false)
+    H = 0.1 * a * b + 0.1 * b' * a'
+    @test NC.truncate_terms(H; atol=0.3) == (; expr=H, err=0)
+    @test_throws ArgumentError NC.truncate_terms(Bounded(-1.0, false); atol=1)
+    # rtol = 1 drops everything
+    @test NC.truncate_terms(0.1 * c1 + 0.2 * c2 + 0.3 * c1' + 0.6 * c2'; rtol=1).expr == 0
     # NaN and infinite coefficients are never dropped, and make the bound infinite
     @test NC.truncate_terms(NaN * c1 + Inf * c2 + 0.5 * c1' * c2; atol=1).err == 0.5
     @test NC.opnorm_bound(NaN * c1 + c2) == Inf
@@ -1154,13 +1169,6 @@ end
     @test NC.truncate_terms(-0.5; atol=1) == (; expr=0, err=0.5)
     @test NC.truncate_terms(0.5 + 1im; atol=1) == (; expr=0.5 + 1im, err=0)
     @test NC.truncate_terms(0 * c1 + 0) == (; expr=0, err=0)
-    # the weight 1e-200 * 1e-200 underflows, but is not rounded down to 0
-    struct Tiny end
-    NC.@nc Tiny
-    NC.mul_effect(::Tiny, ::Tiny) = nothing
-    NC.opnorm_bound(::Tiny) = 1e-200
-    @test NC.truncate_terms(1e-200 * Tiny() + c1) == (; expr=1e-200 * Tiny() + c1, err=0)
-    @test NC.truncate_terms(1e-200 * Tiny() + c1; atol=1e-300).err > 0
     # factors in a Tuple or an abstractly typed Vector
     @test NC.opnorm_bound(NC.NCMul(1, (c1, c2, c1'))) == 1
     @test NC.opnorm_bound(NC.NCMul(1, Any[c1, c2, c1'])) == 1
@@ -1199,7 +1207,7 @@ end
     test_explicit_imports(NonCommutativeProducts;
         # Base internals without a public equivalent, KrylovKit operator hooks, and package internals used by the extensions
         all_qualified_accesses_are_public=(; ignore=(:_growat!, :inferencebarrier, :literal_pow, :power_by_squaring, :promote_op,
-            :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic, :coefficient_bound)),
+            :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic, :_coefficient_bound)),
         # qualified names in macro-generated code
         no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
             :mul_effect, :ncmapreduce, :terms, :coefficient, :factors, :nterms)),

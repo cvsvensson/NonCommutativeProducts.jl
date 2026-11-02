@@ -55,17 +55,17 @@ julia> inner(k0 + 2k1, k1)
 2
 ```
 
-## Truncation with a certified error bound
+## Truncation with an error bound
 
-[`truncate_terms`](@ref NonCommutativeProducts.truncate_terms) drops small terms of an expression and returns a bound on the error that holds without a Hilbert space. For `x = Σᵢ cᵢ Pᵢ`, dropping a set `D` of terms gives `x̃` with
+[`truncate_terms`](@ref NonCommutativeProducts.truncate_terms) drops small terms of an expression and returns a bound on the error, valid in every representation where the atom bounds hold. For `x = Σᵢ cᵢ Pᵢ`, dropping a set `D` of terms gives `x̃` with
 ```
 ‖x - x̃‖ ≤ Σ_{i ∈ D} |cᵢ| b(Pᵢ)
 ```
-by the triangle inequality, where `b(P)` is the product of the operator norm bounds of the factors of `P`. For unrelated terms, this is typically pessimistic by about the square root of the number of dropped terms.
+by the triangle inequality, where `b(P)` is the product of the operator norm bounds of the factors of `P`. The true error can be much smaller.
 
 To make terms droppable, define [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound) for your atoms. Terms containing an atom without a bound, such as a boson, are kept.
 
-`rtol` is relative to the bound on the droppable terms, not to `‖x‖`, so it allows less than you might expect when kept terms dominate. Combine like terms before truncating, e.g. with autosort, since terms that would cancel otherwise use up the budget.
+`rtol` is relative to the total weight of the droppable terms, kept or not. That total can far exceed `‖x‖` and leaves out terms without a bound, so `rtol` is not a relative error in `‖x‖`. Combine like terms before truncating, e.g. with autosort, since terms that would cancel otherwise use up the budget.
 
 For the kets above, normalized kets and bras have norm 1:
 ```jldoctest kets
