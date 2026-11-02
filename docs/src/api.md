@@ -42,6 +42,8 @@ NonCommutativeProducts.atom_group
 NonCommutativeProducts.foreach_segment
 NonCommutativeProducts.split_by_group
 NonCommutativeProducts.segment_ranges
+NonCommutativeProducts.group_commutation
+NonCommutativeProducts.atom_parity
 ```
 
 ## Sorting

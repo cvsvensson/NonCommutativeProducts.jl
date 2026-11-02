@@ -9,7 +9,8 @@ Defaults to `typeof(atom)`, so parametric variants of one type are different gro
 Define methods for your types to group atoms by value, e.g. by the Hilbert space they act on, or to put several types
 in one group. The group can also encode a kind, e.g. `(space_id, :ket)` and `(space_id, :op)`, to keep kets and
 operators of the same subsystem in separate segments. Groups do not change how products are sorted: the order of
-factors is set by `mul_effect` alone.
+factors is set by `mul_effect` alone. Declaring how groups commute, with [`group_commutation`](@ref), makes sorting
+faster.
 
 # Example
 ```julia

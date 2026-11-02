@@ -211,3 +211,58 @@ end
 if isdefined(NonCommutativeProducts, :foreach_segment)
     SUITE["abstract_eltype"]["foreach_segment"] = @benchmarkable sum_segment_labels($long_species_product)
 end
+
+# Two species of fermions that anticommute with each other, and a species of spins that commute with both, with an
+# abstract supertype. The species of GroupHooked declare this with the group hooks, so that sorting moves factors
+# between species without calling mul_effect; those of GroupPlain are the same without the hooks. Species are ordered
+# A, B, S.
+for (Abs, names) in ((:GroupHooked, (:HookedA, :HookedB, :HookedS)), (:GroupPlain, (:PlainA, :PlainB, :PlainS)))
+    @eval abstract type $Abs end
+    for T in names
+        @eval begin
+            struct $T <: $Abs
+                label::Int
+                creation::Bool
+            end
+            $T(k) = $T(k, false)
+            Base.adjoint(x::$T) = $T(x.label, !x.creation)
+            Base.hash(x::$T, h::UInt) = hash(x.label, hash(x.creation, hash($(QuoteNode(T)), h)))
+            NonCommutativeProducts.@nc $T
+            function NonCommutativeProducts.mul_effect(a::$T, b::$T)
+                a == b && return 0
+                (!a.creation, a.label) > (!b.creation, b.label) || return nothing
+                a.label == b.label && return NonCommutativeProducts.AddTerms((NonCommutativeProducts.Swap(-1), 1))
+                return NonCommutativeProducts.Swap(-1)
+            end
+        end
+    end
+    A, B, S = names
+    @eval begin
+        NonCommutativeProducts.@nc $A $B
+        NonCommutativeProducts.@nc $A $S
+        NonCommutativeProducts.@nc $B $S
+        NonCommutativeProducts.mul_effect(::$A, ::Union{$B,$S}) = nothing
+        NonCommutativeProducts.mul_effect(::$B, ::$S) = nothing
+        NonCommutativeProducts.mul_effect(::$B, ::$A) = NonCommutativeProducts.Swap(-1)
+        NonCommutativeProducts.mul_effect(::$S, ::Union{$A,$B}) = NonCommutativeProducts.Swap(1)
+    end
+end
+# Older versions have no group hooks, and sort both families the same
+if isdefined(NonCommutativeProducts, :group_commutation)
+    for (T1, T2, c) in ((HookedA, HookedB, :graded), (HookedA, HookedS, :commute), (HookedB, HookedS, :commute))
+        @eval NonCommutativeProducts.group_commutation(::Type{$T1}, ::Type{$T2}) = $(QuoteNode(c))
+        @eval NonCommutativeProducts.group_commutation(::Type{$T2}, ::Type{$T1}) = $(QuoteNode(c))
+    end
+    NonCommutativeProducts.atom_parity(::Union{HookedA,HookedB}) = true
+    NonCommutativeProducts.atom_parity(::HookedS) = false
+end
+
+# 24 shuffled operators of random species, and a sum whose cube has products of 12 factors
+const group_ops = [(rand(1:3), l, isodd(l)) for l in shuffle(1:24)]
+group_product(Ts, Abs) = NCMul(1, Abs[Ts[k](l, c) for (k, l, c) in group_ops])
+group_sum((A, B, S)) = sum(A(n)' * B(n) * S(n) * B(n + 1)' + S(n) * A(n) * B(n)' * A(n + 1)' for n in 1:8)
+SUITE["group_hooks"] = BenchmarkGroup()
+for (name, Ts, Abs) in (("plain", (PlainA, PlainB, PlainS), GroupPlain), ("hooked", (HookedA, HookedB, HookedS), GroupHooked))
+    SUITE["group_hooks"]["sort_$name"] = @benchmarkable sort($(group_product(Ts, Abs)))
+    SUITE["group_hooks"]["sum_cube_$name"] = @benchmarkable $(group_sum(Ts))^3
+end

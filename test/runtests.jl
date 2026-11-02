@@ -1098,7 +1098,7 @@ end
     using NonCommutativeProducts
     public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :enable_autosort!,
         :disable_autosort!, :autosort, :with_autosort, :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors,
-        :coefficient, :atom_group, :foreach_segment, :split_by_group, :segment_ranges]
+        :coefficient, :atom_group, :foreach_segment, :split_by_group, :segment_ranges, :group_commutation, :atom_parity]
     for name in public_names
         @test Base.ispublic(NonCommutativeProducts, name)
         @test Base.Docs.hasdoc(NonCommutativeProducts, name)
