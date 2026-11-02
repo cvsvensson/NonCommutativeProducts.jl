@@ -1,6 +1,6 @@
 # Linear algebra
 
-Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left, so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts `x' * y` whether or not autosort is enabled.
+Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left (apart from pairs of terms skipped by keys, see [Fast inner products](@ref)), so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts `x' * y` whether or not autosort is enabled.
 
 With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. These features live in a package extension, which `using KrylovKit` loads.
 
@@ -41,11 +41,9 @@ true
 
 ## Fast inner products
 
-`inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. With [`contraction_key`](@ref NonCommutativeProducts.contraction_key) defined, `inner` skips the pairs whose first factors have different keys, which takes time proportional to the number of terms when each key matches few terms.
+`inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. With [`contraction_key`](@ref NonCommutativeProducts.contraction_key) defined, `inner` skips the pairs whose keys show that they are orthogonal, which takes time proportional to the number of terms when each term matches few others.
 
-Keys must not change the result of sorting `x' * y`; the docstring lists the conditions. For example, if an operator `O` had `mul_effect(O', ⟨1|) = ⟨2|`, then `(|1⟩O)' * |2⟩` would sort to `⟨2|2⟩ = 1`, so kets could not have keys.
-
-For the kets above, `⟨n|m⟩` is zero unless `n == m`, and nothing acts on a bra from the left, so kets are keyed by their label. Bras get no key, since `⟨1|' * ⟨2| = |1⟩⟨2|` is nonzero.
+Keys define orthogonality: `inner` skips pairs whose keys disagree, whatever `mul_effect` gives. Here `⟨n|m⟩` is zero unless `n == m`, so kets are keyed by their label:
 ```jldoctest kets
 julia> NC.contraction_key(k::Ket) = k.bra ? nothing : k.n
 
