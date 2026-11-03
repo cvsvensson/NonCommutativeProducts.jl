@@ -103,7 +103,7 @@ function _term_parts(io::IO, x::NCAdd)
         isneg = isreal(v) ? r < 0 : nothing
         if isneg isa Bool
             neg = isneg
-            text = sprint(print, neg ? -r * k : r * k; context=io)
+            text = sprint(print, neg ? _negate(r) * k : r * k; context=io)
         else
             neg = false
             text = sprint(print, "(", v, ")*", k; context=io)
@@ -113,6 +113,9 @@ function _term_parts(io::IO, x::NCAdd)
     sort!(parts; by=((neg, text),) -> neg ? "-" * text : text)
     return parts
 end
+_negate(r) = -r
+# widened, since negating typemin(Int) overflows
+_negate(r::Union{Signed,Rational}) = -big(r)
 
 function _show_terms(io::IO, x::NCAdd, parts, compact::Bool, ellipsis::Bool)
     print_one = !iszero(additive_coeff(x)) || length(x.dict) == 0
@@ -252,7 +255,7 @@ function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where 
     end
     # the scaled terms fit in C, so only the coefficient can fail to convert
     set_coeff!(a, convert(C, newcoeff))
-    if !(β isa One)
+    if !isone(β)
         map!(v -> v * β, values(a.dict))
         # a nonzero β can also give zero terms, through underflow
         filter_zeros!(a.dict)

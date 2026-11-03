@@ -57,6 +57,8 @@ function _term_weight(factors, c)
     for b in sort!(bounds; rev=true)
         w *= b
     end
+    # the weight of a nonzero term must stay positive when it underflows, since dropping the term is an error
+    iszero(w) && !iszero(c) && !any(iszero, bounds) && return nextfloat(zero(w))
     return isnan(w) ? oftype(w, Inf) : w
 end
 function _sum_weights(weights)
@@ -126,8 +128,9 @@ function _greedy_drop(weights, atol, rtol)
     end
     droppable = [i for i in eachindex(weights) if !isnothing(weights[i]) && isfinite(weights[i])]
     sort!(droppable; by=i -> weights[i])
-    # summed in the order of the loop below, so that rtol = 1 drops everything
-    budget = max(atol, rtol * foldl((s, i) -> s + weights[i], droppable; init=0.0))
+    # summed in the order of the loop below, so that rtol = 1 drops everything, and scaled term by term, since the total
+    # can overflow
+    budget = max(atol, foldl((s, i) -> s + rtol * weights[i], droppable; init=0.0))
     dropped = falses(length(weights))
     err = 0.0
     i = 1

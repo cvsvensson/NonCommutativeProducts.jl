@@ -14,7 +14,7 @@ Base.one(nc::Union{<:NCAdd,<:NCMul}) = one(typeof(nc))
 for eq in (:(==), :isequal)
     @eval begin
         function Base.$eq(a::NCAdd, b::NCMul)
-            isscalar(b) && return isempty(a.dict) && $eq(additive_coeff(a), prefactor(b))
+            isscalar(b) && return isempty(a.dict) && $eq(b, additive_coeff(a))
             iszero(additive_coeff(a)) || return false
             length(a.dict) == 1 || return false
             ncmul, coeff = only(a.dict)

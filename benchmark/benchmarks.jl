@@ -11,8 +11,6 @@ const VI = NonCommutativeProducts.VectorInterface
 include("../test/rules/fermions.jl")
 include("../test/rules/bosons.jl")
 NonCommutativeProducts.@commutative Boson Fermion
-# Benchmarks also run against older versions, which don't sort by default
-NonCommutativeProducts.enable_autosort!()
 
 # Building sums: each `+` of two sums copies the terms of the left one
 SUITE["construct"] = BenchmarkGroup()

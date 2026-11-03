@@ -19,10 +19,10 @@
     @test isequal(NaN * (x + 1), NaN + NaN * f1 + NaN * f2)
 end
 
-@testitem "NCAdd: failed in-place updates leave the target unchanged" setup = [Fermions] begin
+@testitem "NCAdd: failed in-place updates leave the target unchanged" setup = [Fermions, Bosons] begin
     using VectorInterface
     import NonCommutativeProducts as NC
-    f1, f2 = Fermion(1), Fermion(2)
+    f1, f2, f3 = Fermion(1), Fermion(2), Fermion(3)
 
     # Int coefficients scaled by 0.5: the coefficient 2 * 0.5 fits in Int, the term f1 * 0.5 doesn't
     x = 2 + f1 + 2 * f2
@@ -54,6 +54,40 @@ end
     @test y == 6 * f2
     @test VectorInterface.add!(y, 2 + f1, 1, 2) === y
     @test y == 2 + f1 + 12 * f2
+
+    # with β = 1, the terms of y that x doesn't have stay, also after a failure
+    y = 2 + f1 + 3 * f2
+    @test_throws InexactError VectorInterface.add!(y, f1 + f3, 0.5, 1)
+    @test y == 2 + f1 + 3 * f2
+    @test_throws InexactError VectorInterface.add!(y, f3 + 0.5, 1, 1)
+    @test y == 2 + f1 + 3 * f2
+    # the arithmetic fails on one of the terms
+    r =(1 // 2) * f1 + (typemax(Int) // 1) * f2
+    @test_throws OverflowError VectorInterface.add!(r, f1 + f2 + 0 // 1, 1 // 2, 1)
+    @test r == (1 // 2) * f1 + (typemax(Int) // 1) * f2
+    # an atom of another type fails to convert, unless it has a zero weight
+    @test_throws MethodError VectorInterface.add!(y, 1 * Boson(), 1, 1)
+    @test y == 2 + f1 + 3 * f2
+    @test VectorInterface.add!(y, 1 * Boson(), 0, 1) === y
+    @test y == 2 + f1 + 3 * f2
+
+    @test VectorInterface.add!(y, 2 + f1 - f3, 1, 1) === y
+    @test y == 4 + 2 * f1 + 3 * f2 - f3
+    @test VectorInterface.add!(y, 3 * f2 + f3 + 0, -1, 1.0 + 0im) === y # β = 1 of another type doesn't fit
+    @test y == 4 + 2 * f1 - 2 * f3
+    @test VectorInterface.add!(y, y, 1, 1) === y # aliased
+    @test y == 8 + 4 * f1 - 4 * f3
+    @test VectorInterface.add!(y, NC.NCMul(2, typeof(f1)[]), 1, 1) === y # a product without factors
+    @test y == 10 + 4 * f1 - 4 * f3
+    # isequal, since the scalar part can be NaN
+    @test isequal(VectorInterface.add!(f1 + 0.0, f2 + 0.0, Inf, 1), VectorInterface.add(f1 + 0.0, f2 + 0.0, Inf, 1))
+
+    # add!! with a weight β = 1.0 that fits the coefficients updates in place
+    z =1.0 * f1 + 2.0 * f2 + 0.0
+    @test VectorInterface.add!!(z, 1.0 * f3 + 0, 2.0, 1.0) === z
+    @test z == f1 + 2 * f2 + 2 * f3
+    # 1.0 doesn't fit in Int, so the result has Float64 coefficients
+    @test VectorInterface.add!!(f1 + 0, f2 + 0, 1, 1.0) isa NC.NCAdd{Float64}
 end
 
 @testitem "NCAdd: set_coeff!!" setup = [Fermions] begin
@@ -153,6 +187,11 @@ end
     short = 1 + f[1]
     show(limited, MIME"text/plain"(), short)
     @test String(take!(limited.io)) == string(short)
+
+    # negating these coefficients overflows
+    @test string(typemin(Int) * f[1] + 0) == "-9223372036854775808*c[1]"
+    @test string((typemin(Int) // 1) * f[1] + 0) == "-9223372036854775808//1*c[1]"
+    @test string(-f[1] + f[2]) == "-c[1] + c[2]"
 end
 
 @testitem "NCAdd: outer and inner constructors agree" setup = [Fermions] begin
