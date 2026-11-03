@@ -481,6 +481,12 @@ end
         @test n in Set([x])
         @test x in Set([n])
     end
+    # -0.0 and 0.0 differ under isequal, while all zero products are equal, and hash like 0.0
+    negzero = -(0.0 * f1)
+    @test isequal(negzero, 0.0 * f1) && isequal(negzero, 0.0) && isequal(negzero, 0.0 * f1 + 0)
+    @test !isequal(negzero, -0.0) && !isequal(0.0 * f1, -0.0)
+    @test hash(negzero) == hash(0.0)
+    @test negzero == -0.0 && negzero == 0.0
     s = f1 * f2 + 0
     @test add!!(copy(s), NCMul(1, (f1, f2))) == 2 * f1 * f2
     @test s + (NCMul(1, (f1, f2)) + 0) == 2 * f1 * f2
