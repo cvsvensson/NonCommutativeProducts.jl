@@ -1,5 +1,6 @@
 _scalartype(x) = VectorInterface.scalartype(typeof(x))
-# The in-place methods store an out-of-place result with _set_ncadd!, which leaves `y` unchanged if it doesn't fit.
+# The in-place methods store an out-of-place result with _set_ncadd!, or update the terms with _add_terms!. Both leave
+# `y` unchanged if the result doesn't fit.
 
 VectorInterface.scalartype(::Type{<:NCMul{C}}) where {C<:Number} = C
 VectorInterface.scalartype(::Type{<:NCAdd{C}}) where {C<:Number} = C
