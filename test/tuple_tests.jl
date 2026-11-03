@@ -196,3 +196,18 @@ end
     @test coefficient(NCMul{Float64}(1, [a])) isa Float64
     @test_throws ArgumentError NCMul{Int,Int,Vector{Float64}}(1, [1.0])
 end
+
+@testitem "Products with factors that can't grow give Vector-backed results" setup = [Fermions] begin
+    import NonCommutativeProducts: NCMul
+    # like an SVector: copy keeps the type, which has no push!
+    struct FixedFactors{T} <: AbstractVector{T}
+        data::Vector{T}
+    end
+    Base.size(v::FixedFactors) = size(v.data)
+    Base.getindex(v::FixedFactors, i::Int) = v.data[i]
+    Base.copy(v::FixedFactors) = v
+    f1, f2 = Fermion(1), Fermion(2)
+    t = NCMul(1, FixedFactors([f1]))
+    @test t * f2 == f1 * f2
+    @test f2 * t == f2 * f1
+end

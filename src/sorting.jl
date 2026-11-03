@@ -117,16 +117,17 @@ function add_key!!(dict::Dict{K,V}, key, coeff) where {K,V}
 end
 _fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V, x) : x
 
-# `xs` with `x` added at the end or the start. Mutates `xs` if `x` fits, and otherwise returns a widened copy. The
-# inference barrier stops the precompile workload from specializing the sorting code on widened types, which makes the
-# package image about four times larger and slower to load.
+# `xs` with `x` added at the end or the start. Mutates a `Vector` if `x` fits, and otherwise returns a new `Vector`, which
+# also covers vectors that can't grow, such as an SVector. The inference barrier stops the precompile workload from
+# specializing the sorting code on widened types, which makes the package image about four times larger and slower to
+# load.
 function push!!(xs::AbstractVector{T}, x::S) where {T,S}
     R = promote_type(T, S)
-    return R <: T ? push!(xs, x) : Base.inferencebarrier(_push_widened)(xs, x, R)
+    return R <: T && xs isa Vector ? push!(xs, x) : Base.inferencebarrier(_push_widened)(xs, x, R)
 end
 function pushfirst!!(xs::AbstractVector{T}, x::S) where {T,S}
     R = promote_type(T, S)
-    return R <: T ? pushfirst!(xs, x) : Base.inferencebarrier(_pushfirst_widened)(xs, x, R)
+    return R <: T && xs isa Vector ? pushfirst!(xs, x) : Base.inferencebarrier(_pushfirst_widened)(xs, x, R)
 end
 _push_widened(xs, x, R) = push!(convert(Vector{R}, xs), x)
 _pushfirst_widened(xs, x, R) = pushfirst!(convert(Vector{R}, xs), x)
