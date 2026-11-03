@@ -22,6 +22,26 @@
     @test add!!(f[1] + 1, 5 * f[1], 2, 5) == 15f[1] + 5
 end
 
+@testitem "add!! with atoms and numbers" setup = [Fermions, Bosons] begin
+    import NonCommutativeProducts: add!!
+    NonCommutativeProducts.@commutative Fermion Boson
+    k1, k2 = Fermion(1), Fermion(2)
+    @test add!!(k1 + k2, k1, 2) == 3k1 + k2
+    @test add!!(1 * k1, k2, 2) == k1 + 2k2
+    @test add!!(k1, k2) == k1 + k2
+    @test add!!(k1, k2, 2) == k1 + 2k2
+    @test add!!(k1, k2, 2, 3) == 3k1 + 2k2
+    @test add!!(k1, 1 * k2) == k1 + k2
+    @test add!!(k1, 2) == k1 + 2
+    @test add!!(1 * k1, 2) == k1 + 2
+    @test add!!(k1, Boson()) == k1 + Boson()
+    @test add!!(1, k1) == 1 + k1
+    @test add!!(1, 2) == 3
+    @test add!!(1, 2, 3, 4) == 10
+    @test add!!(1, k1 * k2, 2, 3) == 3 + 2 * k1 * k2
+    @test add!!(1, k1 + k2, 2) == 1 + 2k1 + 2k2
+end
+
 @testitem "oneunit of NCAdd" setup = [Fermions] begin
     f1 = Fermion(1)
     x = 2 * f1 + 3

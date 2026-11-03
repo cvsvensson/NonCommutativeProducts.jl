@@ -180,8 +180,11 @@ be left unchanged or modified. This function belongs to this package and is not 
 in having the 2-argument form, and in the weights `α` and `β` defaulting to `One()`, so that `add!!(a, b)` is `a + b`.
 Methods for `VectorInterface.add!!` call it.
 """
-add!!(a::NCMul, b::MulAdd, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
-
+add!!(a::NCMul, b::Union{MulAdd,Number,UniformScaling}, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
+function add!!(a::Number, b::MulAdd, α::Number=One(), β::Number=One())
+    return add!!(NCAdd(a, Dict{to_add_dict_type(typeof(b)),typeof(a)}()), b, α, β)
+end
+add!!(a::Number, b::Union{Number,UniformScaling}, α::Number=One(), β::Number=One()) = β * a + α * b
 
 # Computes β * a + α * b. A zero result has the grades of b, plus the stored grades of a zero a unless β isa Zero.
 # A nonzero β * a cancels against b, so its grades are among those of b.
@@ -357,9 +360,6 @@ _factor_eltype(::Type{<:NCMul{<:Any,S}}) where {S} = S
 _factor_eltype(::Type{<:NCAdd{<:Any,K}}) where {K} = _factor_eltype(K)
 _factor_eltype(::Type) = Any
 _factor_eltype(::Type{Union{}}) = Union{}
-
-add!!(c::NCMul, term) = c + term
-add!!(c::Number, term) = c + term
 
 function Base.adjoint(x::NCAdd)
     adjoint_sum = autosort() ? with_autosort(() -> _adjoint_sum(sort_into!!, x), false) : _adjoint_sum(add_term!!, x)

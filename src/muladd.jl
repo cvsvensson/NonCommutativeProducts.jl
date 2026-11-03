@@ -102,8 +102,6 @@ macro nc_common(T)
         Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) + y
         Base.:+(x::Union{Number,UniformScaling,NCMul,NCAdd}, y::$(esc(T))) = y + x
 
-        NonCommutativeProducts.add!!(x::NCAdd, y::$(esc(T))) = add!!(x, NCMul(y))
-
         Base.:-(x::$(esc(T)), y::$(esc(T))) = NCMul(x) - NCMul(y)
         Base.:-(x::$(esc(T))) = NCMul(-1, [x])
         Base.:-(x::Union{Number,UniformScaling,NCMul,NCAdd}, y::$(esc(T))) = x - NCMul(y)
@@ -143,9 +141,9 @@ macro nc_common(T)
         Base.promote_rule(::Type{W}, ::Type{NC}) where {W<:$(esc(T)),NC<:MulAdd} = promote_type(NCMul{Int,W,Vector{W}}, NC)
         Base.convert(::Type{NC}, x::$(esc(T))) where {NC<:MulAdd} = convert(NC, NCMul(x))
 
-        NonCommutativeProducts.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, NCMul(y), α, β)
-        NonCommutativeProducts.add!!(x::$(esc(T)), y::$(esc(T)), α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
-        NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), y, α, β)
+        # an atom as `x` accepts any `y`, which covers atoms of other types without ambiguities
+        NonCommutativeProducts.add!!(x::$(esc(T)), y, α::Number=One(), β::Number=One()) = add!!(NCMul(x), y, α, β)
+        NonCommutativeProducts.add!!(x::Union{Number,MulAdd}, y::$(esc(T)), α::Number=One(), β::Number=One()) = add!!(x, NCMul(y), α, β)
 
         @nc_vectorinterface $(esc(T))
 
