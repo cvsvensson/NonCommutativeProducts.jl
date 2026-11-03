@@ -47,6 +47,7 @@ end
     @commutative C1 C2 # repeating the same order is fine
     @test C2() * C1(1) == C1(1) * C2()
     @test_throws ArgumentError @commutative C2 C1
+    @test_throws ArgumentError @commutative C2 Union{C1,C3}
 
     @commutative Union{C1,C2} C3
     @test C3() * C2() == C2() * C3()
