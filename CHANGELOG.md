@@ -20,6 +20,7 @@ Changes since 0.5.2.
 - `mul_effect(k', l)` must now be defined for kets whose keys differ.
 - A `Number` from it asserts that `k` and `l` are in one subsystem. Across subsystems it must not be a `Number`, not even 0, or `inner` can silently miss terms.
 - Any order of kets gives the right result, but one order is fastest. Mixing orders can be tens of times slower.
+- A pair of terms that doesn't reduce to a scalar throws an `ArgumentError`, unless kets of one subsystem already make it zero.
 
 **The macros throw an `ArgumentError` for more input.**
 - `@nc`: `Number` subtypes, `Any`, unions that include a number, and tuple syntax.
@@ -28,7 +29,7 @@ Changes since 0.5.2.
 **`mul_effect` return values.**
 - An invalid return value now throws an `ArgumentError`. This includes `Swap(missing)`, invalid values inside `AddTerms`, and atoms not registered with `@nc`.
 - `mul_effect` methods defined by `@commutative` return `Swap(1)` instead of `y * x`.
-- `H^0` and `H^1` of a sorted `H` no longer pick up a wider coefficient or atom type from `mul_effect`.
+- `H^0` and `H^1` of a sum no longer sort or compute `H * H`, so they don't pick up a wider coefficient or atom type from `mul_effect`.
 
 **`ncmapreduce` and `ncmap` treat an atom as `1 * atom`**, as they do a product.
 - `ncmapreduce(f, (add, mul), atom)` is `mul(scalarmap(1), f(atom))` instead of `f(atom)`.

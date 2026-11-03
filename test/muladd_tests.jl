@@ -96,7 +96,7 @@ end
 
 @testitem "Powers 0 and 1 of a sum do not multiply" begin
     import NonCommutativeProducts: @nc, NCAdd, with_autosort
-    # any product of two of these would throw a MethodError, since they have no mul_effect
+    # any sorted product of two of these would throw a MethodError, since they have no mul_effect
     struct NoRule
         n::Int
     end
@@ -115,6 +115,9 @@ end
             @test boolsum^1 isa typeof(H)
         end
     end
+    # a power of 1 doesn't sort, so it needs no mul_effect for longer products either
+    unsorted = with_autosort(() -> NoRule(1) * NoRule(2) + NoRule(3), false)
+    @test unsorted^1 == unsorted
 end
 
 @testitem "Products of sums allocate per new term, not per pair" setup = [GradedKets] begin
