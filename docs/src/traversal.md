@@ -18,7 +18,6 @@ DocTestSetup = quote
         (!a.dagger, a.label) == (b.dagger, b.label) && return -b*a + 1
         return -b*a
     end
-    NonCommutativeProducts.disable_autosort!()
 end
 ```
 

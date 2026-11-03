@@ -11,7 +11,6 @@ const VI = NonCommutativeProducts.VectorInterface
 include("../test/rules/fermions.jl")
 include("../test/rules/bosons.jl")
 NonCommutativeProducts.@commutative Boson Fermion
-NonCommutativeProducts.enable_autosort!()
 
 # Building sums: each `+` of two sums copies the terms of the left one
 SUITE["construct"] = BenchmarkGroup()
@@ -58,7 +57,7 @@ SUITE["multiply"]["mixed_sum_cube"] = @benchmarkable $h_mixed^3
 mixed_ops = shuffle([Fermion.(1:6); adjoint.(Fermion.(7:12)); fill(Boson(), 3); fill(Boson()', 3)])
 SUITE["multiply"]["mixed_deep_product"] = @benchmarkable prod($mixed_ops)
 
-# Without autosort, the default: products are added up unsorted, and sorted only by an explicit `sort`
+# Without autosort: products are added up unsorted, and sorted only by an explicit `sort`
 SUITE["unsorted"] = BenchmarkGroup()
 SUITE["unsorted"]["sum_cube"] = @benchmarkable with_autosort(() -> $h^3, false)
 const h3_unsorted = with_autosort(() -> h^3, false)

@@ -11,7 +11,7 @@ Pkg.add("NonCommutativeProducts")
 
 ## How to do it
 
-With a list of types `Ts` that represents your non-commuting objects, call [`@nc Ts...`](@ref NonCommutativeProducts.@nc) which defines addition and multiplication for these types. In order to sort them, define [`mul_effect(a::Tj, b::Tk)`](@ref NonCommutativeProducts.mul_effect) for each pair of types to define the behaviour of `a*b`.
+With a list of types `Ts` that represents your non-commuting objects, call [`@nc Ts...`](@ref NonCommutativeProducts.@nc) which defines addition and multiplication for these types. Then define [`mul_effect(a::Tj, b::Tk)`](@ref NonCommutativeProducts.mul_effect) for each pair of types to define the behaviour of `a*b`. Products are sorted as they are formed, so `a*b` throws a `MethodError` until you do.
 
 The function `mul_effect(a::Tj, b::Tk)` can have return values
 * `nothing`: Keeps `a*b`. This return value is important as the sorting only terminates when this is the return value for each neighbouring pair product. Without it, sorting never terminates.
@@ -56,12 +56,7 @@ import NonCommutativeProducts: @nc, mul_effect
 # output
 
 ```
-Now one can add and multiply these fermions,
-```jldoctest fermions; setup = :(NonCommutativeProducts.disable_autosort!())
-julia> Fermion(1)'*Fermion(1) + 1
-1I + c†[1]*c[1]
-```
-but they can't be sorted. To sort them in normal order and by label, define
+To sort them in normal order and by label, define
 ```jldoctest fermions; output = false, filter = r"\d+ methods?"
 function mul_effect(a::Fermion, b::Fermion)
     # If the fermion is multiplied with itself, replace it by zero.
@@ -78,23 +73,29 @@ end
 
 mul_effect (generic function with 1 method)
 ```
-Now we can sort expressions involving fermions while respecting the commutation relations.
+Now every product is sorted as it is formed, respecting the commutation relations.
 ```jldoctest fermions
-julia> Fermion(1)'*Fermion(1) |> sort
+julia> Fermion(1)'*Fermion(1)
 c†[1]*c[1]
 
-julia> Fermion(1)*Fermion(1)' |> sort
+julia> Fermion(1)*Fermion(1)'
 1I - c†[1]*c[1]
-```
-In order to automatically sort them on each multiplication, call [`enable_autosort!`](@ref NonCommutativeProducts.enable_autosort!):
-```jldoctest fermions
-julia> NonCommutativeProducts.enable_autosort!();
 
 julia> prod(Fermion(n) + Fermion(n)' for n in 1:4)
 Sum with 16 terms:
 -c†[1]*c†[2]*c†[4]*c[3]-c†[1]*c†[3]*c[2]*c[4]-c†[2]*c[1]*c[3]*c[4] + ...
 ```
-`enable_autosort!` sets the global default. You can override it locally in a scope with [`NonCommutativeProducts.with_autosort(false) do ... end`](@ref NonCommutativeProducts.with_autosort). This temporary override does not change the global default. When the function `mul_effect` is called from within this package, autosort is always locally disabled to avoid infinite recursion. Use [`NonCommutativeProducts.disable_autosort!()`](@ref NonCommutativeProducts.disable_autosort!) to turn autosort off globally again.
+Products formed inside `mul_effect` are not sorted when the package calls it, so returning `-b*a` doesn't recurse.
+
+To leave products unsorted within a block of code, use [`with_autosort(false)`](@ref NonCommutativeProducts.with_autosort), and `sort` them later:
 ```jldoctest fermions
-julia> NonCommutativeProducts.disable_autosort!();
+julia> import NonCommutativeProducts: with_autosort
+
+julia> x = with_autosort(false) do
+           Fermion(1)*Fermion(1)'
+       end
+c[1]*c†[1]
+
+julia> sort(x)
+1I - c†[1]*c[1]
 ```

@@ -48,8 +48,6 @@ NonCommutativeProducts.segment_ranges
 
 ```@docs
 Base.sort(::NonCommutativeProducts.NCMul)
-NonCommutativeProducts.enable_autosort!
-NonCommutativeProducts.disable_autosort!
 NonCommutativeProducts.autosort
 NonCommutativeProducts.with_autosort
 ```

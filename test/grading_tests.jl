@@ -130,7 +130,6 @@ end
 
 @testitem "Grading: all zeros are equal" setup = [GradedKets] begin
     import NonCommutativeProducts as NC
-    NC.enable_autosort!()
     # -0.0 is left out, since isequal(-0.0, 0.0) is false in Base
     zs = [0, 0.0, 0 * ket(1), 0 * ket(1) * bra(2), NC.NCMul(0, GKet[]), ket(1) - ket(1), zero(ket(1))]
     for a in zs, b in zs
@@ -142,7 +141,6 @@ end
 
 @testitem "Grading: grade and grades" setup = [GradedKets, ChargedFermions] begin
     import NonCommutativeProducts as NC
-    NC.enable_autosort!()
     f = GFermion(1)
     rows = Any[
         (2, Set([nothing])),
@@ -174,7 +172,6 @@ end
 
 @testitem "Grading: zeros from products keep their grade" setup = [GradedKets] begin
     import NonCommutativeProducts as NC
-    NC.enable_autosort!()
     op = ket(0) * bra(1)
     z = op * ket(0)
     @test z == 0
@@ -189,18 +186,15 @@ end
     @test NC.grades(op * (0 * ket(1))) == Set([KET])
 
     # also when sorting explicitly
-    NC.disable_autosort!()
-    u = ket(0) * bra(1) * ket(0)
+    u = NC.with_autosort(() -> ket(0) * bra(1) * ket(0), false)
     @test !iszero(u)
     @test iszero(sort(u))
     @test NC.grades(sort(u)) == Set([KET])
-    NC.enable_autosort!()
 end
 
 @testitem "Grading: linear operations keep the grade of zero" setup = [GradedKets] begin
     import NonCommutativeProducts as NC
     using VectorInterface
-    NC.enable_autosort!()
     x = 1.0 * ket(1) + 2.0 * ket(2)
     kb = 1.0 * ket(3) * bra(1)
 
@@ -233,7 +227,6 @@ end
 @testitem "Grading: grade_part" setup = [GradedKets] begin
     import NonCommutativeProducts as NC
     using LinearAlgebra: I
-    NC.enable_autosort!()
     kb = ket(2) * bra(3)
 
     # a mixed sum splits into its graded parts
@@ -263,7 +256,6 @@ end
 
 @testitem "Grading: fermion charge" setup = [ChargedFermions] begin
     import NonCommutativeProducts as NC
-    NC.enable_autosort!()
     f = GFermion.(1:3)
 
     @test NC.grade(f[1]' * f[1]) === nothing
@@ -288,7 +280,6 @@ end
 
 @testitem "Grading: ungraded types" setup = [Fermions] begin
     import NonCommutativeProducts as NC
-    NC.enable_autosort!()
     f1, f2 = Fermion(1), Fermion(2)
 
     @test NC.grade(f1) === nothing
@@ -349,7 +340,6 @@ end
     import NonCommutativeProducts as NC
     using NonCommutativeProducts: ProductGrade
     NC.@commutative GFermion GKet
-    NC.enable_autosort!()
     f, k = GFermion(1), ket(1)
 
     # commuting factors of different types have the same grade in either order
@@ -391,14 +381,14 @@ end
 
 @testitem "Grading: autosort disabled" setup = [GradedKets] begin
     import NonCommutativeProducts as NC
-    NC.disable_autosort!()
     x = 1.0 * ket(1) + 2.0 * ket(2)
     z = x - x
     # without sorting, products of nonzero terms stay nonzero, so zeros come from the coefficients
-    @test NC.grades(z * bra(3)) == Set([KETBRA])
-    @test NC.grades(z * (x' + 1)) == Set([KETBRA, KET])
-    @test NC.grades(z') == Set([BRA])
-    NC.enable_autosort!()
+    NC.with_autosort(false) do
+        @test NC.grades(z * bra(3)) == Set([KETBRA])
+        @test NC.grades(z * (x' + 1)) == Set([KETBRA, KET])
+        @test NC.grades(z') == Set([BRA])
+    end
 end
 
 @testitem "Grading: unregistered objects" setup = [Fermions] begin

@@ -1,6 +1,5 @@
 @testitem "ncmap" setup = [Fermions, Majoranas, Bosons] begin
     import NonCommutativeProducts: ncmap, ncmapreduce
-    NonCommutativeProducts.disable_autosort!()
     f = Fermion(:a)
     change_label(x::Fermion) = Fermion(:b, x.creation)
     @test ncmap(change_label, f) == Fermion(:b)
@@ -35,6 +34,5 @@
     @test ncmap(ferm_to_maj, expr) == expected
 
     @test ncmap(adjoint, f'f) == f * f'
-    NonCommutativeProducts.enable_autosort!()
     @test ncmap(adjoint, f'f) == 1 - f' * f
 end

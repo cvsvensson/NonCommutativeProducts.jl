@@ -1,6 +1,6 @@
 # Linear algebra
 
-Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left (apart from pairs of terms skipped by keys, see [Fast inner products](@ref)), so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts the pairs it doesn't skip, whether or not autosort is enabled.
+Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left (apart from pairs of terms skipped by keys, see [Fast inner products](@ref)), so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts the pairs it doesn't skip, also inside `with_autosort(false)`.
 
 With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. These features live in a package extension, which `using KrylovKit` loads.
 
@@ -9,8 +9,6 @@ Example: Let's define kets and bras and exponentiate a Hamiltonian:
 julia> using KrylovKit, LinearAlgebra
 
 julia> import NonCommutativeProducts as NC
-
-julia> NC.enable_autosort!();
 
 julia> struct Ket
            n::Int
@@ -63,7 +61,7 @@ by the triangle inequality, where `b(P)` is the product of the operator norm bou
 
 To make terms droppable, define [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound) for your atoms. Terms containing an atom without a bound, such as a boson, are kept.
 
-`rtol` is relative to the total weight of the droppable terms, kept or not. That total can far exceed `‖x‖` and leaves out terms without a bound, so `rtol` is not a relative error in `‖x‖`. Combine like terms before truncating, e.g. with autosort, since terms that would cancel otherwise use up the budget.
+`rtol` is relative to the total weight of the droppable terms, kept or not. That total can far exceed `‖x‖` and leaves out terms without a bound, so `rtol` is not a relative error in `‖x‖`. Sort an expression formed inside `with_autosort(false)` before truncating, since terms that would cancel otherwise use up the budget.
 
 For the kets above, normalized kets and bras have norm 1:
 ```jldoctest kets

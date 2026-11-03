@@ -1,7 +1,6 @@
 @testitem "Consistency between + and add!!" setup = [Fermions] begin
     import NonCommutativeProducts: add!!
     using LinearAlgebra: I
-    NonCommutativeProducts.disable_autosort!()
     f = Fermion.(1:2)
     a = 1.0 * f[2] * f[1] + 1 + f[1]
     for b in [1.0, 1, f[1], 1.0 * f[1], f[2] * f[1], a]
@@ -14,7 +13,6 @@
     end
     @test a == 1.0 * f[2] * f[1] + 1 + f[1]
 
-    NonCommutativeProducts.disable_autosort!()
     @test add!!(f[1] + 1, 1) == f[1] + 2
     @test add!!(f[1] + 1, 2I) == f[1] + 3
     @test add!!(f[1] + 1, f[1]) == 2f[1] + 1
@@ -22,6 +20,20 @@
     @test add!!(f[1] + 1, 1, 2, 5) == 5f[1] + 7
     @test add!!(f[1] + 1, f[1], 2, 5) == 7f[1] + 5
     @test add!!(f[1] + 1, 5 * f[1], 2, 5) == 15f[1] + 5
+end
+
+@testitem "foldl with add!! matches sum and keeps its inputs" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, NCAdd
+    f = Fermion.(1:3)
+    x = f[1] + f[2]
+    y = 1.5 * f[3] + 1
+    for xs in ([x, f[3] + 0], [x, x, x], Any[x, y, f[1]], Any[f[1], 1.5 * f[2], 2, x])
+        before = [e isa NCAdd ? copy(e) : e for e in xs]
+        s = foldl(add!!, xs; init=0)
+        @test s == sum(xs)
+        @test typeof(s) == typeof(sum(xs))
+        @test isequal(xs, before)
+    end
 end
 
 @testitem "oneunit of NCAdd" setup = [Fermions] begin

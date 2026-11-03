@@ -142,39 +142,26 @@ macro nc_common(T)
     end
 end
 
-const _DEFAULT_AUTOSORT = Ref(false)
+const _DEFAULT_AUTOSORT = Ref(true)
 const _autosort = ScopedValue{Bool}()
 
 """
     autosort()
 
-Whether products are sorted with `mul_effect` as they are formed. Set the global default with `enable_autosort!` and
-`disable_autosort!`, or override it for a block of code with `with_autosort`. Autosorting is off by default.
-
-Returns the current setting as a `Bool`: the value set by the innermost `with_autosort` if one is active, otherwise the global default.
+Whether products are sorted with `mul_effect` as they are formed. True unless overridden with `with_autosort`.
 """
 function autosort()
     v = ScopedValues.get(_autosort)
     return v === nothing ? _DEFAULT_AUTOSORT[] : something(v)
 end
-"""
-    enable_autosort!()
-
-Sort products with `mul_effect` as they are formed, unless overridden by `with_autosort`.
-"""
+# Internal: these set the session-wide default, for every package. Use with_autosort instead.
 enable_autosort!() = _DEFAULT_AUTOSORT[] = true
-"""
-    disable_autosort!()
-
-Do not sort products as they are formed, unless overridden by `with_autosort`. This is the default.
-"""
 disable_autosort!() = _DEFAULT_AUTOSORT[] = false
 
 """
     with_autosort(f, enabled::Bool=true)
 
-Call `f()` with autosorting set to `enabled`, overriding the global setting from `enable_autosort!` and `disable_autosort!` for the duration of the call. Returns the
-value of `f()`. Works with a `do` block:
+Call `f()` with autosorting set to `enabled` and return its value. Works with a `do` block:
 
     with_autosort(false) do
         a * b
@@ -186,7 +173,8 @@ with_autosort(f, enabled::Bool=true) = with(f, _autosort => enabled)
     @nc T1 T2 ...
 
 Define addition and multiplication for the given types, both within each type and between them, and make them
-implement the VectorInterface.jl API.
+implement the VectorInterface.jl API. Products are sorted as they are formed, so also define [`mul_effect`](@ref) for
+the types, or form products inside `with_autosort(false)`.
 """
 macro nc(types...)
     nc_common_calls = [:(@nc_common $(esc(T))) for T in types]

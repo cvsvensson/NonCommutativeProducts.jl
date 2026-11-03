@@ -5,7 +5,7 @@
 [![Build Status](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/cvsvensson/NonCommutativeProducts.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/cvsvensson/NonCommutativeProducts.jl)
 
-**NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. With a list of types `Ts` that represents your non-commuting objects, call `@nc Ts...` to define addition and multiplication for these types, and define `mul_effect(a, b)` for each pair of types to say what `a*b` is replaced by while sorting.
+**NonCommutativeProducts.jl** is a Julia package for sorting non-commuting objects, such as operators in quantum mechanics. Users must specify custom commutation relations and sorting orders, as there are no inbuilt ones in this package. With a list of types `Ts` that represents your non-commuting objects, call `@nc Ts...` to define addition and multiplication for these types, and define `mul_effect(a, b)` for each pair of types to say what `a*b` is replaced by. Products are sorted as they are formed; use `with_autosort(false)` to leave them unsorted.
 
 ## Installation
 
@@ -41,12 +41,12 @@ function mul_effect(a::Fermion, b::Fermion)
     return -b*a
 end
 
-Fermion(1)'*Fermion(1) |> sort
+Fermion(1)'*Fermion(1)
 #c†[1]*c[1]
-Fermion(1)*Fermion(1)' |> sort
+Fermion(1)*Fermion(1)'
 #1I - c†[1]*c[1]
 ```
 
 ## Documentation
 
-See the [stable](https://cvsvensson.github.io/NonCommutativeProducts.jl/stable/) or [development](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/) documentation for automatic sorting, multiple types, traversing expressions, linear algebra, gradings, performance tips and the API reference.
+See the [stable](https://cvsvensson.github.io/NonCommutativeProducts.jl/stable/) or [development](https://cvsvensson.github.io/NonCommutativeProducts.jl/dev/) documentation for multiple types, traversing expressions, linear algebra, gradings, performance tips and the API reference.

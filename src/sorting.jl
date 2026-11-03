@@ -256,7 +256,9 @@ end
 When sorting a non-commutative expression, `mul_effect(a, b)` gives the replacement for `a*b`. 
 It must have a branch that returns `nothing` in order for the sorting to terminate. 
 
-This package defines no methods for `mul_effect`, so define them for your types.
+This package defines no methods for `mul_effect`, so define them for your types. Products are sorted as they are
+formed, so a product of types without a method throws a `MethodError`, unless it is inside `with_autosort(false)`.
+Products formed inside `mul_effect` are not sorted when the package calls it.
 
 The return value can be `nothing`, a number, an object, a sum or product of these, or one of the helper types `Swap(λ)`
 (replace `a*b` by `λ*b*a`) and `AddTerms(terms)` (replace `a*b` by a sum of `terms`). `Swap` and `AddTerms` are
@@ -268,7 +270,6 @@ available as `NonCommutativeProducts.Swap` and `NonCommutativeProducts.AddTerms`
 struct θ id::Int end
 NonCommutativeProducts.@nc θ
 NonCommutativeProducts.mul_effect(a::θ, b::θ) = a.id < b.id ? nothing : -b * a * (a.id==b.id ? 0 : 1)
-NonCommutativeProducts.enable_autosort!()
 θ(2)*θ(1) # = -θ(1)*θ(2)
 θ(1)*θ(1) # = 0
 ```
