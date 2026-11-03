@@ -1078,7 +1078,7 @@ end
     @test inner(x, y) == 3 * 7 + 5 * 11
 end
 
-@testitem "VectorInterface: inner sorts its arguments" begin
+@testitem "VectorInterface: inner of terms in different orders" begin
     using KrylovKit, LinearAlgebra, VectorInterface
     import NonCommutativeProducts: @nc, mul_effect, with_autosort, Swap
 
@@ -1119,9 +1119,68 @@ end
     mul_effect(a::Vac, b::F) = a.bra && b.dag ? 0 : nothing
     mul_effect(a::F, b::Vac) = !b.bra && !a.dag ? 0 : nothing
 
+    # kets that never reorder
+    struct R
+        site::Int
+        n::Int
+        bra::Bool
+    end
+    R(site, n) = R(site, n, false)
+    Base.adjoint(k::R) = R(k.site, k.n, !k.bra)
+    @nc R
+    function mul_effect(a::R, b::R)
+        a.bra && !b.bra && return a.site == b.site ? Int(a.n == b.n) : Swap(1)
+        return nothing
+    end
+    NonCommutativeProducts.contraction_key(k::R) = k.bra ? nothing : (k.site, k.n)
+
+    # kets of two types
+    struct KA
+        n::Int
+        bra::Bool
+    end
+    struct KB
+        n::Int
+        bra::Bool
+    end
+    KA(n) = KA(n, false)
+    KB(n) = KB(n, false)
+    Base.adjoint(k::KA) = KA(k.n, !k.bra)
+    Base.adjoint(k::KB) = KB(k.n, !k.bra)
+    @nc KA KB
+    mul_effect(a::KA, b::KA) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+    mul_effect(a::KB, b::KB) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+    mul_effect(a::KA, b::KB) = a.bra && !b.bra ? Swap(1) : nothing
+    mul_effect(a::KB, b::KA) = a.bra && !b.bra ? Swap(1) : nothing
+    NonCommutativeProducts.contraction_key(k::KA) = k.bra ? nothing : (:A, k.n)
+    NonCommutativeProducts.contraction_key(k::KB) = k.bra ? nothing : (:B, k.n)
+
+    # the same state in two orders, in which the keys disagree
+    swapped = with_autosort(() -> 1.0 * Q(2, 0) * Q(1, 0), false)
+    canonical = 1.0 * Q(1, 0) * Q(2, 0)
+    @test inner(swapped, canonical) == inner(canonical, swapped) == 1
+
+    @test inner(1.0 * R(2, 0) * R(1, 0), 1.0 * R(1, 0) * R(2, 0)) == 1
+    @test inner(R(2, 1) * R(1, 0), R(1, 1) * R(2, 0)) == 0
+    # sums, with kets of each order on each side
+    @test inner(2.0 * R(2, 1) * R(1, 0) + 3.0 * R(1, 1) * R(2, 0) + 5.0 * R(1, 0) * R(2, 0),
+        7.0 * R(1, 0) * R(2, 1) + 11.0 * R(2, 0) * R(1, 1) + 13.0 * R(2, 0) * R(1, 0)) == 112
+    # a key that isn't in the other sum, whose kets are all of one subsystem
+    @test inner(R(3, 0) * R(1, 0), R(1, 0) * R(3, 0) + R(1, 1) * R(3, 0)) == 1
+    # a term of the other sum that leaves a factor counts as orthogonal
+    @test inner(1.0 * R(2, 0), 1.0 * R(1, 0) * R(2, 0)) == 0
+
+    @test inner(KA(1) * KB(2), KB(2) * KA(1)) == 1
+    @test inner(KA(1) * KB(2), KB(2) * KA(3)) == 0
+
+    # the lowest energy of two qubits, where H * x has kets in both orders
+    X(s) = R(s, 0) * R(s, 1)' + R(s, 1) * R(s, 0)'
+    Z(s) = R(s, 0) * R(s, 0)' - R(s, 1) * R(s, 1)'
+    HR = 1.0 * (X(1) + X(2)) + 0.7 * Z(1) * Z(2)
+    vals, = eigsolve(x -> HR * x, 1.0 * R(1, 0) * R(2, 0), 1, :SR; ishermitian=true, krylovdim=6, maxiter=1)
+    @test vals[1] ≈ -2.1190 atol = 1e-3
+
     with_autosort(false) do
-        # the same state in two orders, in which the keys disagree
-        swapped, canonical = 1.0 * Q(2, 0) * Q(1, 0), 1.0 * Q(1, 0) * Q(2, 0)
         @test inner(swapped, canonical) == inner(canonical, swapped) == 1
         @test dot(swapped, canonical) == norm(swapped) == 1
         @test inner(swapped + 0, canonical) == 1
