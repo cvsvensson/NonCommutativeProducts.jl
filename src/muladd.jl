@@ -236,7 +236,8 @@ end
 
 Define mixed arithmetic for types that commute with each other, and order them as listed: for `x::Ti` and `y::Tj`,
 `x*y` stays if `i < j` and becomes `y*x` if `i > j`. The types must already be registered with `@nc`, must not overlap,
-and can't be listed later in the opposite order.
+and must not be listed later in the opposite order. Reversing a pair throws, except that using a supertype of an earlier
+type goes undetected.
 """
 macro commutative(types...)
     any(T -> Meta.isexpr(T, :tuple), types) && return :(throw(_syntax_error("@commutative")))
@@ -255,7 +256,7 @@ macro commutative(types...)
         @nc_pairs $(esc.(types)...)
     end
 end
-# Whether an earlier @commutative ordered T1 before T2
+# Whether an earlier @commutative ordered T1 before T2, or supertypes of them
 _ordered_before(::Type, ::Type) = false
 # Whether an earlier @commutative ordered a member of the Union T1 before a member of the Union T2
 function _any_ordered_before(T1, T2)
@@ -272,7 +273,7 @@ function _check_commutative_types(types...)
         for U in types[n+1:end]
             U isa Type || continue # reported when U is reached
             typeintersect(T, U) === Union{} || throw(ArgumentError("`@commutative` can't order overlapping types, got $T and $U"))
-            _any_ordered_before(U, T) && throw(ArgumentError("`@commutative` can't order $T before $U, since an earlier call ordered $U before $T"))
+            _any_ordered_before(U, T) && throw(ArgumentError("`@commutative` can't order $T before $U, since that reverses an order set by an earlier call"))
         end
     end
     return nothing
