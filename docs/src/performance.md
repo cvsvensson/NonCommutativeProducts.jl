@@ -12,7 +12,6 @@ DocTestSetup = quote
     Fermion(k) = Fermion(k, false)
     Base.show(io::IO, x::Fermion) = print(io, "c", x.dagger ? "†" : "", "[", x.label, "]")
     @nc Fermion
-    NonCommutativeProducts.disable_autosort!()
 end
 ```
 
@@ -20,7 +19,7 @@ The examples on this page use the `Fermion` type defined on the [Home](@ref "Exa
 
 Each product is sorted with bubble sort, which repeatedly swaps adjacent factors so that commutation relations apply. The time to sort one product grows quadratically with its number of factors, so long products are slow.
 
-A product of sums is formed one pair of terms at a time: each pair is sorted on its own and added straight into the result. The time is proportional to the number of term pairs and the memory to the size of the result. A product that sorts to zero allocates nothing, and each term added to the result costs one copy of its factors.
+A product of sums is formed one pair of terms at a time: each pair is sorted on its own and added straight into the result. The time is proportional to the number of term pairs and the memory to the size of the result. A pair that sorts to zero allocates nothing if `mul_effect` doesn't (see `Swap` below), and each term added to the result costs one copy of its factors.
 
 ```julia
 op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
@@ -45,7 +44,7 @@ op == op2 # true
 
 Mixing different symbolic types together is slower than using a single type.
 
-Disable autosort to improve performance if you don't want automatic sorting.
+Use [`with_autosort(false)`](@ref NonCommutativeProducts.with_autosort) only if you don't need the result sorted. It forms products faster, but like terms don't combine, and sorting afterwards is slower than sorting as they are formed.
 
 Finally, instead of using ordinary addition and multiplication in `mul_effect`, you can use [`Swap`](@ref NonCommutativeProducts.Swap) and [`AddTerms`](@ref NonCommutativeProducts.AddTerms) which are more efficient. Their behaviour is:
 * `Swap(λ::Number)`: Replaces `a*b` by `λ*b*a`.
@@ -67,17 +66,15 @@ mul_effect (generic function with 1 method)
 ```
 which sorts the same way:
 ```jldoctest performance
-julia> Fermion(1)*Fermion(1)' |> sort
+julia> Fermion(1)*Fermion(1)'
 1I - c†[1]*c[1]
 ```
 
-When products of a term with a sum have structure that `mul_effect` cannot use, define a method of [`mul_terms!!`](@ref NonCommutativeProducts.mul_terms!!) for your types. With autosort enabled, `mul!!` calls `mul_terms!!(c, x, b)` for each term `x` of the left factor, and so does `*` when either factor is a sum. Autosort is disabled during the call, so the method must add terms that are already sorted.
+When products of a term with a sum have structure that `mul_effect` cannot use, define a method of [`mul_terms!!`](@ref NonCommutativeProducts.mul_terms!!) for your types. `mul!!` calls `mul_terms!!(c, x, b)` for each term `x` of the left factor, and so does `*` when either factor is a sum. Autosort is disabled during the call, so the method must add terms that are already sorted.
 
 For example, `|n⟩⟨m|` applied to a sum of kets is the coefficient of `|m⟩` times `|n⟩`. A method can find it in one pass over the terms of the sum with [`termpairs`](@ref NonCommutativeProducts.termpairs), and add it to `c` with [`add!!`](@ref NonCommutativeProducts.add!!). Other products go through the default method:
 ```jldoctest multerms
 julia> import NonCommutativeProducts as NC
-
-julia> NC.enable_autosort!();
 
 julia> struct Ket
            n::Int

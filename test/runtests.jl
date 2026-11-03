@@ -34,84 +34,85 @@ end
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     f3 = Fermion((1, :↑))
-    NonCommutativeProducts.disable_autosort!()
     ord(op) = sort(op)
     ord_equals(a, b) = iszero(ord(a - b))
     ord_equals(a, b, c, xs...) = (ord_equals(a, b) && ord_equals(b, c, xs...))
 
-    @test 1 * f1 == f1
-    @test 1 * f1 + 0 == f1
-    @test 1 * f1 + 0 == 1 * f1
-    @test 0 * f1 == 0
-    @test 1 * f1 !== 1
-    @test 0 * f1 + 1 == 1
-    @test f1 / 2 + 1 / 2 == (1 + f1) / 2 == (f1 * 1) / 2 + 1 / 2 == (f1 * 1 + 1) / 2
-    @test hash(f1) == hash(1 * f1) == hash(1 * f1 + 0)
+    # explicit sorting of products left unsorted
+    NonCommutativeProducts.with_autosort(false) do
+        @test 1 * f1 == f1
+        @test 1 * f1 + 0 == f1
+        @test 1 * f1 + 0 == 1 * f1
+        @test 0 * f1 == 0
+        @test 1 * f1 !== 1
+        @test 0 * f1 + 1 == 1
+        @test f1 / 2 + 1 / 2 == (1 + f1) / 2 == (f1 * 1) / 2 + 1 / 2 == (f1 * 1 + 1) / 2
+        @test hash(f1) == hash(1 * f1) == hash(1 * f1 + 0)
 
-    # Test canonical commutation relations
-    @test ord_equals(f1' * f1 + f1 * f1', 1)
-    @test ord_equals(f1 * f2 + f2 * f1, 0)
-    @test ord_equals(f1' * f2 + f2 * f1', 0)
+        # Test canonical commutation relations
+        @test ord_equals(f1' * f1 + f1 * f1', 1)
+        @test ord_equals(f1 * f2 + f2 * f1, 0)
+        @test ord_equals(f1' * f2 + f2 * f1', 0)
 
-    @test_nowarn display(f1)
-    @test_nowarn display(f3)
-    @test_nowarn display(1 * f1)
-    @test_nowarn display(2 * f3)
-    @test_nowarn display(1 + f1)
-    @test_nowarn display(1 + f3)
-    @test_nowarn display(1 + a * f2 - 5 * f1 + 2 * z * f1 * f2)
+        @test_nowarn display(f1)
+        @test_nowarn display(f3)
+        @test_nowarn display(1 * f1)
+        @test_nowarn display(2 * f3)
+        @test_nowarn display(1 + f1)
+        @test_nowarn display(1 + f3)
+        @test_nowarn display(1 + a * f2 - 5 * f1 + 2 * z * f1 * f2)
 
-    @test iszero(f1 - f1)
-    @test ord_equals(f1 * f1, 0)
-    @test f1 * f2 isa NonCommutativeProducts.NCMul
-    @test iszero(2 * f1 - 2 * f1)
-    @test iszero(0 * f1)
-    @test 2 * f1 isa NonCommutativeProducts.NCMul
-    @test iszero(f1 * 0)
-    @test ord_equals(f1^2, 0)
-    @test ord_equals(0 * (f1 + f2), 0)
-    @test iszero((f1 + f2) * 0)
-    @test ord_equals(f1 * f2 * f1, 0)
-    f12 = f1 * f2
-    @test iszero(f12'' - f12)
-    @test ord_equals(f12 * f12, 0)
-    @test ord_equals(f12' * f12', 0)
-    nf1 = f1' * f1
-    @test ord_equals(nf1^2, nf1)
-    @test f1' * f1 isa NonCommutativeProducts.NCMul
-    @test ord(f1 * f1') isa NonCommutativeProducts.NCAdd
+        @test iszero(f1 - f1)
+        @test ord_equals(f1 * f1, 0)
+        @test f1 * f2 isa NonCommutativeProducts.NCMul
+        @test iszero(2 * f1 - 2 * f1)
+        @test iszero(0 * f1)
+        @test 2 * f1 isa NonCommutativeProducts.NCMul
+        @test iszero(f1 * 0)
+        @test ord_equals(f1^2, 0)
+        @test ord_equals(0 * (f1 + f2), 0)
+        @test iszero((f1 + f2) * 0)
+        @test ord_equals(f1 * f2 * f1, 0)
+        f12 = f1 * f2
+        @test iszero(f12'' - f12)
+        @test ord_equals(f12 * f12, 0)
+        @test ord_equals(f12' * f12', 0)
+        nf1 = f1' * f1
+        @test ord_equals(nf1^2, nf1)
+        @test f1' * f1 isa NonCommutativeProducts.NCMul
+        @test ord(f1 * f1') isa NonCommutativeProducts.NCAdd
 
-    @test ord_equals(1 + (f1 + f2), 1 + f1 + f2, f1 + f2 + 1, f1 + 1 + f2, 1 * f1 + f2 + 1, f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2), (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2), (1 + f1' + (1 * f2)')')
-    @test 1 + (f1 + f2) == 1 + f1 + f2 == f1 + f2 + 1 == f1 + 1 + f2 == 1 * f1 + f2 + 1 == f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2) == (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2) == (1 + f1' + (1 * f2)')'
-    @test ord_equals((2 * f1) * (2 * f1), 0)
-    @test ord_equals((2 * f1)^2, 0)
-    @test ord_equals((2 * f2) * (2 * f1), -4 * f1 * f2)
-    @test ord_equals(f1, (f1 * (f1 + 1)), (f1 + 1) * f1)
-    @test ord_equals(f1 * (f1 + f2) * f1, 0)
-    @test ord_equals((f1 * (f1 + f2)), f1 * f2)
-    @test ord_equals((2nf1 - 1) * (2nf1 - 1), 1)
+        @test ord_equals(1 + (f1 + f2), 1 + f1 + f2, f1 + f2 + 1, f1 + 1 + f2, 1 * f1 + f2 + 1, f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2), (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2), (1 + f1' + (1 * f2)')')
+        @test 1 + (f1 + f2) == 1 + f1 + f2 == f1 + f2 + 1 == f1 + 1 + f2 == 1 * f1 + f2 + 1 == f1 + 0.5 * f2 + 1 + (0 * f1 + 0.5 * f2) == (0.5 + 0.5 * f1 + 0.2 * f2) + 0.5 + (0.5 * f1 + 0.8 * f2) == (1 + f1' + (1 * f2)')'
+        @test ord_equals((2 * f1) * (2 * f1), 0)
+        @test ord_equals((2 * f1)^2, 0)
+        @test ord_equals((2 * f2) * (2 * f1), -4 * f1 * f2)
+        @test ord_equals(f1, (f1 * (f1 + 1)), (f1 + 1) * f1)
+        @test ord_equals(f1 * (f1 + f2) * f1, 0)
+        @test ord_equals((f1 * (f1 + f2)), f1 * f2)
+        @test ord_equals((2nf1 - 1) * (2nf1 - 1), 1)
 
-    @test ord_equals((1 * f1) * f2, f1 * f2)
-    @test ord_equals((1 * f1) * (1 * f2), f1 * f2)
-    @test ord_equals(f1 * f2, f1 * (1 * f2), f1 * f2)
-    @test ord_equals(f1 - 1, (1 * f1) - 1, (0.5 + f1) - 1.5)
+        @test ord_equals((1 * f1) * f2, f1 * f2)
+        @test ord_equals((1 * f1) * (1 * f2), f1 * f2)
+        @test ord_equals(f1 * f2, f1 * (1 * f2), f1 * f2)
+        @test ord_equals(f1 - 1, (1 * f1) - 1, (0.5 + f1) - 1.5)
 
-    for op in [f1, f1 + f2, f1' * f2, f1 * f2 + 1]
-        @test ord_equals(op + 1.0I, op + 1.0)
-        @test ord_equals(op - 1.0I, op - 1.0, -(1.0I - op), -(1.0 - op))
+        for op in [f1, f1 + f2, f1' * f2, f1 * f2 + 1]
+            @test ord_equals(op + 1.0I, op + 1.0)
+            @test ord_equals(op - 1.0I, op - 1.0, -(1.0I - op), -(1.0 - op))
+        end
+
+        bigprod = prod(Fermion(rand(1:15), rand(Bool)) + Fermion(rand(1:15), rand(Bool)) for k in 1:10)
+        @test ord(bigprod) == ord(ord(bigprod))
+        bigprodhc = bigprod + bigprod'
+        @test ord(bigprodhc) == ord(bigprodhc')
     end
-
-    bigprod = prod(Fermion(rand(1:15), rand(Bool)) + Fermion(rand(1:15), rand(Bool)) for k in 1:10)
-    @test ord(bigprod) == ord(ord(bigprod))
-    bigprodhc = bigprod + bigprod'
-    @test ord(bigprodhc) == ord(bigprodhc')
 end
 
 
 @testitem "Majoranas" setup = [Majoranas] begin
     using Random: seed!
     seed!(1)
-    NonCommutativeProducts.enable_autosort!()
     γ = Majorana.(1:4)
     @test 1 * γ[1] == γ[1]
     @test 1 * γ[1] + 0 == γ[1]
@@ -169,8 +170,24 @@ end
     @test sort(bigprod2') == bigprod2'
 end
 
+@testitem "Autosort is the default" setup = [Fermions] begin
+    @test NonCommutativeProducts.autosort()
+    f = Fermion(1)
+    @test f * f == 0
+    @test f * f' == 1 - f' * f
+end
+
+@testitem "A product without mul_effect asks for one" begin
+    import NonCommutativeProducts: @nc, NCMul, with_autosort
+    struct NoEffect end
+    @nc NoEffect
+    x = NoEffect()
+    err = @test_throws MethodError x * x
+    @test occursin("with_autosort(false)", sprint(showerror, err.value))
+    @test with_autosort(() -> x * x, false) == NCMul(1, [x, x])
+end
+
 @testitem "Autosort local override with ScopedValue" setup = [Majoranas] begin
-    NonCommutativeProducts.enable_autosort!()
     γ1, γ2 = Majorana.(1:2)
 
     # Global autosort enabled: product is immediately canonicalized.
@@ -228,7 +245,6 @@ end
     import NonCommutativeProducts: @nc, add!!
     using LinearAlgebra
     using Random: seed!
-    NonCommutativeProducts.enable_autosort!()
     NonCommutativeProducts.@commutative Fermion Boson
     f1 = Fermion(:a)
     f2 = Fermion(:b)
@@ -312,7 +328,6 @@ end
 end
 
 @testitem "Heterogeneous Fermion-Boson vectors" setup = [Fermions, Bosons] begin
-    NonCommutativeProducts.enable_autosort!()
     NonCommutativeProducts.@commutative Fermion Boson
 
     f1 = Fermion(:a)
@@ -359,72 +374,71 @@ end
     b = Boson()
 
     for sorted in (false, true)
-        sorted ? NonCommutativeProducts.enable_autosort!() : NonCommutativeProducts.disable_autosort!()
+        NonCommutativeProducts.with_autosort(sorted) do
+            # Widening the additive coefficient widens the term coefficients too
+            x = 1.0 + (f1 + f2)
+            half = 0.5 + 0.5 * f1 + 0.5 * f2
+            @test valtype(x.dict) == Float64
+            @test 0.5 * x == half
+            @test x / 2 == half
+            # / divides each coefficient, as [c] / b does
+            @test valtype(((2 * f1 + 2 * f2) / 2).dict) == Float64
+            @test (0.1 * f1 + 0.1) / 7.0 == 0.1 / 7.0 * f1 + 0.1 / 7.0 != inv(7.0) * 0.1 * f1 + inv(7.0) * 0.1
+            @test (2 * f1 + 2) // 2 == f1 + 1 && valtype(((2 * f1 + 2) // 2).dict) == Rational{Int}
+            @test (2 * f1 * f2) // 2 == f1 * f2
+            @test VectorInterface.scale!(copy(x), 0.5) == half
+            @test VectorInterface.scale!!(copy(x), 0.5) == half
+            @test VectorInterface.add(x, f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
+            @test VectorInterface.add!!(copy(x), f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
+            @test (f1 + f2) + 0.5 * f1 == 1.5 * f1 + f2 == 0.5 * f1 + (f1 + f2)
+            @test add!!(f1 + f2, 0.5 * f1) == 1.5 * f1 + f2
 
-        # Widening the additive coefficient widens the term coefficients too
-        x = 1.0 + (f1 + f2)
-        half = 0.5 + 0.5 * f1 + 0.5 * f2
-        @test valtype(x.dict) == Float64
-        @test 0.5 * x == half
-        @test x / 2 == half
-        # / divides each coefficient, as [c] / b does
-        @test valtype(((2 * f1 + 2 * f2) / 2).dict) == Float64
-        @test (0.1 * f1 + 0.1) / 7.0 == 0.1 / 7.0 * f1 + 0.1 / 7.0 != inv(7.0) * 0.1 * f1 + inv(7.0) * 0.1
-        @test (2 * f1 + 2) // 2 == f1 + 1 && valtype(((2 * f1 + 2) // 2).dict) == Rational{Int}
-        @test (2 * f1 * f2) // 2 == f1 * f2
-        @test VectorInterface.scale!(copy(x), 0.5) == half
-        @test VectorInterface.scale!!(copy(x), 0.5) == half
-        @test VectorInterface.add(x, f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
-        @test VectorInterface.add!!(copy(x), f1 + f2, 0.5, 0.5) == 0.5 + f1 + f2
-        @test (f1 + f2) + 0.5 * f1 == 1.5 * f1 + f2 == 0.5 * f1 + (f1 + f2)
-        @test add!!(f1 + f2, 0.5 * f1) == 1.5 * f1 + f2
+            # Adding a number gives a new sum that does not share storage with the old one
+            y = f1 + f2
+            add!!(1 + y, f1)
+            add!!(y + 1, f2)
+            add!!(0 + y, f1)
+            @test y == f1 + f2
 
-        # Adding a number gives a new sum that does not share storage with the old one
-        y = f1 + f2
-        add!!(1 + y, f1)
-        add!!(y + 1, f2)
-        add!!(0 + y, f1)
-        @test y == f1 + f2
+            # convert returns exactly the requested type, or throws
+            T = typeof(f1 + f2)
+            @test convert(T, 3) isa T
+            @test convert(T, 3) == 3
+            @test_throws InexactError convert(T, 3.5)
+            @test_throws InexactError push!([1.5 * f1 + 0], 1im)
 
-        # convert returns exactly the requested type, or throws
-        T = typeof(f1 + f2)
-        @test convert(T, 3) isa T
-        @test convert(T, 3) == 3
-        @test_throws InexactError convert(T, 3.5)
-        @test_throws InexactError push!([1.5 * f1 + 0], 1im)
+            # Atoms, products and sums convert into containers of any compatible type
+            for (container, value) in ((f1 * b, f1), (f1 + b, f1), (f1 + b, f1 * f2), (f1 * b, f1 * f2))
+                v = push!([container], value)
+                @test v[2] == value
+            end
 
-        # Atoms, products and sums convert into containers of any compatible type
-        for (container, value) in ((f1 * b, f1), (f1 + b, f1), (f1 + b, f1 * f2), (f1 * b, f1 * f2))
-            v = push!([container], value)
-            @test v[2] == value
+            # Heterogeneous vectors get one concrete element type
+            fm, bm, mm = f1 * f2, b * b', f1 * b
+            fa, ba, ma = f1 + f2, b + b', f1 + b
+            combinations = ((fa, ba), (fa, ma), (fm, ma), (mm, fa), (f1, mm), (f1, ma), (fi, fa), (1 * fi, fa), (fm, f1, b, bm, fa, ma), (1im * f1, b, 1im * mm, 1im + ma))
+            for values in combinations
+                v = [values...]
+                @test isconcretetype(eltype(v))
+                @test all(x -> typeof(x) === eltype(v), v)
+                @test all(splat(==), zip(v, values))
+            end
+            types = unique(typeof.((f1, fi, b, fm, bm, mm, fa, ba, ma, 1.0 * fm, 1im + fa)))
+            for A in types, B in types
+                @test promote_type(A, B) == promote_type(B, A)
+            end
+
+            # The result type of + does not depend on the order of the terms
+            anyf1 = NCMul(1, Any[f1])
+            @test typeof(anyf1 + 1.0 * f1) == typeof(1.0 * f1 + anyf1)
+            @test typeof(fm + mm) == typeof(mm + fm)
         end
-
-        # Heterogeneous vectors get one concrete element type
-        fm, bm, mm = f1 * f2, b * b', f1 * b
-        fa, ba, ma = f1 + f2, b + b', f1 + b
-        combinations = ((fa, ba), (fa, ma), (fm, ma), (mm, fa), (f1, mm), (f1, ma), (fi, fa), (1 * fi, fa), (fm, f1, b, bm, fa, ma), (1im * f1, b, 1im * mm, 1im + ma))
-        for values in combinations
-            v = [values...]
-            @test isconcretetype(eltype(v))
-            @test all(x -> typeof(x) === eltype(v), v)
-            @test all(splat(==), zip(v, values))
-        end
-        types = unique(typeof.((f1, fi, b, fm, bm, mm, fa, ba, ma, 1.0 * fm, 1im + fa)))
-        for A in types, B in types
-            @test promote_type(A, B) == promote_type(B, A)
-        end
-
-        # The result type of + does not depend on the order of the terms
-        anyf1 = NCMul(1, Any[f1])
-        @test typeof(anyf1 + 1.0 * f1) == typeof(1.0 * f1 + anyf1)
-        @test typeof(fm + mm) == typeof(mm + fm)
     end
 end
 
 @testitem "Coefficient widening, Zero scaling, container types" setup = [Fermions] begin
     import NonCommutativeProducts: add!!, NCMul, NCAdd
     using VectorInterface
-    NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
 
@@ -451,7 +465,6 @@ end
 @testitem "Mixed factor containers, aliasing, Dict canonical" setup = [Fermions] begin
     import NonCommutativeProducts: add!!, NCMul, NCAdd
     using VectorInterface
-    NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
 
@@ -483,33 +496,34 @@ end
 @testitem "Sum keys own their factors, Tuple targets, scale!!" setup = [Fermions] begin
     import NonCommutativeProducts: add!!, NCMul, NCAdd
     using VectorInterface
-    NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     f3 = Fermion(:c)
     f4 = Fermion(:d)
 
-    # Sorting a product must not change the keys of sums built from it
-    for build in (x -> x + f3 * f4, x -> x + (f3 * f4 + 1), x -> f3 * f4 + 1 + x, x -> add!!(f3 * f4 + 1, x), x -> NCAdd(x),
-        x -> x + 1, x -> convert(typeof(1.0 + f1), x))
-        x = f2 * f1
-        s = build(x)
-        s_ref = build(f2 * f1)
-        sort(x)
-        @test s == s_ref
-        @test all(k -> haskey(s.dict, k), keys(s_ref.dict))
-    end
-    # nor products that share its factors, nor the product itself
-    for share in (x -> 2 * x, x -> -x, x -> NCMul(x + 0), x -> convert(NCMul{Float64,eltype(x.factors),typeof(x.factors)}, x))
-        x = f2 * f1
-        y = share(x)
-        y_ref = share(f2 * f1)
-        @test sort(y) == sort(y_ref)
-        @test y == y_ref
-        @test x == f2 * f1
-        s = x + 0
-        sort(NCMul(s))
-        @test haskey(s.dict, f2 * f1)
+    NonCommutativeProducts.with_autosort(false) do
+        # Sorting a product must not change the keys of sums built from it
+        for build in (x -> x + f3 * f4, x -> x + (f3 * f4 + 1), x -> f3 * f4 + 1 + x, x -> add!!(f3 * f4 + 1, x), x -> NCAdd(x),
+            x -> x + 1, x -> convert(typeof(1.0 + f1), x))
+            x = f2 * f1
+            s = build(x)
+            s_ref = build(f2 * f1)
+            sort(x)
+            @test s == s_ref
+            @test all(k -> haskey(s.dict, k), keys(s_ref.dict))
+        end
+        # nor products that share its factors, nor the product itself
+        for share in (x -> 2 * x, x -> -x, x -> NCMul(x + 0), x -> convert(NCMul{Float64,eltype(x.factors),typeof(x.factors)}, x))
+            x = f2 * f1
+            y = share(x)
+            y_ref = share(f2 * f1)
+            @test sort(y) == sort(y_ref)
+            @test y == y_ref
+            @test x == f2 * f1
+            s = x + 0
+            sort(NCMul(s))
+            @test haskey(s.dict, f2 * f1)
+        end
     end
 
     # Sums only hold Dicts, so that terms compare and are looked up by value
@@ -535,7 +549,7 @@ end
     T1 = NCMul{Int,F,Tuple{F}}
     @test convert(T1, f1) == NCMul(1, (f1,))
     @test convert(T1, f1).factors isa Tuple{F}
-    @test convert(NCMul{Int,F,Tuple{F,F}}, f1 * f2) == f1 * f2
+    @test convert(NCMul{Int,F,Tuple{F,F}}, NCMul(1, [f1, f2])) == f1 * f2
     S1 = NCAdd{Int,T1}
     @test convert(S1, f1) == f1 + 0
     @test keytype(convert(S1, f1).dict) == T1
@@ -575,7 +589,6 @@ end
 @testitem "Wrapped mul_effect delegation" setup = [WrappedRules, Fermions] begin
     import NonCommutativeProducts: ncmap
 
-    NonCommutativeProducts.enable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     w1, w2 = Wrapped.((f1, f2))
@@ -682,7 +695,6 @@ end
 @testitem "VectorInterface extension" setup = [Fermions] begin
     using VectorInterface
 
-    NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
 
@@ -709,7 +721,7 @@ end
     @test VectorInterface.scale!!(copy(x), 2) == 2 * x
     # products are immutable, so scale! throws
     err = try
-        VectorInterface.scale!(f1 * f2, 2)
+        VectorInterface.scale!(2 * f1, 2)
     catch e
         e
     end
@@ -727,7 +739,6 @@ end
     using VectorInterface
     using NonCommutativeProducts: anyadd
 
-    NonCommutativeProducts.enable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     s1 = State(false, f1)
@@ -778,7 +789,6 @@ end
     using VectorInterface
     import NonCommutativeProducts: NCAdd, NCMul
 
-    NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     p = 2 * f1
 
@@ -841,7 +851,6 @@ end
     @nc Ket
     mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
 
-    NonCommutativeProducts.enable_autosort!()
     H = Ket(0) * Ket(1)' + Ket(1) * Ket(0)' # σx
 
     for x0 in (Ket(0), 1.0 * Ket(0), Ket(0) + 0)
@@ -882,7 +891,6 @@ end
     mul_effect(a::CKet, b::CKet) = a.bra && !b.bra ? 1 + 0im : nothing
     @test norm(CKet(false)) isa Real
     @test norm(CKet(false)) == 1
-    NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: dot and overlaps that don't reduce to scalars" begin
@@ -898,7 +906,6 @@ end
     @nc Ket
     mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
 
-    NonCommutativeProducts.enable_autosort!()
     k0, k1, k2 = Ket(0), Ket(1), Ket(2)
     x = k0 + 2im * k1
     y = 3 * k0 - k1
@@ -950,7 +957,6 @@ end
             @test typeof(z) == typeof(inner(v, v))
         end
     end
-    NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: inner with contraction keys" begin
@@ -968,7 +974,6 @@ end
     # |0⟩ and the bras have no key, so terms mix keyed and wildcard factors
     NonCommutativeProducts.contraction_key(k::KKet) = k.bra || k.n == 0 ? nothing : k.n
 
-    NonCommutativeProducts.enable_autosort!()
     k0, k1, k2, k3 = KKet.(0:3)
     x = k0 + 2im * k1
     y = 2k1 - k2 + 3k3
@@ -982,7 +987,6 @@ end
             @test_throws ArgumentError inner(a, b)
         end
     end
-    NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: inner with contraction keys on products" begin
@@ -1001,7 +1005,6 @@ end
     mul_effect(a::SKet, b::SKet) = a.bra && !b.bra ? Int(a.site == b.site && a.s == b.s) : nothing
     NonCommutativeProducts.contraction_key(k::SKet) = k.bra || k.s == 0 ? nothing : (k.site, k.s)
 
-    NonCommutativeProducts.enable_autosort!()
     a1, a2, b1, b2, u2 = SKet(1, 1), SKet(2, 1), SKet(1, 2), SKet(2, 2), SKet(2, 0)
     @test inner(a1 * a2 + 2im * b1 * a2, a1 * a2 + b1 * a2) == 1 - 2im
     @test norm(a1 * a2 + 2b1 * a2 - a1 * b2) ≈ sqrt(6)
@@ -1021,7 +1024,6 @@ end
     mul_effect(a::BKet, b::BKet) = a.bra && !b.bra ? (a.n == b.n ? 2 * BKet(0, false) : 0) : nothing
     NonCommutativeProducts.contraction_key(k::BKet) = k.bra ? nothing : k.n
     @test_throws "must be a Number" inner(BKet(1, false), BKet(1, false))
-    NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: inner with keys over several groups" begin
@@ -1040,7 +1042,6 @@ end
     mul_effect(a::GKet, b::GKet) = a.bra && !b.bra && a.g == b.g ? Int(a.n == b.n) : nothing
     NonCommutativeProducts.contraction_key(k::GKet) = k.bra ? nothing : (k.g, k.n)
 
-    NonCommutativeProducts.enable_autosort!()
     ψ = sum((m + 2im * n) * GKet(1, m) * GKet(2, n) for m in 1:5, n in 1:5)
     φ = GKet(1, 2) * GKet(2, 3) - 2 * GKet(1, 4) * GKet(2, 3) + GKet(1, 2) * GKet(2, 5)
     ket = GKet(1, 3) * GKet(2, 4)
@@ -1050,7 +1051,6 @@ end
     # keys define orthogonality: states of group 3 alone are orthogonal to those of groups 1 and 2, although x' * y
     # doesn't sort to a scalar
     @test inner(φ + 2 * GKet(3, 1), ψ + 3 * GKet(3, 1)) == inner(φ, ψ) + 6
-    NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: inner with keys over signed swaps" begin
@@ -1098,12 +1098,10 @@ end
     mul_effect(a::CKet, b::CKet) = a.bra && !b.bra ? (a.n == b.n ? 2 : 5) : nothing
     NonCommutativeProducts.contraction_key(k::CKet) = k.bra ? nothing : HashKey(k.n)
 
-    NonCommutativeProducts.enable_autosort!()
     x = CKet(1) * CKet(2) + 3 * CKet(2) * CKet(1) + 5 * CKet(1) * CKet(1)
     y = CKet(1) * CKet(2) + CKet(2) * CKet(2) + 7 * CKet(1) * CKet(1)
     @test inner(x, y) == 4 + 35 * 4
     @test inner(NCMul(1, Any[CKet(1), CKet(2)]), x) == 4
-    NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: inner with keys and an unkeyed ket that overlaps them" begin
@@ -1126,7 +1124,6 @@ end
     end
     NonCommutativeProducts.contraction_key(k::UKet) = k.bra || k.n == 0 ? nothing : isodd(k.n) ? k.n : string(k.n)
 
-    NonCommutativeProducts.enable_autosort!()
     u, a, b, c, d = UKet.(0:4)
     @test inner(a + b + c, u + a) == 62 # 10 + 20 + 30 + 2; y indexed
     @test inner(u + a, a + b + c) == 62 # x indexed
@@ -1141,7 +1138,6 @@ end
     @test inner(2im + 0 * a, 3 + 0 * a) === -6im
     @test inner(im * a + b, c + d + UKet(5)) === 0im
     @test inner(im * a + b + c, d + UKet(5)) === 0im
-    NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: inner with operators that act on keyed kets" begin
@@ -1189,7 +1185,6 @@ end
     @nc HKet
     mul_effect(a::HKet, b::HKet) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
 
-    NonCommutativeProducts.enable_autosort!()
     H = sum(HKet(n) * HKet(n + 1)' + 2 * HKet(n + 1) * HKet(n)' for n in 1:5)
     ψ = sum(n * HKet(n) for n in 1:6) + HKet(1) * HKet(2)
     ref = H * ψ
@@ -1206,7 +1201,6 @@ end
     calls[] = 0
     @test with_autosort(() -> H * ψ, false) == unsorted
     @test calls[] == 0
-    NonCommutativeProducts.disable_autosort!()
 end
 
 @testitem "VectorInterface: the type of inner doesn't depend on autosort" setup = [Fermions] begin
@@ -1214,11 +1208,8 @@ end
     f = Fermion(1)
     x, y = zero(1.0im * f + 0), zero(f + 0)
     results = map((true, false)) do sorted
-        try
-            sorted ? NonCommutativeProducts.enable_autosort!() : NonCommutativeProducts.disable_autosort!()
+        NonCommutativeProducts.with_autosort(sorted) do
             (inner(x, y), inner(y, x), inner(2 + 0 * f, 1.0 + 0 * f))
-        finally
-            NonCommutativeProducts.disable_autosort!()
         end
     end
     @test results[1] == results[2] == (0, 0, 2)
@@ -1251,7 +1242,6 @@ end
 @testitem "add!! and mul!! weighted accumulation" setup = [Fermions] begin
     import NonCommutativeProducts: add!!, scale!, mul!!
 
-    NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
 
@@ -1369,14 +1359,13 @@ end
 
 @testitem "Public API" begin
     using NonCommutativeProducts
-    public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :enable_autosort!,
-        :disable_autosort!, :autosort, :with_autosort, :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors,
-        :coefficient]
+    public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :autosort, :with_autosort,
+        :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors, :coefficient]
     for name in public_names
         @test Base.ispublic(NonCommutativeProducts, name)
         @test Base.Docs.hasdoc(NonCommutativeProducts, name)
     end
-    for name in [:Swap, :AddTerms, :bubble_sort, :MulAdd, :_autosort, :grade, :mul!!, :anyadd, :isscalar,
+    for name in [:enable_autosort!, :disable_autosort!, :Swap, :AddTerms, :bubble_sort, :MulAdd, :_autosort, :grade, :mul!!, :anyadd, :isscalar,
         :atom_group, :foreach_segment, :split_by_group, :segment_ranges]
         @test !Base.ispublic(NonCommutativeProducts, name)
     end
@@ -1397,7 +1386,7 @@ end
         # Base internals without a public equivalent, KrylovKit operator hooks, and package internals used by the extensions
         all_qualified_accesses_are_public=(; ignore=(:_growat!, :inferencebarrier, :literal_pow, :power_by_squaring, :promote_op,
             :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic, :_coefficient_bound,
-            :SizeUnknown, :EltypeUnknown)),
+            :SizeUnknown, :EltypeUnknown, :Experimental, :register_error_hint)),
         # qualified names in macro-generated code
         no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
             :mul_effect, :ncmapreduce, :terms, :coefficient, :factors, :nterms)),

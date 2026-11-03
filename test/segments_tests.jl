@@ -1,7 +1,6 @@
 @testitem "Mixed atom types sort the same in any factor container" setup = [Fermions, Bosons] begin
     import NonCommutativeProducts
     import NonCommutativeProducts: NCMul
-    NonCommutativeProducts.disable_autosort!()
     NonCommutativeProducts.@commutative Fermion Boson
     f1, f2, f3 = Fermion(1), Fermion(Int32(2)), Fermion(3)
     b = Boson()

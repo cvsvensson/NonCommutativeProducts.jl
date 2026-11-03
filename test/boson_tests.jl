@@ -1,7 +1,6 @@
 @testitem "Boson normal ordering" setup = [Bosons] begin
     import NonCommutativeProducts: NCMul, NCAdd, additive_coeff, prefactor
     using LinearAlgebra
-    NonCommutativeProducts.enable_autosort!()
     b = Boson()
 
     @test b * b' == b' * b + 1
@@ -30,7 +29,6 @@ end
 @testitem "Boson Fock states" setup = [Bosons] begin
     using LinearAlgebra
     using VectorInterface: inner
-    NonCommutativeProducts.enable_autosort!()
     b = Boson()
     ket(n) = State(n)
     bra(n) = State(n)'

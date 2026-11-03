@@ -6,28 +6,30 @@
     t, v = NCMul(1, (f2, f1)), NCMul(1, [f2, f1])
     u, w = NCMul(2, (f1', f2)), NCMul(2, [f1', f2])
     s, sv = t + u, v + w
-    for autosort in (false, true)
-        autosort ? NonCommutativeProducts.enable_autosort!() : NonCommutativeProducts.disable_autosort!()
-        @test t * NCMul(1, [f1']) == v * NCMul(1, [f1'])
-        @test NCMul(1, [f1']) * t == NCMul(1, [f1']) * v
-        @test t * u == v * w
-        @test t * t == v * v
-        @test t * f1' == v * f1'
-        @test f1' * t == f1' * v
-        @test t^2 == v^2
-        @test t' == v'
-        @test s * s == sv * sv
-        @test s * t == sv * v
-        @test t * sv == v * sv
-        @test s' == sv'
-        @test sort(t) == sort(v)
-        @test sort(s) == sort(sv)
+    for sorted in (false, true)
+        NonCommutativeProducts.with_autosort(sorted) do
+            @test t * NCMul(1, [f1']) == v * NCMul(1, [f1'])
+            @test NCMul(1, [f1']) * t == NCMul(1, [f1']) * v
+            @test t * u == v * w
+            @test t * t == v * v
+            @test t * f1' == v * f1'
+            @test f1' * t == f1' * v
+            @test t^2 == v^2
+            @test t' == v'
+            @test s * s == sv * sv
+            @test s * t == sv * v
+            @test t * sv == v * sv
+            @test s' == sv'
+            @test sort(t) == sort(v)
+            @test sort(s) == sort(sv)
+        end
     end
-    NonCommutativeProducts.disable_autosort!()
     # the tuple is not nested as a single factor
-    @test (t * NCMul(1, [f1'])).factors == [f2, f1, f1']
-    @test (t * f1').factors == [f2, f1, f1']
-    @test (f1' * t).factors == [f1', f2, f1]
+    NonCommutativeProducts.with_autosort(false) do
+        @test (t * NCMul(1, [f1'])).factors == [f2, f1, f1']
+        @test (t * f1').factors == [f2, f1, f1']
+        @test (f1' * t).factors == [f1', f2, f1]
+    end
     # sorting doesn't mutate the original, and the Tuple-backed product keeps its factors
     @test t.factors === (f2, f1)
 
@@ -36,7 +38,7 @@
     @test one(T) == 1
     @test oneunit(t) == 1
     @test zero(t) + t == t
-    @test one(t) * t == t
+    @test one(t) * t == sort(t)
     @test copy(t) == t
 end
 
@@ -50,7 +52,6 @@ end
     s = unsorted() do
         2 * f1 * b * f2' + 1im * b' * f2 * b + f1' * f2 + 3 * b * f1 + 1
     end
-    NonCommutativeProducts.enable_autosort!()
     @test s' == sort(unsorted(() -> s'))
     @test sort(s)' == sort(unsorted(() -> sort(s)'))
     @test s'' == sort(s)
@@ -79,7 +80,6 @@ end
     NC.mul_effect(::Beta, ::Alpha) = NC.Swap(1)
     NC.mul_effect(a::Beta, b::Beta) = a.id > b.id ? NC.Swap(1) : nothing
 
-    NC.disable_autosort!()
     expected = -NC.NCMul(1, Any[Alpha(1), Alpha(3), Beta(2)])
     for bare in (true, false)
         bare_atom[] = bare
@@ -98,7 +98,6 @@ end
 @testitem "Sums of Tuple-backed products have Vector-backed keys" setup = [Fermions] begin
     import NonCommutativeProducts: NCMul, NCAdd, anyadd
     using VectorInterface
-    NonCommutativeProducts.disable_autosort!()
     f1 = Fermion(:a)
     f2 = Fermion(:b)
     t = NCMul(1, (f1,))
@@ -134,7 +133,6 @@ end
     effect = Ref{Any}(nothing)
     NC.mul_effect(a::Gamma, b::Gamma) = a.id > b.id ? effect[] : nothing
 
-    NC.disable_autosort!()
     for x in (NC.NCMul(1, [Gamma(2), Gamma(1)]), NC.NCMul(1, Any[Gamma(2), Gamma(1)]), NC.NCMul(1, (Gamma(2), Gamma(1))))
         # nothing is only allowed as the whole effect, not inside AddTerms
         effect[] = NC.AddTerms((NC.Swap(1), nothing))
@@ -162,7 +160,6 @@ end
     effect = Ref{Any}((a, b) -> nothing)
     NC.mul_effect(a::Delta, b::Delta) = a.id > b.id ? effect[](a, b) : nothing
 
-    NC.disable_autosort!()
     sorted = NC.NCMul(1, [Delta(1), Delta(2)])
     for x in (NC.NCMul(2, [Delta(2), Delta(1)]), NC.NCMul(2, Any[Delta(2), Delta(1)]), NC.NCMul(2, (Delta(2), Delta(1))))
         effect[] = (a, b) -> NC.AddTerms((NC.Swap(1), NC.NCMul(Delta(0)) + 1))

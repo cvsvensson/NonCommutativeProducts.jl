@@ -1,6 +1,5 @@
 @testitem "terms of sums" setup = [Fermions] begin
     import NonCommutativeProducts: NCMul, NCAdd, terms, factors, coefficient
-    NonCommutativeProducts.disable_autosort!()
     a, b, c = Fermion(:a), Fermion(:b), Fermion(:c)
     x = 2 * a * b + 3 * c + 1
     ts = collect(terms(x))
@@ -24,7 +23,6 @@ end
 
 @testitem "terms of products, numbers and atoms" setup = [Fermions] begin
     import NonCommutativeProducts: NCMul, terms, factors, coefficient
-    NonCommutativeProducts.disable_autosort!()
     a, b = Fermion(:a), Fermion(:b)
     m = 3 * a * b
     @test collect(terms(m)) == [m]
@@ -41,7 +39,6 @@ end
 
 @testitem "terms of zeros" setup = [Fermions] begin
     import NonCommutativeProducts: NCMul, NCAdd, terms
-    NonCommutativeProducts.disable_autosort!()
     a, b = Fermion(:a), Fermion(:b)
     @test isempty(terms(0))
     @test isempty(terms(0.0))
@@ -59,9 +56,8 @@ end
 
 @testitem "factors and coefficient" setup = [Fermions] begin
     import NonCommutativeProducts: NCMul, terms, factors, coefficient
-    NonCommutativeProducts.disable_autosort!()
     a, b = Fermion(:a), Fermion(:b)
-    m = 3 * a * b'
+    m = NCMul(3, [a, b'])
     @test factors(m) == [a, b']
     @test factors(m) isa AbstractVector
     @test coefficient(m) == 3
@@ -73,7 +69,10 @@ end
     fs = factors(m)
     reverse!(fs)
     @test factors(m) == [a, b']
-    @test m == 3 * a * b'
+    @test m == NCMul(3, [a, b'])
+    # a sorted product is a sum with one term
+    @test factors(3 * a * b') == [b', a]
+    @test coefficient(3 * a * b') == -3
     # terms reconstruct the parts of a sum
     for t in terms(2 * a * b + 5 * b)
         @test t == coefficient(t) * prod(factors(t))
@@ -89,7 +88,6 @@ end
 
 @testitem "factors and coefficient of numbers and atoms" setup = [Fermions] begin
     import NonCommutativeProducts: NCMul, terms, factors, coefficient, scalar
-    NonCommutativeProducts.disable_autosort!()
     a, b = Fermion(:a), Fermion(:b)
     @test coefficient(2) == 2
     @test factors(2) == []
@@ -115,7 +113,6 @@ end
 
 @testitem "accessors on Tuple-backed products" setup = [Fermions] begin
     import NonCommutativeProducts: NCMul, NCAdd, terms, factors, coefficient
-    NonCommutativeProducts.disable_autosort!()
     a, b = Fermion(:a), Fermion(:b)
     t = NCMul(2, (b, a'))
     @test t.factors isa Tuple
@@ -133,7 +130,6 @@ end
 
 @testitem "nterms and termpairs" setup = [Fermions] begin
     import NonCommutativeProducts: terms, nterms, termpairs, factors, coefficient
-    NonCommutativeProducts.disable_autosort!()
     a, b, c = Fermion(:a), Fermion(:b), Fermion(:c)
     for x in (2 * a * b + 3 * c + 1, 2 * a * b + 3 * c, a + 5 - a, a - a, 3 * a * b, 0 * a, 2.5, 0)
         @test nterms(x) == length(collect(terms(x)))
@@ -144,7 +140,6 @@ end
 
 @testitem "map_coefficients" setup = [Fermions] begin
     import NonCommutativeProducts: map_coefficients
-    NonCommutativeProducts.disable_autosort!()
     a, b, c = Fermion(:a), Fermion(:b), Fermion(:c)
     @test map_coefficients((fs, c) -> length(fs) * c, 2 * a * b + 3 * c + 1) == 4 * a * b + 3 * c
     # a zero scalar part is not passed to f

@@ -30,11 +30,10 @@ DocTestSetup = quote
     NC.@nc Ket
     NC.mul_effect(a::Ket, b::Ket) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
     k0, k1 = Ket(0), Ket(1)
-    NC.enable_autosort!()
 end
 ```
 
-The examples on this page use the `Fermion` type from the [Home](@ref "Example: Fermions") page and the `Ket` type from the [Linear algebra](@ref) page, with autosort enabled.
+The examples on this page use the `Fermion` type from the [Home](@ref "Example: Fermions") page and the `Ket` type from the [Linear algebra](@ref) page.
 
 A grading gives every factor a grade, so that the grade of a product is the product of the grades of its factors. Gradings can be used to keep track of what kind of object an expression is, e.g. a ket, a bra or an operator, or of quantities such as particle number. The grade `nothing` is the identity grade, which numbers and types without a grade have. Define these for your types:
 * [`grade(a)`](@ref NonCommutativeProducts.grade): the grade of the factor `a`.

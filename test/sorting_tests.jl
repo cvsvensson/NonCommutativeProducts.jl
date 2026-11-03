@@ -1,6 +1,5 @@
 @testitem "Collecting powers, signed swap" begin
     import NonCommutativeProducts: @nc, NCMul, mul_effect
-    NonCommutativeProducts.disable_autosort!()
     struct NCInt
         n::Int
         exp::Int
@@ -33,7 +32,6 @@ end
 @testitem "sort of a product returns a sum" setup = [Fermions] begin
     import NonCommutativeProducts
     import NonCommutativeProducts: NCAdd, NCMul
-    NonCommutativeProducts.disable_autosort!()
     f1, f2 = Fermion(1), Fermion(2)
     for x in (NCMul(3, Any[]), 2 * f1, f1 * f2, f2 * f1, f2' * f1 * f2)
         @test sort(x) isa NCAdd
@@ -66,7 +64,6 @@ end
 
 @testitem "Long products with splitting effects" begin
     import NonCommutativeProducts: @nc, NCMul, mul_effect, AddTerms, Swap
-    NonCommutativeProducts.disable_autosort!()
     # Every swap returns a sum
     struct Mode
         n::Int

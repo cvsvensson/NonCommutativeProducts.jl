@@ -45,6 +45,7 @@ function NCAdd(coeff, dict::AbstractDict; zero_grades=nothing, kwargs...)
 end
 NCAdd{C,K}(ncadd::NCAdd{C,K}) where {C,K} = ncadd
 NCAdd(ncmul::NCMul{C}) where C = _with_zero_grades(NCAdd(zero(C), to_add_dict(ncmul)), () -> _grades(ncmul))
+NCAdd(x::NCAdd) = copy(x)
 
 additive_coeff(x::NCAdd) = x.coeff
 function set_coeff!(a::NCAdd, x::Number)
@@ -318,8 +319,8 @@ _is_sorted(factors) = all(i -> isnothing(_mul_effect(factors, factors[i], factor
     mul_terms!!(c, x::NCMul, b)
 
 Return the sum `c` plus the sorted product of the term `x` and the product or sum `b`, reusing the storage of `c` when
-possible. With autosort enabled, `mul!!` calls it for each term `x` of the left factor, and so does `*` when either
-factor is a sum.
+possible. `mul!!` calls it for each term `x` of the left factor, and so does `*` when either factor is a sum, except
+inside `with_autosort(false)`.
 
 Define methods for your own atom types to compute these products directly, e.g. to apply an operator to every ket in a
 sum with one precomputation. Autosort is disabled during the call, so a method must add terms that are already sorted,
