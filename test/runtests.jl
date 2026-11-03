@@ -1388,7 +1388,7 @@ end
             :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic, :_coefficient_bound,
             :SizeUnknown, :EltypeUnknown, :Experimental, :register_error_hint)),
         # qualified names in macro-generated code
-        no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
+        no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :_ordered_before, :add!!, :anyadd,
             :mul_effect, :ncmapreduce, :terms, :coefficient, :factors, :nterms)),
     )
 end

@@ -183,15 +183,27 @@ with_autosort(f, enabled::Bool=true) = with(f, _autosort => enabled)
 
 Define addition and multiplication for the given types, both within each type and between them, and make them
 implement the VectorInterface.jl API. Products are sorted as they are formed, so also define [`mul_effect`](@ref) for
-the types, or form products inside `with_autosort(false)`.
+the types, or form products inside `with_autosort(false)`. Number types are rejected, since Base defines their
+arithmetic.
 """
 macro nc(types...)
+    # a tuple is an error while lowering the methods, so it can't wait for the checks at runtime
+    any(T -> Meta.isexpr(T, :tuple), types) && return :(throw(_syntax_error("@nc")))
     nc_common_calls = [:(@nc_common $(esc(T))) for T in types]
     quote
+        foreach(_check_nc_type, ($(esc.(types)...),))
         $(nc_common_calls...)
         @nc_pairs $(esc.(types)...)
     end
 
+end
+_syntax_error(name) = ArgumentError("`$name` takes types separated by spaces, as in `$name A B`")
+# The arguments of @nc and @commutative are only known as values when the macro call runs, so the checks run then.
+function _check_nc_type(T)
+    T isa Type || throw(_syntax_error("@nc"))
+    # also catches a Union with a Number member, and Any
+    typeintersect(T, Number) === Union{} || throw(ArgumentError("`@nc` doesn't accept $T, since it includes Number types"))
+    return nothing
 end
 macro nc_pairs(types...)
     mul_pairs = Expr[]
@@ -221,19 +233,39 @@ end
     @commutative T1 T2 ...
 
 Define mixed arithmetic for types that commute with each other, and order them as listed: for `x::Ti` and `y::Tj`,
-`x*y` stays if `i < j` and becomes `y*x` if `i > j`. The types must already be registered with `@nc`.
+`x*y` stays if `i < j` and becomes `y*x` if `i > j`. The types must already be registered with `@nc`, must not overlap,
+and can't be listed later in the opposite order.
 """
 macro commutative(types...)
+    any(T -> Meta.isexpr(T, :tuple), types) && return :(throw(_syntax_error("@commutative")))
     mul_effect = Expr[]
     for (n1, T1) in enumerate(types)
         for (n2, T2) in enumerate(types)
             n1 >= n2 && continue
+            push!(mul_effect, :(NonCommutativeProducts._ordered_before(::Type{<:$(esc(T1))}, ::Type{<:$(esc(T2))}) = true))
             push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T1)), y::$(esc(T2))) = nothing))
             push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T2)), y::$(esc(T1))) = Swap(1)))
         end
     end
     quote
+        _check_commutative_types($(esc.(types)...))
         $(mul_effect...)
         @nc_pairs $(esc.(types)...)
     end
+end
+# Whether an earlier @commutative ordered T1 before T2
+_ordered_before(::Type, ::Type) = false
+_registered(T::Union) = _registered(T.a) && _registered(T.b)
+_registered(T) = _is_atom(T)
+function _check_commutative_types(types...)
+    for (n, T) in enumerate(types)
+        T isa Type || throw(_syntax_error("@commutative"))
+        _registered(T) || throw(ArgumentError("`@commutative` needs types registered with `@nc` first, got $T"))
+        for U in types[n+1:end]
+            U isa Type || continue # reported when U is reached
+            typeintersect(T, U) === Union{} || throw(ArgumentError("`@commutative` can't order overlapping types, got $T and $U"))
+            _ordered_before(U, T) && throw(ArgumentError("`@commutative` can't order $T before $U, since an earlier call ordered $U before $T"))
+        end
+    end
+    return nothing
 end
