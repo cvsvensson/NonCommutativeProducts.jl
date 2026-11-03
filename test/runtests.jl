@@ -885,6 +885,37 @@ end
     NonCommutativeProducts.disable_autosort!()
 end
 
+@testitem "KrylovKit: expressions as operators detect an invariant subspace with autosort off" setup = [Fermions] begin
+    using KrylovKit, LinearAlgebra
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort
+
+    struct Vacuum
+        bra::Bool
+    end
+    Base.adjoint(v::Vacuum) = Vacuum(!v.bra)
+    @nc Vacuum Fermion
+    mul_effect(a::Vacuum, b::Vacuum) = a.bra && !b.bra ? 1 : nothing
+    mul_effect(a::Vacuum, b::Fermion) = a.bra && b.creation ? 0 : nothing
+    mul_effect(a::Fermion, b::Vacuum) = !b.bra && !a.creation ? 0 : nothing
+
+    with_autosort(false) do
+        c(i, s) = Fermion((i, s))
+        n(i, s) = c(i, s)' * c(i, s)
+        hop = sum(c(1, s)' * c(2, s) + c(2, s)' * c(1, s) for s in (false, true))
+        H = -1.0 * hop + 4.0 * sum(n(i, false) * n(i, true) for i in 1:2) # Hubbard dimer
+        ψ = 1.0 * c(1, true)' * c(2, false)' * Vacuum(false)
+
+        # Whether unsorted results go wrong depends on roundoff, so check directly that they are sorted
+        @test KrylovKit.apply(H, ψ) == sort(H * ψ) != H * ψ
+        @test KrylovKit.apply_normal(H, ψ) == sort(H * ψ)
+        @test KrylovKit.apply_adjoint(H, ψ) == sort(H' * ψ)
+
+        # ψ spans an invariant subspace of dimension 3, with eigenvalues 0 and 2 ± √8, so krylovdim is above it
+        vals, _ = eigsolve(H, ψ, 1, :SR; ishermitian=true, krylovdim=8, maxiter=1)
+        @test vals[1] ≈ 2 - sqrt(8)
+    end
+end
+
 @testitem "VectorInterface: dot and overlaps that don't reduce to scalars" begin
     using LinearAlgebra, VectorInterface
     import NonCommutativeProducts: @nc, mul_effect
