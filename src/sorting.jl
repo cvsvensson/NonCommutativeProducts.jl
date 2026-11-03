@@ -158,8 +158,9 @@ function _sort_pending!!(acc::A, pending) where {A}
     return acc
 end
 # Mixed-type products dispatch mul_effect at runtime anyway. The inference barrier keeps the compiled sorting loop
-# independent of the mul_effect methods, so downstream methods don't invalidate the precompiled code. Factors of an
-# abstract type other than Any keep the direct call, which is faster: inference still narrows the possible effects.
+# independent of the mul_effect methods, so they don't invalidate it, although the methods that @nc defines still do.
+# Factors of an abstract type other than Any keep the direct call, which is faster: inference still narrows the
+# possible effects.
 _mul_effect(::Vector{Any}, a, b) = Base.inferencebarrier(mul_effect)(a, b)
 _mul_effect(factors, a, b) = mul_effect(a, b)
 
