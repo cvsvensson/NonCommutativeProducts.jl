@@ -13,8 +13,8 @@ Changes since 0.5.2.
 - `a * b` is now usually an `NCAdd`, so `(a * b).factors` and `convert(NCMul, a * b)` throw. Use `factors` and `coefficient`, which accept a single-term sum.
 
 **`inner`, `dot` and `norm` sort their arguments**, unless autosort is on and factors can have keys.
-- Sorting needs `mul_effect` for neighbouring factors, so kets multiplied inside `with_autosort(false)` can now throw a `MethodError`. In FermionicHilbertSpaces, `inner` of two kets multiplied on one space throws an `ArgumentError` inside `with_autosort(false)`, and gives 0 with autosort on.
-- With autosort on, sort a sum formed inside `with_autosort(false)` before calling them if its factors can have keys. Otherwise a zero vector can get a norm around `1e-8`.
+- Sorting needs `mul_effect` for neighbouring factors, so kets multiplied inside `with_autosort(false)` can now throw a `MethodError`. In FermionicHilbertSpaces, `inner` of two kets multiplied on one space throws an `ArgumentError`, but only inside `with_autosort(false)`.
+- With autosort on, sort a sum formed inside `with_autosort(false)` before calling them if its factors can have keys. Otherwise a zero vector can get a norm around `1e-8`, and `eigsolve` can return wrong eigenvalues.
 
 **`contraction_key` is compared along the leading kets, not just the first.**
 - `mul_effect(k', l)` must now be defined for kets whose keys differ.
