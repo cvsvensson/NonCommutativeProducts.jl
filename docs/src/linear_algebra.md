@@ -43,7 +43,7 @@ true
 
 Terms that first differ at kets of one subsystem are orthogonal; otherwise `inner` computes the full product, so any order is correct and one order is fastest. Mixing orders can be tens of times slower.
 
-`mul_effect(k', l)` decides this and must be defined for kets whose keys differ. Being a `Number` asserts that `k` and `l` are in one subsystem: for different subsystems it must not be one, not even 0, or `inner` can silently miss terms.
+`mul_effect(k', l)` decides whether kets are in one subsystem. See [`contraction_key`](@ref NonCommutativeProducts.contraction_key) for what it must return.
 
 Sort a sum formed inside `with_autosort(false)` before calling `inner` with autosort on: equal products left in separate terms cancel only up to roundoff, so a zero vector gets a norm around `1e-8`.
 
