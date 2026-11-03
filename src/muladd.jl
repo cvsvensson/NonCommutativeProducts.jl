@@ -184,7 +184,7 @@ with_autosort(f, enabled::Bool=true) = with(f, _autosort => enabled)
 Define addition and multiplication for the given types, both within each type and between them, and make them
 implement the VectorInterface.jl API. Products are sorted as they are formed, so also define [`mul_effect`](@ref) for
 the types, or form products inside `with_autosort(false)`. Number types are rejected, since Base defines their
-arithmetic.
+arithmetic. Atoms must compare by value; a custom `==` needs a matching `hash`.
 """
 macro nc(types...)
     # a tuple is an error while lowering the methods, so it can't wait for the checks at runtime

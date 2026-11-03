@@ -9,6 +9,8 @@
 
 ## Installation
 
+Requires Julia 1.12+.
+
 ```julia
 using Pkg
 Pkg.add("NonCommutativeProducts")

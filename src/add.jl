@@ -176,9 +176,7 @@ end
     add!!(a, b, α, β)
 
 Compute `a + b`, or `β * a + α * b`, reusing the storage of `a` when possible. Use the returned value, since `a` may
-be left unchanged or modified. This function belongs to this package and is not `VectorInterface.add!!`. It differs
-in having the 2-argument form, and in the weights `α` and `β` defaulting to `One()`, so that `add!!(a, b)` is `a + b`.
-Methods for `VectorInterface.add!!` call it.
+be left unchanged or modified. This is not `VectorInterface.add!!`.
 """
 add!!(a::NCMul, b::Union{MulAdd,Number,UniformScaling}, α::Number=One(), β::Number=One()) = add!!(a + 0, b, α, β)
 function add!!(a::Number, b::MulAdd, α::Number=One(), β::Number=One())

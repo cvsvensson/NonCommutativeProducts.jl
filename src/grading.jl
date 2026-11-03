@@ -136,7 +136,7 @@ Products involving a `ProductGrade` are computed componentwise:
 
 Components are matched by grading regardless of their order, so `f * k` and `k * f` have the same grade.
 [`adjoint_grade`](@ref) acts componentwise. `mul_grade` and `adjoint_grade` within one grading must return a grade of
-that grading or `nothing`, and this is checked. Construct a `ProductGrade` with at least two components, in any order,
+that grading or `nothing`, which is checked when combining with a `ProductGrade`. Construct a `ProductGrade` with at least two components, in any order,
 with distinct declared gradings, none of them `nothing` or a `ProductGrade`.
 
 # Example

@@ -100,7 +100,7 @@ collect(segment_ranges(NCMul(2, [a1, a2, b, a3]))) # [A => 1:2, B => 3:3, A => 4
 
 # Whether a product with factors has them all in one group, and which
 g, r = first(segment_ranges(x))
-length(r) == length(x.factors)
+length(r) == length(factors(x))
 ```
 """
 segment_ranges(x::NCMul) = SegmentRanges(x.factors)
@@ -113,9 +113,8 @@ segment_ranges(x) = segment_ranges(_as_product(x, "segment_ranges"))
 Call `f(g, seg)` for each segment of the product `x`, from left to right. A segment is a maximal run of consecutive
 factors whose [`atom_group`](@ref)s are `isequal`, `g` is that group and `seg` is an `AbstractVector` of the factors.
 `x` is a product or an atom; the coefficient of a product is ignored, and a product without factors has no segments.
-A sum with one term counts as that term; more terms throw an `ArgumentError`, so apply it to each of its `terms`.
-
-Interleaved groups give several segments.
+A sum with one term counts as that term; any other sum, including zero, throws an `ArgumentError`, so apply it to each
+of its `terms`.
 
 `seg` has a concrete element type when its factors share one. It may alias the factors of `x`, so do not mutate it.
 
@@ -153,7 +152,7 @@ end
 The segments of `x` (see [`foreach_segment`](@ref)) as a `Vector` of pairs `g => part`, from left to right, where `g` is
 the [`atom_group`](@ref) of the segment and `part` a product of its factors. The first part has the coefficient of `x`,
 the others one, so the unsorted product of the parts equals `x`, except that a product without factors or a scalar-only
-sum gives an empty `Vector`.
+sum gives an empty `Vector`. A sum with several terms, or a zero sum, throws an `ArgumentError`.
 
 Segments are runs, not groups: interleaved factors give several parts with the same `g`. A part may share its factors
 with `x`, so do not mutate it. For factors of an abstract element type, prefer [`segment_ranges`](@ref) or [`foreach_segment`](@ref) in hot
