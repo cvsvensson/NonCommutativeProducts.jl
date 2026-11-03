@@ -1167,8 +1167,11 @@ end
         7.0 * R(1, 0) * R(2, 1) + 11.0 * R(2, 0) * R(1, 1) + 13.0 * R(2, 0) * R(1, 0)) == 112
     # a key that isn't in the other sum, whose kets are all of one subsystem
     @test inner(R(3, 0) * R(1, 0), R(1, 0) * R(3, 0) + R(1, 1) * R(3, 0)) == 1
-    # a term of the other sum that leaves a factor counts as orthogonal
-    @test inner(1.0 * R(2, 0), 1.0 * R(1, 0) * R(2, 0)) == 0
+    # a pair that leaves factors throws, whichever ket is missing a partner
+    @test_throws ArgumentError inner(1.0 * R(2, 0), 1.0 * R(1, 0) * R(2, 0))
+    @test_throws ArgumentError inner(1.0 * Q(1, 0), 1.0 * Q(1, 0) * Q(2, 0))
+    @test_throws ArgumentError inner(1.0 * Q(2, 0), 1.0 * Q(1, 0) * Q(2, 0))
+    @test_throws ArgumentError inner(1.0 * R(1, 0) * R(2, 0), 1.0 * R(1, 0) * R(3, 0))
 
     @test inner(KA(1) * KB(2), KB(2) * KA(1)) == 1
     @test inner(KA(1) * KB(2), KB(2) * KA(3)) == 0

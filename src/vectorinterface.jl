@@ -322,10 +322,11 @@ function _inner_pair!!(acc, xfactors, bra, ket, d, buffer)
     append!(empty!(buffer), Iterators.take(bf, nb - p), Iterators.drop(kf, p))
     return sort_into!!(acc, prefactor(bra) * prefactor(ket) * effect, buffer)
 end
-# A pair whose keys disagree across subsystems: the full product, which counts as orthogonal if it leaves factors
+# A pair whose keys disagree across subsystems: the full product, which must reduce to a scalar
 function _full_pair!!(acc, bra, ket, buffer)
     z = _mul_term_pair!!(zero(acc), bra, ket, buffer)
-    return _reduces_to_scalar(z) ? add!!(acc, z) : acc
+    _reduces_to_scalar(z) || throw(_inner_error())
+    return add!!(acc, z)
 end
 function _contraction_key_error(a, b)
     return ArgumentError(string("mul_effect(", a, ", ", b, ") must be a Number, since contraction_key(", a,
