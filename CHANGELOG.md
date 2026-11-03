@@ -23,7 +23,7 @@ Changes since 0.5.2.
 
 **The macros throw an `ArgumentError` for more input.**
 - `@nc`: `Number` subtypes, `Any`, unions that include a number, and tuple syntax.
-- `@commutative`: repeated or overlapping types, types not yet registered with `@nc`, tuple syntax, and a pair in the opposite order to an earlier call. Reordering a pair needs a Julia restart.
+- `@commutative`: repeated or overlapping types, types not yet registered with `@nc`, tuple syntax, and a pair in the opposite order to an earlier call, unless it uses a supertype of an earlier type. Reordering a pair needs a Julia restart.
 
 **`mul_effect` return values.**
 - An invalid return value now throws an `ArgumentError`. This includes `Swap(missing)`, invalid values inside `AddTerms`, and atoms not registered with `@nc`.
