@@ -38,3 +38,13 @@ ncmap(f, 2*a*b + 1) == 2*f(a)*f(b) + 1
 See `ncmapreduce` for more general mapping and reduction.
 """
 ncmap(f, x; scalarmap=identity) = ncmapreduce(f, (+, *), x; scalarmap)
+function ncmap(f, x::NCAdd; scalarmap=identity)
+    init = scalarmap(additive_coeff(x))
+    peeled = Iterators.peel(ncmap(f, t; scalarmap) for t in NCterms(x))
+    isnothing(peeled) && return init
+    term, rest = peeled
+    # + makes a new sum, which add!! can reuse, unlike the values of f and scalarmap
+    return fold_retyping!!(_add_to_new!!, init + term, rest)
+end
+_add_to_new!!(acc::NCAdd, term::Union{MulAdd,Number,UniformScaling}) = add!!(acc, term)
+_add_to_new!!(acc, term) = acc + term

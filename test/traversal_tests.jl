@@ -35,4 +35,23 @@
 
     @test ncmap(adjoint, f'f) == f * f'
     @test ncmap(adjoint, f'f) == 1 - f' * f
+
+    # the inputs and the values of f and scalarmap aren't mutated
+    fc = Fermion(:c)
+    shared = 1.0 * fb + 2
+    expr = 3 - 4 * f + 2 * fc
+    @test ncmap(_ -> shared, expr) == 3 - 2 * shared
+    @test shared == 1.0 * fb + 2
+    @test expr == 3 - 4 * f + 2 * fc
+    @test ncmap(identity, 3 * f + 2 * fc + 0; scalarmap=x -> iszero(x) ? shared : x) == shared + 3 * f + 2 * fc
+    @test shared == 1.0 * fb + 2
+
+    # the result has the same type as a fold with +
+    @test ncmap(_ -> fb, f + fc + 0) isa NonCommutativeProducts.NCAdd{Int}
+    @test ncmap(x -> x == f ? 0.5 * x : x, 1 + f + fc) isa NonCommutativeProducts.NCAdd{Float64}
+    @test ncmap(_ -> 2, 3 * f + 2 * fc + 1) === 11
+    # terms that cancel leave a zero sum, while a zero sum gives the number 0
+    cancelled = ncmap(_ -> fb, f - fc + 0)
+    @test cancelled isa NonCommutativeProducts.NCAdd && iszero(cancelled)
+    @test ncmap(identity, 0 * f + 0) === 0
 end
