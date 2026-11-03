@@ -258,6 +258,12 @@ macro commutative(types...)
 end
 # Whether an earlier @commutative ordered T1 before T2
 _ordered_before(::Type, ::Type) = false
+# Whether an earlier @commutative ordered a member of the Union T1 before a member of the Union T2
+function _any_ordered_before(T1, T2)
+    T1 isa Union && return _any_ordered_before(T1.a, T2) || _any_ordered_before(T1.b, T2)
+    T2 isa Union && return _any_ordered_before(T1, T2.a) || _any_ordered_before(T1, T2.b)
+    return _ordered_before(T1, T2)
+end
 _registered(T::Union) = _registered(T.a) && _registered(T.b)
 _registered(T) = _is_atom(T)
 function _check_commutative_types(types...)
@@ -267,7 +273,7 @@ function _check_commutative_types(types...)
         for U in types[n+1:end]
             U isa Type || continue # reported when U is reached
             typeintersect(T, U) === Union{} || throw(ArgumentError("`@commutative` can't order overlapping types, got $T and $U"))
-            _ordered_before(U, T) && throw(ArgumentError("`@commutative` can't order $T before $U, since an earlier call ordered $U before $T"))
+            _any_ordered_before(U, T) && throw(ArgumentError("`@commutative` can't order $T before $U, since an earlier call ordered $U before $T"))
         end
     end
     return nothing
