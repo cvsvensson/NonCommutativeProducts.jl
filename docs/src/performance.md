@@ -19,7 +19,7 @@ The examples on this page use the `Fermion` type defined on the [Home](@ref "Exa
 
 Each product is sorted with bubble sort, which repeatedly swaps adjacent factors so that commutation relations apply. The time to sort one product grows quadratically with its number of factors, so long products are slow.
 
-A product of sums is formed one pair of terms at a time: each pair is sorted on its own and added straight into the result. The time is proportional to the number of term pairs and the memory to the size of the result. A pair that sorts to zero allocates nothing if `mul_effect` doesn't (see `Swap` below), and each term added to the result costs one copy of its factors.
+A product of sums is formed one pair of terms at a time: each pair is sorted on its own and added straight into the result. The time is proportional to the number of term pairs and the memory to the size of the result.
 
 ```julia
 op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
