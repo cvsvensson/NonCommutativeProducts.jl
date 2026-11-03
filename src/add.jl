@@ -289,11 +289,12 @@ Base.:*(a::NCAdd, b::MulAdd) = _shrink!(mul!!(zero(_sum_type(a, b)), a, b))
 Base.:*(a::NCMul, b::NCAdd) = _shrink!(mul!!(zero(_sum_type(a, b)), a, b))
 _shrink!(x::NCAdd) = (sizehint!(x.dict, length(x.dict)); x)
 # Computes c + a * b. A zero result has the stored grades of c and the products of the grades of a and b.
+# With autosort, c must already be sorted: it isn't checked, and unsorted terms of c stay unsorted in the result.
 function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     cgrades = _zero_grades(c)
     return _with_zero_grades(_mul!!(c, a, b), () -> _union_grades(cgrades, _mul_grades(_grades(a), _grades(b))))
 end
-# c + a * b. With autosort, c is sorted and each term x of a is multiplied into it by mul_terms!!. Otherwise the
+# c + a * b. With autosort, each term x of a is multiplied into c by mul_terms!!. Otherwise the
 # catenated products are added unsorted. c is first converted to the promoted type of c, a and b, so the coefficient
 # type of the result doesn't depend on which products vanish.
 function _mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
@@ -310,7 +311,7 @@ function _mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     end
 end
 function _mul_sorted!!(c::NCAdd, a::MulAdd, b::MulAdd)
-    c = convert(promote_type(typeof(c), _sum_type(a, b)), _sorted(c))
+    c = convert(promote_type(typeof(c), _sum_type(a, b)), c)
     return fold_terms!!((acc, x) -> mul_terms!!(acc, x, b), c, a)
 end
 # `x` with its terms sorted, which is `x` itself if they already are

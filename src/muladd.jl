@@ -70,7 +70,8 @@ _power(a::NCMul, n) = Base.power_by_squaring(a, n)
 # The cost of a product of sums scales with the product of their sizes, so multiplying by `a` is far cheaper than
 # squaring, which ends with a product of two large sums.
 function _power(a::NCAdd, n)
-    n < 2 && return Base.power_by_squaring(a, n)
+    n == 0 && return one(_sum_type(a))
+    n == 1 && return copy(convert(_sum_type(a), a))
     ret = a * a
     for _ in 3:n
         ret = a * ret
