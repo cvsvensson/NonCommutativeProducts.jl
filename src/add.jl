@@ -251,7 +251,7 @@ function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where 
     end
     # the scaled terms fit in C, so only the coefficient can fail to convert
     set_coeff!(a, convert(C, newcoeff))
-    if !(β isa One)
+    if !isone(β)
         map!(v -> v * β, values(a.dict))
         # a nonzero β can also give zero terms, through underflow
         filter_zeros!(a.dict)

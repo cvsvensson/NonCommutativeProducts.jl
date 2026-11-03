@@ -60,8 +60,33 @@ end
 function VectorInterface.add!(y::NCMul, x::MulAdd, α::Number, β::Number)
     throw(ArgumentError("NCMul is immutable; use add or add!!"))
 end
-function VectorInterface.add!(y::NCAdd, x::MulAdd, α::Number, β::Number)
+function VectorInterface.add!(y::NCAdd{C}, x::MulAdd, α::Number, β::Number) where {C}
+    isone(β) && _keeps_type(C, typeof(β)) && _add_terms!(y, x, α) && return y
     return _set_ncadd!(y, VectorInterface.add(y, x, α, β))
+end
+# Sets y to y + α * x by updating only the terms of x, and returns whether it did. It doesn't handle a scalar product,
+# or a zero result, whose grades include those of y before the update. Everything is computed before y is mutated.
+function _add_terms!(y::NCAdd{C,K}, x::MulAdd, α) where {C,K}
+    x isa NCMul && isempty(x.factors) && return false
+    newcoeff = convert(C, x isa NCAdd ? additive_coeff(y) + α * additive_coeff(x) : additive_coeff(y))
+    updates = Pair{K,C}[]
+    newlength = length(y.dict)
+    for t in NCterms(x)
+        c = α * prefactor(t)
+        iszero(c) && continue
+        k = term_key(K, t)
+        old = get(y.dict, k, nothing)
+        v = convert(C, isnothing(old) ? c : old + c)
+        newlength += isnothing(old) ? !iszero(v) : -iszero(v)
+        push!(updates, k => v)
+    end
+    newlength == 0 && iszero(newcoeff) && return false
+    y.coeff = newcoeff
+    for (k, v) in updates
+        iszero(v) ? delete!(y.dict, k) : (y.dict[k] = v)
+    end
+    y.zero_grades = nothing
+    return true
 end
 
 VectorInterface.add!!(y::MulAdd, x, α::Number, β::Number) = add!!(y, x, α, β)
