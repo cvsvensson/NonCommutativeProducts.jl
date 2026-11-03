@@ -93,8 +93,10 @@ macro nc_common(T)
 
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
         NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(NCMul(f))
-        NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
+        NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = ncmapreduce(f, ops, NCMul(x); scalarmap)
         NonCommutativeProducts.terms(x::$(esc(T))) = terms(NCMul(x))
+        NonCommutativeProducts.termpairs(x::$(esc(T))) = termpairs(NCMul(x))
+        NonCommutativeProducts.map_coefficients(f, x::$(esc(T))) = map_coefficients(f, NCMul(x))
         NonCommutativeProducts.factors(x::$(esc(T))) = [x]
         NonCommutativeProducts.coefficient(x::$(esc(T))) = 1
         NonCommutativeProducts.nterms(::$(esc(T))) = 1
