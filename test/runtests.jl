@@ -1389,6 +1389,6 @@ end
             :SizeUnknown, :EltypeUnknown, :Experimental, :register_error_hint)),
         # qualified names in macro-generated code
         no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :_ordered_before, :add!!, :anyadd,
-            :mul_effect, :ncmapreduce, :terms, :coefficient, :factors, :nterms)),
+            :mul_effect, :ncmapreduce, :terms, :termpairs, :map_coefficients, :coefficient, :factors, :nterms)),
     )
 end
