@@ -1338,6 +1338,16 @@ end
     # NaN and infinite coefficients are never dropped, and make the bound infinite
     @test NC.truncate_terms(NaN * c1 + Inf * c2 + 0.5 * c1' * c2; atol=1).err == 0.5
     @test NC.opnorm_bound(NaN * c1 + c2) == Inf
+    # a total weight that overflows doesn't affect the budget
+    huge = 1e308 * c1 + 1e308 * c2 + 1e-3 * c1'
+    @test NC.truncate_terms(huge; atol=1e-2) == (; expr=1e308 * c1 + 1e308 * c2, err=1e-3)
+    @test NC.truncate_terms(huge; rtol=1e-3) == (; expr=1e308 * c1 + 1e308 * c2, err=1e-3)
+    # a weight that underflows stays positive
+    tiny = Bounded(1e-200, false)
+    t = 1.0 * tiny * tiny + tiny
+    @test NC.truncate_terms(t; atol=0) == (; expr=t, err=0)
+    @test 0 < NC.truncate_terms(t; atol=1e-300).err <= 1e-300
+    @test NC.truncate_terms(0 * tiny * tiny + 0).err == 0
 
     # products, atoms and numbers
     @test NC.truncate_terms(0.25 * c1 * S; atol=0.2) == (; expr=0, err=0.125)
