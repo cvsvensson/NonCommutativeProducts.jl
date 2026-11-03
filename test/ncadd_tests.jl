@@ -58,6 +58,8 @@
     @test y == 8 + 4 * f1 - 4 * f3
     @test VectorInterface.add!(y, NC.NCMul(2, typeof(f1)[]), 1, 1) === y # a product without factors
     @test y == 10 + 4 * f1 - 4 * f3
+    # isequal, since the scalar part can be NaN
+    @test isequal(VectorInterface.add!(f1 + 0.0, f2 + 0.0, Inf, 1), VectorInterface.add(f1 + 0.0, f2 + 0.0, Inf, 1))
 
     # add!! with a weight β = 1.0 that fits the coefficients updates in place
     z =1.0 * f1 + 2.0 * f2 + 0.0
