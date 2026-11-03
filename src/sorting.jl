@@ -100,14 +100,36 @@ end
 # Adds `coeff` to the term with key `key` in `dict`, and deletes the term if it becomes zero. `key` is stored as given.
 # Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int). A result that
 # fits is converted before the zero check, since the conversion can round it to zero (e.g. Rational to Float16).
-function add_key!!(dict::AbstractDict, key, coeff)
-    newdict, _ = modify!!(dict, key) do val
-        newval = _fit_value(valtype(dict), isnothing(val) ? coeff : something(val) + coeff)
-        iszero(newval) ? nothing : newval
+function add_key!!(dict::Dict{K,V}, key, coeff) where {K,V}
+    old = get(dict, key, nothing)
+    newval = _fit_value(V, isnothing(old) ? coeff : old + coeff)
+    if iszero(newval)
+        isnothing(old) || delete!(dict, key)
+        return dict
     end
-    return newdict
+    if newval isa V
+        dict[key] = newval
+        return dict
+    end
+    widened = Dict{K,promote_type(V, typeof(newval))}(dict)
+    widened[key] = newval
+    return widened
 end
 _fit_value(::Type{V}, x) where {V} = promote_type(V, typeof(x)) == V ? convert(V, x) : x
+
+# `xs` with `x` added at the end or the start. Mutates `xs` if `x` fits, and otherwise returns a widened copy. The
+# inference barrier stops the precompile workload from specializing the sorting code on widened types, which makes the
+# package image about four times larger and slower to load.
+function push!!(xs::AbstractVector{T}, x::S) where {T,S}
+    R = promote_type(T, S)
+    return R <: T ? push!(xs, x) : Base.inferencebarrier(_push_widened)(xs, x, R)
+end
+function pushfirst!!(xs::AbstractVector{T}, x::S) where {T,S}
+    R = promote_type(T, S)
+    return R <: T ? pushfirst!(xs, x) : Base.inferencebarrier(_pushfirst_widened)(xs, x, R)
+end
+_push_widened(xs, x, R) = push!(convert(Vector{R}, xs), x)
+_pushfirst_widened(xs, x, R) = pushfirst!(convert(Vector{R}, xs), x)
 
 # Sorts `coeff * factors` and adds the result to `acc`, using `factors` as scratch space. Callers disable autosort, so
 # that the products that mul_effect forms are not sorted recursively.
