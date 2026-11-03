@@ -216,6 +216,10 @@ end
     @test NC.grades(scale!(y, x, 0)) == Set([KET])
     y = x' - x'
     @test NC.grades(add!(y, x, 0)) == Set([KET, BRA])
+    # a nonzero result forgets the grades of an added-to zero, and a result that cancels has the grades of the terms
+    y = x' - x'
+    @test add!(y, x, 1, 1) == x && NC.grades(y) == Set([KET])
+    @test iszero(add!(y, x, -1, 1)) && NC.grades(y) == Set([KET])
 
     # zeros don't keep grades from earlier values
     y = NC.add!!(x - x, kb)

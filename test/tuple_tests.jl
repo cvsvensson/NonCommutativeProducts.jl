@@ -148,7 +148,14 @@ end
     @test sort(x) == NC.NCMul(1, [Gamma(1), Gamma(2), Gamma(3)])
     # an atom of a type not registered with @nc can't be spliced in as a factor
     effect[] = Unregistered()
-    @test_throws MethodError sort(NC.NCMul(1, [Gamma(2), Gamma(1)]))
+    @test_throws ArgumentError sort(x)
+    # other invalid values name mul_effect, the atoms and the returned type
+    for (value, type) in (("s", "String"), ([1, 2], "Vector"), (missing, "Missing"), (NC.Swap(missing), "Swap{Missing}"),
+        (NC.AddTerms(("s", 1)), "String"))
+        effect[] = value
+        @test_throws ["mul_effect", "Gamma(2)", "Gamma(1)", type] sort(x)
+        @test_throws ArgumentError sort(x)
+    end
 end
 
 @testitem "Sums and nested AddTerms inside AddTerms" begin

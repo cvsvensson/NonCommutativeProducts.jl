@@ -1,5 +1,6 @@
 _scalartype(x) = VectorInterface.scalartype(typeof(x))
-# The in-place methods store an out-of-place result with _set_ncadd!, which leaves `y` unchanged if it doesn't fit.
+# The in-place methods store an out-of-place result with _set_ncadd!, or update the terms with _add_terms!. Both leave
+# `y` unchanged if the result doesn't fit.
 
 VectorInterface.scalartype(::Type{<:NCMul{C}}) where {C<:Number} = C
 VectorInterface.scalartype(::Type{<:NCAdd{C}}) where {C<:Number} = C
@@ -60,8 +61,35 @@ end
 function VectorInterface.add!(y::NCMul, x::MulAdd, α::Number, β::Number)
     throw(ArgumentError("NCMul is immutable; use add or add!!"))
 end
-function VectorInterface.add!(y::NCAdd, x::MulAdd, α::Number, β::Number)
+function VectorInterface.add!(y::NCAdd{C}, x::MulAdd, α::Number, β::Number) where {C}
+    isone(β) && _keeps_type(C, typeof(β)) && _add_terms!(y, x, α) && return y
     return _set_ncadd!(y, VectorInterface.add(y, x, α, β))
+end
+# Sets y to y + α * x by updating only the terms of x, and returns whether it did. It doesn't handle a scalar product,
+# a zero scalar part of x that α doesn't keep zero (Inf * 0), which is up to `add`, or a zero result, whose grades
+# include those of y before the update. Everything is computed before y is mutated.
+function _add_terms!(y::NCAdd{C,K}, x::MulAdd, α) where {C,K}
+    x isa NCMul && isempty(x.factors) && return false
+    x isa NCAdd && iszero(additive_coeff(x)) && !iszero(α * additive_coeff(x)) && return false
+    newcoeff = convert(C, x isa NCAdd ? additive_coeff(y) + α * additive_coeff(x) : additive_coeff(y))
+    updates = Pair{K,C}[]
+    newlength = length(y.dict)
+    for t in NCterms(x)
+        c = α * prefactor(t)
+        iszero(c) && continue
+        k = term_key(K, t)
+        old = get(y.dict, k, nothing)
+        v = convert(C, isnothing(old) ? c : old + c)
+        newlength += isnothing(old) ? !iszero(v) : -iszero(v)
+        push!(updates, k => v)
+    end
+    newlength == 0 && iszero(newcoeff) && return false
+    y.coeff = newcoeff
+    for (k, v) in updates
+        iszero(v) ? delete!(y.dict, k) : (y.dict[k] = v)
+    end
+    y.zero_grades = nothing
+    return true
 end
 
 VectorInterface.add!!(y::MulAdd, x, α::Number, β::Number) = add!!(y, x, α, β)
