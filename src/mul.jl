@@ -70,10 +70,12 @@ end
 Base.iszero(x::NCMul) = iszero(prefactor(x))
 
 # Equality is by value, so all zero products are equal, to each other and to 0, whatever their factors. isequal
-# compares the coefficients with isequal, so it gives a Bool also for coefficients whose == is symbolic.
+# compares the coefficients with isequal, so it gives a Bool also for coefficients whose == is symbolic. Since 0.0 and
+# -0.0 differ under isequal, a zero product is isequal only to zero(prefactor), as in hash.
+Base.:(==)(a::NCMul, b::Number) = isscalar(a) && prefactor(a) == b
+Base.isequal(a::NCMul, b::Number) = isscalar(a) && isequal(iszero(a) ? zero(prefactor(a)) : prefactor(a), b)
 for eq in (:(==), :isequal)
     @eval begin
-        Base.$eq(a::NCMul, b::Number) = isscalar(a) && $eq(prefactor(a), b)
         Base.$eq(a::Number, b::NCMul) = $eq(b, a)
         Base.$eq(a::NCMul, b::NCMul) = iszero(a) ? iszero(b) : $eq(prefactor(a), prefactor(b)) && factors_equal(a.factors, b.factors)
     end
