@@ -4,7 +4,7 @@
 Map `f` over the noncommutative factors of `expr`, then reduce them with the binary operations `ops = (add, mul)`.
 `mul` combines the factors of each term, starting from the term's prefactor. `add` combines the terms, starting from
 the additive constant. Each reduction is a left fold. `scalarmap` is applied to each prefactor, to the additive
-constant, and to a bare number `expr`, but not to a bare atom.
+constant, and to a bare number `expr`. A bare atom acts as `1 * atom`.
 
 # Example 
 (using infix notation for add and mul)
@@ -27,7 +27,7 @@ ncmapreduce(f, (add, mul), x::Number; scalarmap=identity) = scalarmap(x)
     ncmap(f, expr; scalarmap=identity)
 
 Map `f` over the noncommutative factors in `expr`, keeping the sums and products of `expr`. `scalarmap` is applied to
-the scalar coefficients: the prefactor of each term and the additive constant, but not to a bare atom.
+the scalar coefficients: the prefactor of each term and the additive constant.
 Equivalent to `ncmapreduce(f, (+, *), expr; scalarmap)`.
 
 # Example

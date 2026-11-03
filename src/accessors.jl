@@ -45,7 +45,7 @@ nterms(x::Number) = Int(!iszero(x))
 """
     termpairs(x)
 
-An iterator over the terms of `x`, as in `terms(x)` but not for atoms, as pairs `factors => coefficient` without
+An iterator over the terms of `x`, as in `terms(x)`, as pairs `factors => coefficient` without
 creating a product for each term. The factors may be the internal storage of `x`, so they must not be mutated.
 
 # Example
@@ -65,7 +65,7 @@ _scalar_termpairs(x::NCAdd) = Iterators.filter(!iszero ∘ last, (_scalar_factor
 """
     map_coefficients(f, x)
 
-`x`, not an atom, with the coefficient `c` of each term in `termpairs(x)` replaced by `f(factors, c)`. Terms that become
+`x` with the coefficient `c` of each term in `termpairs(x)` replaced by `f(factors, c)`. Terms that become
 zero are dropped, and a zero result keeps the grades of `x`. The factors must not be mutated.
 
 # Example

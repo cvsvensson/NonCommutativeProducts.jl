@@ -19,7 +19,7 @@ The function `mul_effect(a::Tj, b::Tk)` can have return values
 * `x::T`: replaces `a*b` by `x`.
 * Sums and products of such terms, such as `b*a + 1`.
 
-Coefficients can be any `Number`, including Symbolics.jl `@variables`, but not SymbolicUtils.jl `@syms`, which aren't `Number`s.
+Coefficients can be any `Number`.
 
 No names are exported from the package, so import the names you need.
 

@@ -13,6 +13,7 @@
     scalar_scale(x::Number) = 2 * x
     @test ncmap(identity, expr; scalarmap=scalar_scale) == 6 - 8 * f + 4 * f' * f
     @test ncmap(change_label, 1; scalarmap=scalar_scale) == 2
+    @test ncmap(change_label, f; scalarmap=scalar_scale) == 2 * fb
 
     # Test ncmapreduce with custom operations, here by interchanging + and *.
     fermion_weight(x::Fermion) = x.creation ? 2 : 1

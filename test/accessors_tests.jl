@@ -131,7 +131,7 @@ end
 @testitem "nterms and termpairs" setup = [Fermions] begin
     import NonCommutativeProducts: terms, nterms, termpairs, factors, coefficient
     a, b, c = Fermion(:a), Fermion(:b), Fermion(:c)
-    for x in (2 * a * b + 3 * c + 1, 2 * a * b + 3 * c, a + 5 - a, a - a, 3 * a * b, 0 * a, 2.5, 0)
+    for x in (2 * a * b + 3 * c + 1, 2 * a * b + 3 * c, a + 5 - a, a - a, 3 * a * b, 0 * a, a, 2.5, 0)
         @test nterms(x) == length(collect(terms(x)))
         @test Dict(termpairs(x)) == Dict(factors(t) => coefficient(t) for t in terms(x))
     end
@@ -145,6 +145,7 @@ end
     # a zero scalar part is not passed to f
     @test map_coefficients((fs, c) -> c + 1, 2 * a + 3 * b) == 3 * a + 4 * b
     @test map_coefficients((fs, c) -> 2c, 3 * a * b) == 6 * a * b
+    @test map_coefficients((fs, c) -> 2c, a) == 2 * a
     @test map_coefficients((fs, c) -> 1.0, a - a) isa NonCommutativeProducts.NCAdd{Int}
 end
 
