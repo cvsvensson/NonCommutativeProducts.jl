@@ -100,7 +100,7 @@ function _term_parts(io::IO, x::NCAdd)
         isneg = isreal(v) ? r < 0 : nothing
         if isneg isa Bool
             neg = isneg
-            text = sprint(print, neg ? -r * k : r * k; context=io)
+            text = sprint(print, neg ? _negate(r) * k : r * k; context=io)
         else
             neg = false
             text = sprint(print, "(", v, ")*", k; context=io)
@@ -110,6 +110,9 @@ function _term_parts(io::IO, x::NCAdd)
     sort!(parts; by=((neg, text),) -> neg ? "-" * text : text)
     return parts
 end
+_negate(r) = -r
+# widened, since negating typemin(Int) overflows
+_negate(r::Union{Signed,Rational}) = -big(r)
 
 function _show_terms(io::IO, x::NCAdd, parts, compact::Bool, ellipsis::Bool)
     print_one = !iszero(additive_coeff(x)) || length(x.dict) == 0

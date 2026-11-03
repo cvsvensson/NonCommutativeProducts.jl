@@ -132,6 +132,11 @@ end
     short = 1 + f[1]
     show(limited, MIME"text/plain"(), short)
     @test String(take!(limited.io)) == string(short)
+
+    # negating these coefficients overflows
+    @test string(typemin(Int) * f[1] + 0) == "-9223372036854775808*c[1]"
+    @test string((typemin(Int) // 1) * f[1] + 0) == "-9223372036854775808//1*c[1]"
+    @test string(-f[1] + f[2]) == "-c[1] + c[2]"
 end
 
 @testitem "NCAdd: outer and inner constructors agree" setup = [Fermions] begin
