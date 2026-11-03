@@ -69,9 +69,17 @@ VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β
 VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β)
 
 VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
+# x and y are sorted first: keys are compared in sorted order, and equal products left as separate terms would cancel
+# only up to roundoff of order eps * Σ|cᵢcⱼ|, which makes a zero vector look nonzero.
+function _inner(x, y)
+    return with_autosort(false) do
+        sx = _sorted(x)
+        _inner_sorted(sx, x === y ? sx : _sorted(y))
+    end
+end
 # The sorted sum of a' * b over the pairs of terms a of x and b of y that can contract, promoted to at least the
 # product of the scalar types.
-function _inner(x, y)
+function _inner_sorted(x, y)
     C = promote_type(_scalartype(x), _scalartype(y))
     T = Base.promote_op(+, C, C)
     (iszero(x) || iszero(y)) && return zero(_scalartype(x))' * zero(_scalartype(y)) + zero(T)
@@ -81,10 +89,8 @@ function _inner(x, y)
     S = _factor_eltype(eltype(bras), eltype(yterms))
     acc = zero(NCAdd{T,NCMul{Int,S,Vector{S}}})
     buffer = S[]
-    z = with_autosort(false) do
-        fold_retyping!!(acc, candidates) do acc, (i, j, d)
-            _inner_pair!!(acc, xterms[i].factors, bras[i], yterms[j], d, buffer)
-        end
+    z = fold_retyping!!(acc, candidates) do acc, (i, j, d)
+        _inner_pair!!(acc, xterms[i].factors, bras[i], yterms[j], d, buffer)
     end
     _reduces_to_scalar(z) || throw(_inner_error())
     return zero(_scalartype(x))' * zero(_scalartype(y)) + scalar(z)
@@ -96,9 +102,9 @@ _collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
 
 Return a key that lets `inner(x, y)` skip orthogonal pairs of terms, or `nothing` (the default).
 
-`inner` treats two terms as orthogonal if their keys differ at any position before the first
-factor without a key, without sorting them first. Terms must list subsystems in the same order:
-`|a⟩|b⟩` and `|b⟩|a⟩` count as orthogonal. Keys must differ between subsystems.
+`inner` sorts `x` and `y`, then treats two terms as orthogonal if their keys differ at any position
+before the first factor without a key. Keys must differ between subsystems, and `mul_effect` must
+sort kets of different subsystems into one order: `|a⟩|b⟩` and `|b⟩|a⟩` otherwise count as orthogonal.
 
 For atoms `k`, `l` with keys and any atom `u`:
 - `mul_effect(k', l)` must be a `Number` when the keys are equal.

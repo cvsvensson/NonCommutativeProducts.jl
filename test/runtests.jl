@@ -1078,6 +1078,74 @@ end
     @test inner(x, y) == 3 * 7 + 5 * 11
 end
 
+@testitem "VectorInterface: inner sorts its arguments" begin
+    using KrylovKit, LinearAlgebra, VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort, Swap
+
+    # two qubits as keyed kets, which sort by site
+    struct Q
+        site::Int
+        n::Int
+        bra::Bool
+    end
+    Q(site, n) = Q(site, n, false)
+    Base.adjoint(k::Q) = Q(k.site, k.n, !k.bra)
+    @nc Q
+    function mul_effect(a::Q, b::Q)
+        a.bra && !b.bra && return a.site == b.site ? Int(a.n == b.n) : Swap(1)
+        a.bra == b.bra && a.site > b.site && return Swap(1)
+        return nothing
+    end
+    NonCommutativeProducts.contraction_key(k::Q) = k.bra ? nothing : (k.site, k.n)
+
+    # fermions on a vacuum
+    struct F
+        site::Int
+        dag::Bool
+    end
+    F(site) = F(site, false)
+    Base.adjoint(f::F) = F(f.site, !f.dag)
+    struct Vac
+        bra::Bool
+    end
+    Base.adjoint(v::Vac) = Vac(!v.bra)
+    @nc F Vac
+    function mul_effect(a::F, b::F)
+        a == b && return 0
+        (!a.dag, a.site) < (!b.dag, b.site) && return nothing
+        return a.site == b.site ? -b * a + 1 : -b * a
+    end
+    mul_effect(a::Vac, b::Vac) = a.bra && !b.bra ? 1 : nothing
+    mul_effect(a::Vac, b::F) = a.bra && b.dag ? 0 : nothing
+    mul_effect(a::F, b::Vac) = !b.bra && !a.dag ? 0 : nothing
+
+    with_autosort(false) do
+        # the same state in two orders, in which the keys disagree
+        swapped, canonical = 1.0 * Q(2, 0) * Q(1, 0), 1.0 * Q(1, 0) * Q(2, 0)
+        @test inner(swapped, canonical) == inner(canonical, swapped) == 1
+        @test dot(swapped, canonical) == norm(swapped) == 1
+        @test inner(swapped + 0, canonical) == 1
+        # atom arguments
+        unsorted_ket = Q(1, 0) * Q(1, 1)' * Q(1, 1)
+        @test inner(unsorted_ket, Q(1, 0)) == inner(Q(1, 0), unsorted_ket) == 1
+
+        a, b = F(1)', F(2)'
+        # a product that sorts to zero
+        @test inner(2 * a * a * Vac(false), 3 * a * Vac(false)) == 0
+        # a residual that is zero up to roundoff in one coefficient, which cancels across terms only after sorting
+        residual = (0.1 * a * b - 0.7 * b * a - 0.8 * a * b) * Vac(false)
+        @test norm(residual) ≈ abs(0.1 - 0.8 + 0.7)
+
+        # the Hubbard dimer: a zero residual must stop the Krylov iteration
+        c(site, up) = F(2site + !up)
+        H = sum(-1.0 * (c(1, s)' * c(2, s) + c(2, s)' * c(1, s)) for s in (true, false)) +
+            4.0 * sum(c(i, true)' * c(i, true) * c(i, false)' * c(i, false) for i in 1:2)
+        ψ = 1.0 * c(1, true)' * c(2, false)' * Vac(false)
+        vals, = eigsolve(x -> H * x, ψ, 1, :SR; ishermitian=true, krylovdim=4, maxiter=1)
+        @test vals[1] ≈ 2 - sqrt(8)
+    end
+end
+
 @testitem "VectorInterface: inner compares keys with isequal" begin
     using VectorInterface
     import NonCommutativeProducts: @nc, mul_effect, NCMul

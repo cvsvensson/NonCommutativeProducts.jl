@@ -33,7 +33,7 @@ include("precompile.jl")
 function __init__()
     Base.Experimental.register_error_hint(MethodError) do io, exc, _, _
         exc.f === mul_effect || return
-        print(io, "\n\nProducts are sorted as they are formed, so define `mul_effect` for these types, or form the product inside `with_autosort(false)`.")
+        print(io, "\n\nProducts are sorted as they are formed and by `inner`, so define `mul_effect` for these types, or, if you don't need `inner`, form the product inside `with_autosort(false)`.")
     end
 end
 
