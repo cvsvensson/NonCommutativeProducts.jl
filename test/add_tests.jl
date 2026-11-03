@@ -42,6 +42,20 @@ end
     @test add!!(1, k1 + k2, 2) == 1 + 2k1 + 2k2
 end
 
+@testitem "foldl with add!! matches sum and keeps its inputs" setup = [Fermions] begin
+    import NonCommutativeProducts: add!!, NCAdd
+    f = Fermion.(1:3)
+    x = f[1] + f[2]
+    y = 1.5 * f[3] + 1
+    for xs in ([x, f[3] + 0], [x, x, x], Any[x, y, f[1]], Any[f[1], 1.5 * f[2], 2, x])
+        before = [e isa NCAdd ? copy(e) : e for e in xs]
+        s = foldl(add!!, xs; init=0)
+        @test s == sum(xs)
+        @test typeof(s) == typeof(sum(xs))
+        @test isequal(xs, before)
+    end
+end
+
 @testitem "oneunit of NCAdd" setup = [Fermions] begin
     f1 = Fermion(1)
     x = 2 * f1 + 3

@@ -39,6 +39,8 @@ let op = 0
 end
 ```
 
+Each `+` copies the sum, so a long `+=` loop or `sum(x for ...)` takes time and memory quadratic in the number of terms. `sum(f, 1:n)` and `sum` of an array add in pairs, which scales almost linearly. For many terms, use `foldl(NonCommutativeProducts.add!!, itr; init=0)`. Keep `init=0`, since without it the first element may be modified.
+
 Mixing different symbolic types together is slower than using a single type. For factors of an abstract element type, use [`foreach_segment`](@ref NonCommutativeProducts.foreach_segment) to work on each type with compiled code.
 
 Use [`with_autosort(false)`](@ref NonCommutativeProducts.with_autosort) only if you don't need the result sorted. It forms products faster, but like terms don't combine, and sorting afterwards is slower than sorting as they are formed.
