@@ -13,7 +13,7 @@ Changes since 0.5.2.
 - `a * b` is now usually an `NCAdd`, so `(a * b).factors` and `convert(NCMul, a * b)` throw. Use `factors` and `coefficient`, which accept a single-term sum.
 
 **`inner`, `dot` and `norm` sort their arguments**, unless autosort is on and factors can have keys.
-- Sorting needs `mul_effect` for neighbouring factors, so kets multiplied inside `with_autosort(false)` can now throw a `MethodError`. In FermionicHilbertSpaces, `inner` of two kets multiplied on one space throws an `ArgumentError`, but only inside `with_autosort(false)`.
+- Sorting needs `mul_effect` for neighbouring factors, so kets multiplied inside `with_autosort(false)` can now throw a `MethodError`.
 - With autosort on, sort a sum formed inside `with_autosort(false)` before calling them if its factors can have keys. Otherwise a zero vector can get a norm around `1e-8`, and `eigsolve` can return wrong eigenvalues.
 
 **`contraction_key` is compared along the leading kets, not just the first.**
@@ -28,6 +28,11 @@ Changes since 0.5.2.
 **`mul_effect` return values.**
 - An invalid return value now throws an `ArgumentError`. This includes `Swap(missing)`, invalid values inside `AddTerms`, and atoms not registered with `@nc`.
 - `mul_effect` methods defined by `@commutative` return `Swap(1)` instead of `y * x`.
+- `H^0` and `H^1` keep the type of `H` when `mul_effect` returns a wider coefficient or atom type.
+
+**`ncmapreduce` and `ncmap` treat an atom as `1 * atom`**, as they do a product.
+- `ncmapreduce(f, (add, mul), atom)` is `mul(scalarmap(1), f(atom))` instead of `f(atom)`.
+- `ncmap(f, atom)` is `1 * f(atom)`, so `ncmap(string, atom)` now throws.
 
 ### New
 
@@ -42,7 +47,7 @@ The functions in the second and third items are documented but not yet `public`.
 
 - `eigsolve` could return wrong eigenvalues with autosort off: -18.0 for a Hubbard dimer with ground energy -0.83.
 - `inner` gave 0 for keyed kets of one state listed in different orders.
-- `termpairs` and `map_coefficients` accept atoms, and `ncmapreduce` treats an atom as `1 * atom`.
+- `termpairs` and `map_coefficients` accept atoms.
 - `Inf * x` and `NaN * x` keep a zero scalar part zero.
 - A zero product is `isequal` only to `zero(prefactor)`, matching `hash`, so `isequal(-(0.0 * a), -0.0)` is false.
 - Sums with a `typemin` coefficient print correctly.
