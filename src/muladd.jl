@@ -61,9 +61,20 @@ to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Integer)
     b < 0 && throw(DomainError(b, "products and sums have no inverse, so the exponent must be non-negative"))
-    ret = Base.power_by_squaring(a, b)
+    ret = _power(a, b)
     # for b >= 2, ret is a product computed by `*`, which already sorts
     autosort() && b < 2 && return bubble_sort(ret)
+    return ret
+end
+_power(a::NCMul, n) = Base.power_by_squaring(a, n)
+# The cost of a product of sums scales with the product of their sizes, so multiplying by `a` is far cheaper than
+# squaring, which ends with a product of two large sums.
+function _power(a::NCAdd, n)
+    n < 2 && return Base.power_by_squaring(a, n)
+    ret = a * a
+    for _ in 3:n
+        ret = a * ret
+    end
     return ret
 end
 # Base rewrites a negative literal power `x^-n` as `inv(x)^n`. Forward it to `^` instead.

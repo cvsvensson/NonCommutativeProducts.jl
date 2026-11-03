@@ -48,6 +48,9 @@ NCAdd(ncmul::NCMul{C}) where C = _with_zero_grades(NCAdd(zero(C), to_add_dict(nc
 NCAdd(x::NCAdd) = copy(x)
 
 additive_coeff(x::NCAdd) = x.coeff
+# The scalar part `coeff` after scaling it to `scaled`. A zero scalar part is an absent term, like a zero in the dict,
+# so it stays zero rather than becoming NaN through Inf * 0 or 0 / 0.
+_scale_coeff(coeff, scaled) = iszero(coeff) ? zero(scaled) : scaled
 function set_coeff!(a::NCAdd, x::Number)
     a.coeff = x
     return a
@@ -148,7 +151,7 @@ Base.://(a::NCMul, b::Number) = NCMul(prefactor(a) // b, a.factors)
 Base.:/(a::NCAdd, b::Number) = _divide_coefficients(/, a, b)
 Base.://(a::NCAdd, b::Number) = _divide_coefficients(//, a, b)
 function _divide_coefficients(op, a::NCAdd{C,K}, b::Number) where {C,K}
-    coeff = op(additive_coeff(a), b)
+    coeff = _scale_coeff(additive_coeff(a), op(additive_coeff(a), b))
     dict = copy_dict(a, K, typeof(coeff))
     map!(v -> op(v, b), values(dict))
     return _with_zero_grades(NCAdd(coeff, dict), () -> _grades(a))
@@ -242,7 +245,7 @@ function add!(a::NCAdd{C}, b::Number, α::Number=One(), β::Number=One()) where 
     # β * a + α * b, with grades as in add!!, except that a scaled by zero contributes all its grades
     agrades = β isa VectorInterface.Zero ? nothing : iszero(β) ? _grades(a) : _zero_grades(a)
     newgrades = () -> _union_grades(agrades, _grades(b))
-    newcoeff = additive_coeff(a) * β + α * b
+    newcoeff = _scale_coeff(additive_coeff(a), additive_coeff(a) * β) + α * b
     if !_keeps_type(C, typeof(β))
         return _with_zero_grades(_set_ncadd!(a, newcoeff, (k => v * β for (k, v) in a.dict)), newgrades)
     end
@@ -275,7 +278,8 @@ NCterms(a::NCAdd) = (NCMul(v, k.factors) for (k, v) in pairs(a.dict))
 function Base.:*(x::Number, a::NCAdd{C,K}) where {C,K}
     dict = copy_dict(a, K, promote_type(typeof(x), C))
     map!(v -> x * v, values(dict))
-    return _with_zero_grades(NCAdd(x * additive_coeff(a), dict), () -> _grades(a))
+    coeff = _scale_coeff(additive_coeff(a), x * additive_coeff(a))
+    return _with_zero_grades(NCAdd(coeff, dict), () -> _grades(a))
 end
 Base.:*(a::NCAdd, x::Number) = x * a
 
