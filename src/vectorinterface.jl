@@ -119,6 +119,7 @@ function _inner(x, y)
 end
 # The terms of x in a Vector with a concrete element type
 _collect_terms(x) = fold_terms!!(push!!, Union{}[], x)
+_collect_terms(x::NCAdd{C,NCMul{D,S,F}}) where {C,D,S,F} = fold_terms!!(push!!, sizehint!(NCMul{C,S,F}[], nterms(x)), x)
 """
     contraction_key(atom)
 
