@@ -11,6 +11,7 @@ Changes since 0.5.2.
 - To leave products unsorted, wrap the code in `with_autosort(false) do ... end`.
 - `enable_autosort!` and `disable_autosort!` are no longer public. Delete calls to the first, and replace calls to the second with `with_autosort(false)`.
 - `a * b` is now usually an `NCAdd`, so `(a * b).factors` and `convert(NCMul, a * b)` throw. Use `factors` and `coefficient`, which accept a single-term sum.
+- Sorting makes forming products slower: 10⁴ atom products took 3.7× as long. Inside `with_autosort(false)` products aren't sorted as they are formed.
 
 **`inner`, `dot` and `norm` sort their arguments**, unless autosort is on and factors can have keys.
 - Sorting calls `mul_effect` on neighbouring factors, so kets multiplied inside `with_autosort(false)` can now throw.
@@ -20,7 +21,7 @@ Changes since 0.5.2.
 - `mul_effect(k', l)` must be defined for kets whose keys differ, and must be a `Number` when the keys are equal, or `inner` throws.
 - A `Number` from it asserts that `k` and `l` are in one subsystem. Across subsystems it must not be a `Number`, not even 0, or `inner` can silently miss terms.
 - A pair of terms that doesn't reduce to a scalar throws an `ArgumentError`, unless kets of one subsystem already make it zero.
-- Any order of kets gives the right result, but mixing orders can be tens of times slower.
+- Any order of kets gives the right result, but `inner` is only fast if all terms list kets in one order. Otherwise its time grows quadratically with the number of terms: 94× slower at 200 terms, about 2000× at 3200. Kets that `mul_effect` sorts stay in one order, unless the sum is formed inside `with_autosort(false)`; call `sort` on it first.
 
 **The macros reject more input with an `ArgumentError`.**
 - `@nc`: `Number` subtypes, `Any`, and unions that include a number.
@@ -48,4 +49,5 @@ Documented but not yet `public`:
 ### Performance
 
 - `inner` compares `contraction_key` along the leading kets, not just the first, so it skips many more pairs of terms.
+- `H^k` for a sum multiplies by `H` repeatedly instead of squaring, which is faster when the terms of the result stop growing: 5× for `H^6` of a 91-term Majorana sum.
 - `ncmap` and `VectorInterface.add!` with `β = 1` no longer take time proportional to the whole sum for each term added.
