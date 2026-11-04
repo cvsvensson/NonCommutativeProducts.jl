@@ -262,15 +262,14 @@ end
     mul_effect(a, b)
 
 When sorting a non-commutative expression, `mul_effect(a, b)` gives the replacement for `a*b`. 
-It must have a branch that returns `nothing` in order for the sorting to terminate. 
+Sorting continues until each neighbouring pair returns `nothing`.
 
 This package defines no methods for `mul_effect`, so define them for your types. Products are sorted as they are
 formed, so a product of types without a method throws a `MethodError`, unless it is inside `with_autosort(false)`.
 Products formed inside `mul_effect` are not sorted when the package calls it.
 
 The return value can be `nothing`, a number, an object, a sum or product of these, or one of the helper types `Swap(λ)`
-(replace `a*b` by `λ*b*a`) and `AddTerms(terms)` (replace `a*b` by a sum of `terms`). `Swap` and `AddTerms` are
-available as `NonCommutativeProducts.Swap` and `NonCommutativeProducts.AddTerms`.
+(replace `a*b` by `λ*b*a`) and `AddTerms(terms)` (replace `a*b` by a sum of `terms`).
 
 # Example
 ```julia

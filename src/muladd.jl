@@ -61,9 +61,20 @@ to_add_dict_type(::Type{NCMul{C}}) where C = NCMul{Int}
 to_add_dict_type(::Type{NCMul}) = NCMul{Int}
 function Base.:^(a::Union{NCAdd,NCMul}, b::Integer)
     b < 0 && throw(DomainError(b, "products and sums have no inverse, so the exponent must be non-negative"))
-    ret = Base.power_by_squaring(a, b)
+    ret = _power(a, b)
     # for b >= 2, ret is a product computed by `*`, which already sorts
     autosort() && b < 2 && return bubble_sort(ret)
+    return ret
+end
+_power(a::NCMul, n) = Base.power_by_squaring(a, n)
+# The cost of a product of sums scales with the product of their sizes, so multiplying by `a` is far cheaper than
+# squaring, which ends with a product of two large sums.
+function _power(a::NCAdd, n)
+    n < 2 && return Base.power_by_squaring(a, n)
+    ret = a * a
+    for _ in 3:n
+        ret = a * ret
+    end
     return ret
 end
 # Base rewrites a negative literal power `x^-n` as `inv(x)^n`. Forward it to `^` instead.
@@ -81,8 +92,10 @@ macro nc_common(T)
 
         NonCommutativeProducts.NCMul(f::$(esc(T))) = NCMul(1, [f])
         NonCommutativeProducts.NCAdd(f::$(esc(T))) = NCAdd(NCMul(f))
-        NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = f(x)
+        NonCommutativeProducts.ncmapreduce(f, ops::Tuple, x::$(esc(T)); scalarmap=identity) = ncmapreduce(f, ops, NCMul(x); scalarmap)
         NonCommutativeProducts.terms(x::$(esc(T))) = terms(NCMul(x))
+        NonCommutativeProducts.termpairs(x::$(esc(T))) = termpairs(NCMul(x))
+        NonCommutativeProducts.map_coefficients(f, x::$(esc(T))) = map_coefficients(f, NCMul(x))
         NonCommutativeProducts.factors(x::$(esc(T))) = [x]
         NonCommutativeProducts.coefficient(x::$(esc(T))) = 1
         NonCommutativeProducts.nterms(::$(esc(T))) = 1
@@ -90,8 +103,6 @@ macro nc_common(T)
         Base.:+(x::$(esc(T)), y::$(esc(T))) = NCMul(x) + NCMul(y)
         Base.:+(x::$(esc(T)), y::Union{Number,UniformScaling,NCMul,NCAdd}) = NCMul(x) + y
         Base.:+(x::Union{Number,UniformScaling,NCMul,NCAdd}, y::$(esc(T))) = y + x
-
-        NonCommutativeProducts.add!!(x::NCAdd, y::$(esc(T))) = add!!(x, NCMul(y))
 
         Base.:-(x::$(esc(T)), y::$(esc(T))) = NCMul(x) - NCMul(y)
         Base.:-(x::$(esc(T))) = NCMul(-1, [x])
@@ -132,9 +143,9 @@ macro nc_common(T)
         Base.promote_rule(::Type{W}, ::Type{NC}) where {W<:$(esc(T)),NC<:MulAdd} = promote_type(NCMul{Int,W,Vector{W}}, NC)
         Base.convert(::Type{NC}, x::$(esc(T))) where {NC<:MulAdd} = convert(NC, NCMul(x))
 
-        NonCommutativeProducts.add!!(x::MulAdd, y::$(esc(T)), α::Number, β::Number) = add!!(x, NCMul(y), α, β)
-        NonCommutativeProducts.add!!(x::$(esc(T)), y::$(esc(T)), α::Number, β::Number) = add!!(NCMul(x), NCMul(y), α, β)
-        NonCommutativeProducts.add!!(x::$(esc(T)), y::MulAdd, α::Number, β::Number) = add!!(NCMul(x), y, α, β)
+        # an atom as `x` accepts any `y`, which covers atoms of other types without ambiguities
+        NonCommutativeProducts.add!!(x::$(esc(T)), y, α::Number=One(), β::Number=One()) = add!!(NCMul(x), y, α, β)
+        NonCommutativeProducts.add!!(x::Union{Number,MulAdd}, y::$(esc(T)), α::Number=One(), β::Number=One()) = add!!(x, NCMul(y), α, β)
 
         @nc_vectorinterface $(esc(T))
 
@@ -174,15 +185,27 @@ with_autosort(f, enabled::Bool=true) = with(f, _autosort => enabled)
 
 Define addition and multiplication for the given types, both within each type and between them, and make them
 implement the VectorInterface.jl API. Products are sorted as they are formed, so also define [`mul_effect`](@ref) for
-the types, or form products inside `with_autosort(false)`.
+the types, or form products inside `with_autosort(false)`. Number types are rejected, since Base defines their
+arithmetic. Atoms must compare by value; a custom `==` needs a matching `hash`.
 """
 macro nc(types...)
+    # a tuple is an error while lowering the methods, so it can't wait for the checks at runtime
+    any(T -> Meta.isexpr(T, :tuple), types) && return :(throw(_syntax_error("@nc")))
     nc_common_calls = [:(@nc_common $(esc(T))) for T in types]
     quote
+        foreach(_check_nc_type, ($(esc.(types)...),))
         $(nc_common_calls...)
         @nc_pairs $(esc.(types)...)
     end
 
+end
+_syntax_error(name) = ArgumentError("`$name` takes types separated by spaces, as in `$name A B`")
+# The arguments of @nc and @commutative are only known as values when the macro call runs, so the checks run then.
+function _check_nc_type(T)
+    T isa Type || throw(_syntax_error("@nc"))
+    # also catches a Union with a Number member, and Any
+    typeintersect(T, Number) === Union{} || throw(ArgumentError("`@nc` doesn't accept $T, since it includes Number types"))
+    return nothing
 end
 macro nc_pairs(types...)
     mul_pairs = Expr[]
@@ -212,19 +235,46 @@ end
     @commutative T1 T2 ...
 
 Define mixed arithmetic for types that commute with each other, and order them as listed: for `x::Ti` and `y::Tj`,
-`x*y` stays if `i < j` and becomes `y*x` if `i > j`. The types must already be registered with `@nc`.
+`x*y` stays if `i < j` and becomes `y*x` if `i > j`. The types must already be registered with `@nc`, must not overlap,
+and must not be listed later in the opposite order. Reversing a pair throws, except that using a supertype of an earlier
+type goes undetected.
 """
 macro commutative(types...)
+    any(T -> Meta.isexpr(T, :tuple), types) && return :(throw(_syntax_error("@commutative")))
     mul_effect = Expr[]
     for (n1, T1) in enumerate(types)
         for (n2, T2) in enumerate(types)
             n1 >= n2 && continue
+            push!(mul_effect, :(NonCommutativeProducts._ordered_before(::Type{<:$(esc(T1))}, ::Type{<:$(esc(T2))}) = true))
             push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T1)), y::$(esc(T2))) = nothing))
             push!(mul_effect, :(NonCommutativeProducts.mul_effect(x::$(esc(T2)), y::$(esc(T1))) = Swap(1)))
         end
     end
     quote
+        _check_commutative_types($(esc.(types)...))
         $(mul_effect...)
         @nc_pairs $(esc.(types)...)
     end
+end
+# Whether an earlier @commutative ordered T1 before T2, or supertypes of them
+_ordered_before(::Type, ::Type) = false
+# Whether an earlier @commutative ordered a member of the Union T1 before a member of the Union T2
+function _any_ordered_before(T1, T2)
+    T1 isa Union && return _any_ordered_before(T1.a, T2) || _any_ordered_before(T1.b, T2)
+    T2 isa Union && return _any_ordered_before(T1, T2.a) || _any_ordered_before(T1, T2.b)
+    return _ordered_before(T1, T2)
+end
+_registered(T::Union) = _registered(T.a) && _registered(T.b)
+_registered(T) = _is_atom(T)
+function _check_commutative_types(types...)
+    for (n, T) in enumerate(types)
+        T isa Type || throw(_syntax_error("@commutative"))
+        _registered(T) || throw(ArgumentError("`@commutative` needs types registered with `@nc` first, got $T"))
+        for U in types[n+1:end]
+            U isa Type || continue # reported when U is reached
+            typeintersect(T, U) === Union{} || throw(ArgumentError("`@commutative` can't order overlapping types, got $T and $U"))
+            _any_ordered_before(U, T) && throw(ArgumentError("`@commutative` can't order $T before $U, since that reverses an order set by an earlier call"))
+        end
+    end
+    return nothing
 end

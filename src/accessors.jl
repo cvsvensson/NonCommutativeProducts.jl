@@ -45,8 +45,8 @@ nterms(x::Number) = Int(!iszero(x))
 """
     termpairs(x)
 
-An iterator over the terms of `x`, as in `terms(x)`, as pairs `factors => coefficient` without creating a product for
-each term. The factors may be the internal storage of `x`, so they must not be mutated.
+An iterator over the terms of `x`, as in `terms(x)`, as pairs `factors => coefficient` without
+creating a product for each term. The factors may be the internal storage of `x`, so they must not be mutated.
 
 # Example
 ```julia
@@ -65,8 +65,8 @@ _scalar_termpairs(x::NCAdd) = Iterators.filter(!iszero ∘ last, (_scalar_factor
 """
     map_coefficients(f, x)
 
-`x` with the coefficient `c` of each term in `termpairs(x)` replaced by `f(factors, c)`. Terms that become zero are
-dropped, and a zero result keeps the grades of `x`. The factors must not be mutated.
+`x` with the coefficient `c` of each term in `termpairs(x)` replaced by `f(factors, c)`. Terms that become
+zero are dropped, and a zero result keeps the grades of `x`. The factors must not be mutated.
 
 # Example
 ```julia
@@ -93,7 +93,8 @@ map_coefficients(f, x::Number) = iszero(x) ? x : f(Any[], x)
 
 The factors of `x` as an `AbstractVector`, in order and without the coefficient. Works for products, numbers
 and atoms registered with `@nc`: a number has no factors, and an atom is its own single factor. A sum with exactly one
-term has the factors of that term. A sum with more terms throws an `ArgumentError`; use `terms` to get its products.
+term has the factors of that term. Any other sum, including zero, throws an `ArgumentError`; use `terms` to get its
+products.
 The result is a copy, so modifying it does not change `x`.
 
 # Example
@@ -111,8 +112,8 @@ factors(x::NCAdd) = factors(_only_term(x, "factors"))
     coefficient(x)
 
 The scalar coefficient of `x`. Works for products, numbers and atoms registered with `@nc`: a number is its own
-coefficient, and an atom has coefficient `1`. A sum with exactly one term has the coefficient of that term. A sum with
-more terms throws an `ArgumentError`; use `terms` to get its products.
+coefficient, and an atom has coefficient `1`. A sum with exactly one term has the coefficient of that term. Any other
+sum, including zero, throws an `ArgumentError`; use `terms` to get its products.
 
 # Example
 ```julia

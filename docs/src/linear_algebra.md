@@ -53,15 +53,7 @@ julia> inner(k0 + 2k1, k1)
 
 ## Truncation with an error bound
 
-[`truncate_terms`](@ref NonCommutativeProducts.truncate_terms) drops small terms of an expression and returns a bound on the error, valid in every representation where the atom bounds hold. For `x = Σᵢ cᵢ Pᵢ`, dropping a set `D` of terms gives `x̃` with
-```
-‖x - x̃‖ ≤ Σ_{i ∈ D} |cᵢ| b(Pᵢ)
-```
-by the triangle inequality, where `b(P)` is the product of the operator norm bounds of the factors of `P`. The true error can be much smaller.
-
-To make terms droppable, define [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound) for your atoms. Terms containing an atom without a bound, such as a boson, are kept.
-
-`rtol` is relative to the total weight of the droppable terms, kept or not. That total can far exceed `‖x‖` and leaves out terms without a bound, so `rtol` is not a relative error in `‖x‖`. Sort an expression formed inside `with_autosort(false)` before truncating, since terms that would cancel otherwise use up the budget.
+[`truncate_terms`](@ref NonCommutativeProducts.truncate_terms) drops small terms of an expression and returns a bound on the error. To make terms droppable, define [`opnorm_bound`](@ref NonCommutativeProducts.opnorm_bound) for your atoms. Sort an expression formed inside `with_autosort(false)` before truncating, since terms that would cancel otherwise use up the budget.
 
 For the kets above, normalized kets and bras have norm 1:
 ```jldoctest kets

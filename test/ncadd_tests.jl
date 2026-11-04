@@ -1,3 +1,24 @@
+@testitem "NCAdd: scaling keeps a zero scalar part zero" setup = [Fermions] begin
+    using VectorInterface
+    import NonCommutativeProducts as NC
+    f1, f2 = Fermion(1), Fermion(2)
+    x = f1 + 2.0 * f2
+    expected = Inf * f1 + Inf * f2
+
+    @test Inf * x == expected
+    @test x * Inf == expected
+    @test x / 0 == expected
+    @test Inf * (f1 + 2 * f2) == expected
+    @test NC.scale!(copy(x), Inf) == expected
+    @test NC.scale!!(copy(x), Inf) == expected
+    @test VectorInterface.scale(x, Inf) == expected
+    @test isequal(NaN * x, NaN * f1 + NaN * f2)
+
+    # a nonzero scalar part scales as usual
+    @test isequal(Inf * (x + 1), Inf + expected)
+    @test isequal(NaN * (x + 1), NaN + NaN * f1 + NaN * f2)
+end
+
 @testitem "NCAdd: failed in-place updates leave the target unchanged" setup = [Fermions, Bosons] begin
     using VectorInterface
     import NonCommutativeProducts as NC

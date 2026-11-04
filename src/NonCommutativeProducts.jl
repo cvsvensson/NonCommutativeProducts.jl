@@ -14,7 +14,7 @@ using BangBang.Extras: modify!!
 using VectorInterface: VectorInterface, One
 using PrecompileTools: @setup_workload, @compile_workload
 
-public NCMul, NCAdd, @nc, @commutative, mul_effect, autosort, with_autosort,
+public NCMul, NCAdd, @nc, @commutative, mul_effect, Swap, AddTerms, autosort, with_autosort,
     ncmap, ncmapreduce, scalar, add!!, terms, nterms, factors, coefficient
 
 include("mul.jl")

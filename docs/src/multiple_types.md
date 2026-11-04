@@ -1,6 +1,6 @@
 # Multiple types
 
-Several types can be used in the same expressions. [`mul_effect`](@ref NonCommutativeProducts.mul_effect) is called on every pair of neighbouring factors, so each pair of types that can end up next to each other needs one. For types that commute with each other, the macro [`@commutative`](@ref NonCommutativeProducts.@commutative) defines mixed arithmetic and the mixed `mul_effect`s for you. Factors are then ordered by type, in the order the types are listed.
+Several types can be used in the same expressions. [`mul_effect`](@ref NonCommutativeProducts.mul_effect) is called on every pair of neighbouring factors, so each pair of types that can end up next to each other needs one. For types that commute with each other, the macro [`@commutative`](@ref NonCommutativeProducts.@commutative) defines mixed arithmetic and the mixed `mul_effect`s for you. Factors are then ordered by type, in the order the types are listed. It doesn't cover products within a type, so also define `mul_effect(::Foo, ::Foo)`.
 ```jldoctest multiple
 julia> import NonCommutativeProducts: @commutative, @nc
 
@@ -15,7 +15,7 @@ julia> @commutative Foo Bar
 julia> 2Bar()Foo() - Foo()Bar()
 Foo()*Bar()
 ```
-For types that don't commute, define `mul_effect(a::Foo, b::Bar)` and `mul_effect(a::Bar, b::Foo)` yourself.
+For types that don't commute, register them in one `@nc`, since separate calls don't define `Foo()*Bar()`, and define `mul_effect(a::Foo, b::Bar)` and `mul_effect(a::Bar, b::Foo)` yourself.
 
 ## Groups and segments
 
@@ -56,8 +56,3 @@ julia> atom_group(::Union{Foo,Bar}) = :foobar;
 julia> show_parts(x)
 foobar => 2*Foo()*Foo()*Bar()*Foo()
 ```
-
-## Performance of mixed products
-
-Factors of a concrete type sort fastest. For abstract element types, use
-[`foreach_segment`](@ref NonCommutativeProducts.foreach_segment) to work on each type with compiled code.

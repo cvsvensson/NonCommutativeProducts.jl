@@ -15,36 +15,33 @@ DocTestSetup = quote
 end
 ```
 
-The examples on this page use the `Fermion` type defined on the [Home](@ref "Example: Fermions") page.
+The examples on this page use the `Fermion` type and `mul_effect` defined on the [Home](@ref "Example: Fermions") page.
 
-Each product is sorted with bubble sort, which repeatedly swaps adjacent factors so that commutation relations apply. The time to sort one product grows quadratically with its number of factors, so long products are slow.
-
-A product of sums is formed one pair of terms at a time: each pair is sorted on its own and added straight into the result. The time is proportional to the number of term pairs and the memory to the size of the result.
+The time to sort a product grows quadratically with its number of factors, so long products are slow. A product of sums takes time proportional to the number of term pairs, and memory proportional to the size of the result.
 
 ```julia
 op = prod(Fermion(n) + Fermion(n)' + 1 for n in 1:10)
-#= Sum with 59049 terms:
-1I-c†[10]*c[1]-c†[10]*c[1]*c[2]*c[3]-c†[10]*c[1]*c[2]*c[3]*c[4]*c[5] + ...
-=#
+NonCommutativeProducts.nterms(op) # 59049
 ```
 
 To cut down on allocations, one can use [`NonCommutativeProducts.add!!`](@ref) which tries to perform addition in place, but widens the type if not possible.
 ```julia
-op = 0
-for n in 1:100
-    op += Fermion(n)'*Fermion(n)
-end
+let op = 0
+    for n in 1:100
+        op += Fermion(n)'*Fermion(n)
+    end
 
-op2 = zero(op)
-for n in 1:100
-    op2 = NonCommutativeProducts.add!!(op2, Fermion(n)'*Fermion(n))
+    op2 = zero(op)
+    for n in 1:100
+        op2 = NonCommutativeProducts.add!!(op2, Fermion(n)'*Fermion(n))
+    end
+    op == op2 # true
 end
-op == op2 # true
 ```
 
 Each `+` copies the sum, so a long `+=` loop or `sum(x for ...)` takes time and memory quadratic in the number of terms. `sum(f, 1:n)` and `sum` of an array add in pairs, which scales almost linearly. For many terms, use `foldl(NonCommutativeProducts.add!!, itr; init=0)`. Keep `init=0`, since without it the first element may be modified.
 
-Mixing different symbolic types together is slower than using a single type.
+Mixing different symbolic types together is slower than using a single type. For factors of an abstract element type, use [`foreach_segment`](@ref NonCommutativeProducts.foreach_segment) to work on each type with compiled code.
 
 Use [`with_autosort(false)`](@ref NonCommutativeProducts.with_autosort) only if you don't need the result sorted. It forms products faster, but like terms don't combine, and sorting afterwards is slower than sorting as they are formed.
 

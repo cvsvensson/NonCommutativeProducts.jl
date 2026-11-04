@@ -1375,13 +1375,13 @@ end
 
 @testitem "Public API" begin
     using NonCommutativeProducts
-    public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :autosort, :with_autosort,
+    public_names = [:NCMul, :NCAdd, Symbol("@nc"), Symbol("@commutative"), :mul_effect, :Swap, :AddTerms, :autosort, :with_autosort,
         :ncmap, :ncmapreduce, :scalar, :add!!, :terms, :factors, :coefficient]
     for name in public_names
         @test Base.ispublic(NonCommutativeProducts, name)
         @test Base.Docs.hasdoc(NonCommutativeProducts, name)
     end
-    for name in [:enable_autosort!, :disable_autosort!, :Swap, :AddTerms, :bubble_sort, :MulAdd, :_autosort, :grade, :mul!!, :anyadd, :isscalar,
+    for name in [:enable_autosort!, :disable_autosort!, :bubble_sort, :MulAdd, :_autosort, :grade, :mul!!, :anyadd, :isscalar,
         :atom_group, :foreach_segment, :split_by_group, :segment_ranges]
         @test !Base.ispublic(NonCommutativeProducts, name)
     end
@@ -1404,7 +1404,7 @@ end
             :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic, :_coefficient_bound,
             :SizeUnknown, :EltypeUnknown, :Experimental, :register_error_hint)),
         # qualified names in macro-generated code
-        no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :add!!, :anyadd,
-            :mul_effect, :ncmapreduce, :terms, :coefficient, :factors, :nterms)),
+        no_self_qualified_accesses=(; ignore=(:NCAdd, :NCMul, :_has_scalartype, :_is_atom, :_ordered_before, :add!!, :anyadd,
+            :mul_effect, :ncmapreduce, :terms, :termpairs, :map_coefficients, :coefficient, :factors, :nterms)),
     )
 end

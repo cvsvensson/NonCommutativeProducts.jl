@@ -14,10 +14,12 @@ Pkg.add("NonCommutativeProducts")
 With a list of types `Ts` that represents your non-commuting objects, call [`@nc Ts...`](@ref NonCommutativeProducts.@nc) which defines addition and multiplication for these types. Then define [`mul_effect(a::Tj, b::Tk)`](@ref NonCommutativeProducts.mul_effect) for each pair of types to define the behaviour of `a*b`. Products are sorted as they are formed, so `a*b` throws a `MethodError` until you do.
 
 The function `mul_effect(a::Tj, b::Tk)` can have return values
-* `nothing`: Keeps `a*b`. This return value is important as the sorting only terminates when this is the return value for each neighbouring pair product. Without it, sorting never terminates.
+* `nothing`: Keeps `a*b`. Sorting continues until each neighbouring pair returns `nothing`.
 * `λ::Number`: replaces `a*b` by `λ`.
 * `x::T`: replaces `a*b` by `x`.
 * Sums and products of such terms, such as `b*a + 1`.
+
+Coefficients can be any `Number`.
 
 No names are exported from the package, so import the names you need.
 

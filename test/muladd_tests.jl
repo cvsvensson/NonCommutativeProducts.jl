@@ -56,7 +56,7 @@ end
 @testitem "Powers are sorted exactly when autosort is enabled" setup = [Bosons] begin
     NC = NonCommutativeProducts
     b = Boson()
-    for x in NC.with_autosort(() -> (b * b', b + b'), false), p in 1:3
+    for x in NC.with_autosort(() -> (b * b', b + b'), false), p in 1:4
         unsorted = NC.with_autosort(() -> prod(fill(x, p)), false)
         @test NC.with_autosort(() -> x^p, true) == sort(unsorted)
         @test NC.with_autosort(() -> x^p, false) == unsorted
