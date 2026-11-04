@@ -144,10 +144,10 @@ SUITE["vector"]["inner_keyed"] = @benchmarkable VI.inner($x_keyed, $y_keyed)
 
 # Kets |s⟩ on a site, keyed by (site, state), so that `inner` prunes pairs of terms of a spin chain by their keys site
 # by site. The keys of AbstractKeyKet have different types on odd and even sites, so that the key type isn't concrete.
-# GroupKet is a ket |s⟩ of the group `site`, where a bra and a ket of different groups don't act on each other.
+# GroupKet is a ket |s⟩ of the group `site`, where a bra swaps past a ket of another group.
 for (T, key, effect_other_site) in ((:SiteKet, :((k.site, k.s)), 0),
     (:AbstractKeyKet, :(isodd(k.site) ? (k.site, k.s) : (Int8(k.site), Int16(k.s))), 0),
-    (:GroupKet, :((k.site, k.s)), nothing))
+    (:GroupKet, :((k.site, k.s)), :(NonCommutativeProducts.Swap(1))))
     @eval begin
         struct $T
             site::Int
@@ -191,8 +191,10 @@ SUITE["vector"]["norm_small_shared_chain"] = @benchmarkable norm($small_shared_c
 const abstract_keys_chain = sum(randn() * prod(AbstractKeyKet(site, rand(1:2)) for site in 1:N_sites) for _ in 1:2000)
 SUITE["vector"]["norm_abstract_keys_chain"] = @benchmarkable norm($abstract_keys_chain)
 
-const group_keys_sum = sum(randn() * GroupKet(1, rand(1:300)) * GroupKet(2, rand(1:300)) for _ in 1:1000)
-SUITE["vector"]["norm_group_keys"] = @benchmarkable norm($group_keys_sum)
+# Kets of two groups in both orders, so that keys at the same position can belong to different groups
+group_ket_pair(a, b) = rand(Bool) ? GroupKet(1, a) * GroupKet(2, b) : GroupKet(2, b) * GroupKet(1, a)
+const group_orders_sum = sum(randn() * group_ket_pair(rand(1:300), rand(1:300)) for _ in 1:1000)
+SUITE["vector"]["norm_group_orders"] = @benchmarkable norm($group_orders_sum)
 
 # Terms of a keyed ket times an unkeyed one, with few distinct keys, so that each term contracts with many others
 NonCommutativeProducts.mul_effect(::KeyedKet, ::Ket) = nothing
