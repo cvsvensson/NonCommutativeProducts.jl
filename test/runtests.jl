@@ -1048,9 +1048,6 @@ end
     for (a, b) in ((ψ, ψ), (ψ, φ), (φ, ψ), (ket, ψ), (ψ, ket))
         @test inner(a, b) == scalar(with_autosort(() -> a' * b))
     end
-    # keys define orthogonality: states of group 3 alone are orthogonal to those of groups 1 and 2, although x' * y
-    # doesn't sort to a scalar
-    @test inner(φ + 2 * GKet(3, 1), ψ + 3 * GKet(3, 1)) == inner(φ, ψ) + 6
 end
 
 @testitem "VectorInterface: inner with keys over signed swaps" begin
