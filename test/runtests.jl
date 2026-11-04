@@ -1054,9 +1054,6 @@ end
     for (a, b) in ((ψ, ψ), (ψ, φ), (φ, ψ), (ket, ψ), (ψ, ket))
         @test inner(a, b) == scalar(with_autosort(() -> a' * b))
     end
-    # keys define orthogonality: states of group 3 alone are orthogonal to those of groups 1 and 2, although x' * y
-    # doesn't sort to a scalar
-    @test inner(φ + 2 * GKet(3, 1), ψ + 3 * GKet(3, 1)) == inner(φ, ψ) + 6
 end
 
 @testitem "VectorInterface: inner with keys over signed swaps" begin
@@ -1082,6 +1079,136 @@ end
     x = 2 * state(0, 0) + 3 * state(0, 1) + 5 * state(1, 1)
     y = 7 * state(0, 1) + 11 * state(1, 1) + 13 * state(1, 0)
     @test inner(x, y) == 3 * 7 + 5 * 11
+end
+
+@testitem "VectorInterface: inner of terms in different orders" begin
+    using KrylovKit, LinearAlgebra, VectorInterface
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort, Swap
+
+    # two qubits as keyed kets, which sort by site
+    struct Q
+        site::Int
+        n::Int
+        bra::Bool
+    end
+    Q(site, n) = Q(site, n, false)
+    Base.adjoint(k::Q) = Q(k.site, k.n, !k.bra)
+    @nc Q
+    function mul_effect(a::Q, b::Q)
+        a.bra && !b.bra && return a.site == b.site ? Int(a.n == b.n) : Swap(1)
+        a.bra == b.bra && a.site > b.site && return Swap(1)
+        return nothing
+    end
+    NonCommutativeProducts.contraction_key(k::Q) = k.bra ? nothing : (k.site, k.n)
+
+    # fermions on a vacuum
+    struct F
+        site::Int
+        dag::Bool
+    end
+    F(site) = F(site, false)
+    Base.adjoint(f::F) = F(f.site, !f.dag)
+    struct Vac
+        bra::Bool
+    end
+    Base.adjoint(v::Vac) = Vac(!v.bra)
+    @nc F Vac
+    function mul_effect(a::F, b::F)
+        a == b && return 0
+        (!a.dag, a.site) < (!b.dag, b.site) && return nothing
+        return a.site == b.site ? -b * a + 1 : -b * a
+    end
+    mul_effect(a::Vac, b::Vac) = a.bra && !b.bra ? 1 : nothing
+    mul_effect(a::Vac, b::F) = a.bra && b.dag ? 0 : nothing
+    mul_effect(a::F, b::Vac) = !b.bra && !a.dag ? 0 : nothing
+
+    # kets that never reorder
+    struct R
+        site::Int
+        n::Int
+        bra::Bool
+    end
+    R(site, n) = R(site, n, false)
+    Base.adjoint(k::R) = R(k.site, k.n, !k.bra)
+    @nc R
+    function mul_effect(a::R, b::R)
+        a.bra && !b.bra && return a.site == b.site ? Int(a.n == b.n) : Swap(1)
+        return nothing
+    end
+    NonCommutativeProducts.contraction_key(k::R) = k.bra ? nothing : (k.site, k.n)
+
+    # kets of two types
+    struct KA
+        n::Int
+        bra::Bool
+    end
+    struct KB
+        n::Int
+        bra::Bool
+    end
+    KA(n) = KA(n, false)
+    KB(n) = KB(n, false)
+    Base.adjoint(k::KA) = KA(k.n, !k.bra)
+    Base.adjoint(k::KB) = KB(k.n, !k.bra)
+    @nc KA KB
+    mul_effect(a::KA, b::KA) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+    mul_effect(a::KB, b::KB) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+    mul_effect(a::KA, b::KB) = a.bra && !b.bra ? Swap(1) : nothing
+    mul_effect(a::KB, b::KA) = a.bra && !b.bra ? Swap(1) : nothing
+    NonCommutativeProducts.contraction_key(k::KA) = k.bra ? nothing : (:A, k.n)
+    NonCommutativeProducts.contraction_key(k::KB) = k.bra ? nothing : (:B, k.n)
+
+    # the same state in two orders, in which the keys disagree
+    swapped = with_autosort(() -> 1.0 * Q(2, 0) * Q(1, 0), false)
+    canonical = 1.0 * Q(1, 0) * Q(2, 0)
+    @test inner(swapped, canonical) == inner(canonical, swapped) == 1
+
+    @test inner(1.0 * R(2, 0) * R(1, 0), 1.0 * R(1, 0) * R(2, 0)) == 1
+    @test inner(R(2, 1) * R(1, 0), R(1, 1) * R(2, 0)) == 0
+    # sums, with kets of each order on each side
+    @test inner(2.0 * R(2, 1) * R(1, 0) + 3.0 * R(1, 1) * R(2, 0) + 5.0 * R(1, 0) * R(2, 0),
+        7.0 * R(1, 0) * R(2, 1) + 11.0 * R(2, 0) * R(1, 1) + 13.0 * R(2, 0) * R(1, 0)) == 112
+    # a key that isn't in the other sum, whose kets are all of one subsystem
+    @test inner(R(3, 0) * R(1, 0), R(1, 0) * R(3, 0) + R(1, 1) * R(3, 0)) == 1
+    # a pair that leaves factors throws, whichever ket is missing a partner
+    @test_throws ArgumentError inner(1.0 * R(2, 0), 1.0 * R(1, 0) * R(2, 0))
+    @test_throws ArgumentError inner(1.0 * Q(1, 0), 1.0 * Q(1, 0) * Q(2, 0))
+    @test_throws ArgumentError inner(1.0 * Q(2, 0), 1.0 * Q(1, 0) * Q(2, 0))
+    @test_throws ArgumentError inner(1.0 * R(1, 0) * R(2, 0), 1.0 * R(1, 0) * R(3, 0))
+
+    @test inner(KA(1) * KB(2), KB(2) * KA(1)) == 1
+    @test inner(KA(1) * KB(2), KB(2) * KA(3)) == 0
+
+    # the lowest energy of two qubits, where H * x has kets in both orders
+    X(s) = R(s, 0) * R(s, 1)' + R(s, 1) * R(s, 0)'
+    Z(s) = R(s, 0) * R(s, 0)' - R(s, 1) * R(s, 1)'
+    HR = 1.0 * (X(1) + X(2)) + 0.7 * Z(1) * Z(2)
+    vals, = eigsolve(x -> HR * x, 1.0 * R(1, 0) * R(2, 0), 1, :SR; ishermitian=true, krylovdim=6, maxiter=1)
+    @test vals[1] ≈ -2.1190 atol = 1e-3
+
+    with_autosort(false) do
+        @test inner(swapped, canonical) == inner(canonical, swapped) == 1
+        @test dot(swapped, canonical) == norm(swapped) == 1
+        @test inner(swapped + 0, canonical) == 1
+        # atom arguments
+        unsorted_ket = Q(1, 0) * Q(1, 1)' * Q(1, 1)
+        @test inner(unsorted_ket, Q(1, 0)) == inner(Q(1, 0), unsorted_ket) == 1
+
+        a, b = F(1)', F(2)'
+        # a product that sorts to zero
+        @test inner(2 * a * a * Vac(false), 3 * a * Vac(false)) == 0
+        # a residual that is zero up to roundoff in one coefficient, which cancels across terms only after sorting
+        residual = (0.1 * a * b - 0.7 * b * a - 0.8 * a * b) * Vac(false)
+        @test norm(residual) ≈ abs(0.1 - 0.8 + 0.7)
+
+        # the Hubbard dimer: a zero residual must stop the Krylov iteration
+        c(site, up) = F(2site + !up)
+        H = sum(-1.0 * (c(1, s)' * c(2, s) + c(2, s)' * c(1, s)) for s in (true, false)) +
+            4.0 * sum(c(i, true)' * c(i, true) * c(i, false)' * c(i, false) for i in 1:2)
+        ψ = 1.0 * c(1, true)' * c(2, false)' * Vac(false)
+        vals, = eigsolve(x -> H * x, ψ, 1, :SR; ishermitian=true, krylovdim=4, maxiter=1)
+        @test vals[1] ≈ 2 - sqrt(8)
+    end
 end
 
 @testitem "VectorInterface: inner compares keys with isequal" begin

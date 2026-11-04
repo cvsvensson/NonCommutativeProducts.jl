@@ -89,9 +89,35 @@ end
         H, ψ = H0 + 2, ψ0 + 1
         @test H * ψ == sum(h * p for h in hterms for p in ψterms) + H0 + 2 * ψ0 + 2
 
-        c = with_autosort(() -> bra(1) * ket(1) + ket(2), false)
-        @test mul!!(copy(c), H, ψ) == sort(c) + H * ψ
+        c = ket(1) * bra(2) + ket(2)
+        @test mul!!(copy(c), H, ψ) == c + H * ψ
     end
+end
+
+@testitem "Powers 0 and 1 of a sum do not multiply" begin
+    import NonCommutativeProducts: @nc, NCAdd, with_autosort
+    # any sorted product of two of these would throw a MethodError, since they have no mul_effect
+    struct NoRule
+        n::Int
+    end
+    @nc NoRule
+    H = 2 * NoRule(1) + 3 * NoRule(2)
+    # as for a product, whose coefficients have the type of a sum
+    boolsum = zero(NCAdd{Bool,keytype(H.dict)})
+    for autosort in (true, false)
+        with_autosort(autosort) do
+            @test H^0 == 1
+            @test H^0 isa typeof(H)
+            @test H^1 == H
+            @test H^1 isa typeof(H)
+            @test H^1 !== H
+            @test boolsum^0 isa typeof(H)
+            @test boolsum^1 isa typeof(H)
+        end
+    end
+    # a power of 1 doesn't sort, so it needs no mul_effect for longer products either
+    unsorted = with_autosort(() -> NoRule(1) * NoRule(2) + NoRule(3), false)
+    @test unsorted^1 == unsorted
 end
 
 @testitem "Products of sums allocate per new term, not per pair" setup = [GradedKets] begin

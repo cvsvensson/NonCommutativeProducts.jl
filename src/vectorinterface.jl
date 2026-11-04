@@ -97,9 +97,21 @@ VectorInterface.add!!(y, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β
 VectorInterface.add!!(y::MulAdd, x::MulAdd, α::Number, β::Number) = add!!(y, x, α, β)
 
 VectorInterface.inner(x::MulAdd, y::MulAdd) = _inner(x, y)
+function _inner(x, y)
+    sx = _inner_argument(x)
+    sy = x === y ? sx : _inner_argument(y)
+    return with_autosort(() -> _inner_sorted(sx, sy), false)
+end
+# x sorted: equal products left as separate terms would cancel only up to roundoff of order eps * Σ|cᵢcⱼ|, which makes a
+# zero vector look nonzero. Sums with keys aren't scanned for this while autosort is on, since the scan would dominate
+# the cost of inner and they are almost always sorted.
+function _inner_argument(x)
+    autosort() && Base.promote_op(contraction_key, _factor_eltype(typeof(x))) !== Nothing && return x
+    return _sorted(x)
+end
 # The sorted sum of a' * b over the pairs of terms a of x and b of y that can contract, promoted to at least the
 # product of the scalar types.
-function _inner(x, y)
+function _inner_sorted(x, y)
     C = promote_type(_scalartype(x), _scalartype(y))
     T = Base.promote_op(+, C, C)
     (iszero(x) || iszero(y)) && return zero(_scalartype(x))' * zero(_scalartype(y)) + zero(T)
@@ -109,10 +121,8 @@ function _inner(x, y)
     S = _factor_eltype(eltype(bras), eltype(yterms))
     acc = zero(NCAdd{T,NCMul{Int,S,Vector{S}}})
     buffer = S[]
-    z = with_autosort(false) do
-        fold_retyping!!(acc, candidates) do acc, (i, j, d)
-            _inner_pair!!(acc, xterms[i].factors, bras[i], yterms[j], d, buffer)
-        end
+    z = fold_retyping!!(acc, candidates) do acc, (i, j, d)
+        _inner_pair!!(acc, xterms[i].factors, bras[i], yterms[j], d, buffer)
     end
     _reduces_to_scalar(z) || throw(_inner_error())
     return zero(_scalartype(x))' * zero(_scalartype(y)) + scalar(z)
@@ -125,11 +135,12 @@ _collect_terms(x::NCAdd{C,NCMul{D,S,F}}) where {C,D,S,F} = fold_terms!!(push!!, 
 
 Return a key that lets `inner(x, y)` skip orthogonal pairs of terms, or `nothing` (the default).
 
-`inner` treats two terms as orthogonal if their keys differ at any position before the first
-factor without a key, without sorting them first. Terms must list subsystems in the same order:
-`|a⟩|b⟩` and `|b⟩|a⟩` count as orthogonal. Keys must differ between subsystems.
+Terms that first differ at kets of one subsystem are orthogonal; otherwise `inner` computes the full
+product, so any order is correct and one order is fastest. Keys must differ between subsystems.
 
 For atoms `k`, `l` with keys and any atom `u`:
+- `mul_effect(k', l)` must be defined. Being a `Number` asserts that `k` and `l` are in one subsystem,
+  so it must not be one for different subsystems, not even 0, or `inner` can silently miss terms.
 - `mul_effect(k', l)` must be a `Number` when the keys are equal.
 - `mul_effect(u, k')` must be `nothing` or a `Swap`.
 
@@ -157,20 +168,28 @@ struct _KeyIndex{K}
     order::Vector{Int} # ket indices, grouped by node
     ending::Vector{UnitRange{Int}} # order[ending[n]]: kets whose runs end at split node n
     below::Vector{UnitRange{Int}} # order[below[n]]: kets whose runs pass through node n
+    mixed::Vector{Bool} # whether the children of node n are in different subsystems, so that it can't be split
 end
-_issplit(idx::_KeyIndex, node) = node == 1 || length(idx.below[node]) > 1
+_issplit(idx::_KeyIndex, node) = !idx.mixed[node] && (node == 1 || length(idx.below[node]) > 1)
+# Whether different keys of k and l prove orthogonality: k and l are in one subsystem if ⟨k|l⟩ is a Number
+_same_subsystem(k, l) = mul_effect(adjoint(k), l) isa Number
+_factor_below(idx, kets, r, d) = kets[idx.order[first(r)]].factors[d+1]
 # Splits the nodes by the keys at their depth, with an explicit stack since a path is as long as a product
 function _KeyIndex(kets)
     K = Base.promote_op(contraction_key, _factor_eltype(eltype(kets)))
     n = length(kets)
-    idx = _KeyIndex{K}(Dict{Tuple{Int,UInt},Int}(), [0], Vector{K}(undef, 1), collect(1:n), [1:0], [1:n])
+    idx = _KeyIndex{K}(Dict{Tuple{Int,UInt},Int}(), [0], Vector{K}(undef, 1), collect(1:n), [1:0], [1:n], [false])
     # scratch space: the child that each ket goes to (0 if its run ends), the numbers of kets of the new children, and
     # the kets in their new order
     child_of, counts, sorted = zeros(Int, n), Int[], similar(idx.order)
     stack = [(1, 0)]
     while !isempty(stack)
         node, d = pop!(stack)
-        for c in _split_node!(idx, kets, node, d, child_of, counts, sorted)
+        children = _split_node!(idx, kets, node, d, child_of, counts, sorted)
+        idx.mixed[node] = any(c -> !_same_subsystem(_factor_below(idx, kets, idx.below[first(children)], d),
+                _factor_below(idx, kets, idx.below[c], d)), Iterators.drop(children, 1))
+        idx.mixed[node] && continue
+        for c in children
             length(idx.below[c]) > 1 && push!(stack, (c, d + 1))
         end
     end
@@ -243,6 +262,7 @@ function _add_node!(idx, key)
     push!(idx.next_sibling, 0)
     push!(idx.ending, 1:0)
     push!(idx.below, 1:0)
+    push!(idx.mixed, false)
     return length(idx.keys)
 end
 # The child of `node` with the key `key`, or 0 if there is none
@@ -266,7 +286,7 @@ function _contracting_pairs(xterms, yterms)
     # (term of the walking side, range of idx.order, d)
     segments = Tuple{Int,UnitRange{Int},Int}[]
     for (w, t) in enumerate(walking)
-        _push_segments!(segments, idx, w, t.factors)
+        _push_segments!(segments, idx, indexed, w, t.factors)
     end
     needed = falses(length(xterms))
     if index_x
@@ -282,7 +302,7 @@ function _contracting_pairs(xterms, yterms)
 end
 # Walks the index along the keyed run of `factors`, pairing term w with the kets whose runs end on the way, and with
 # all kets below the node where its run ends or the index stops splitting.
-function _push_segments!(segments, idx, w, factors)
+function _push_segments!(segments, idx, kets, w, factors)
     node, d = 1, 0
     while true
         key = _issplit(idx, node) && d < length(factors) ? contraction_key(factors[d+1]) : nothing
@@ -291,8 +311,14 @@ function _push_segments!(segments, idx, w, factors)
             return segments
         end
         isempty(idx.ending[node]) || push!(segments, (w, idx.ending[node], d))
-        node = _find_child(idx, node, key)
-        node == 0 && return segments
+        child = _find_child(idx, node, key)
+        if child == 0
+            # a key that isn't in the index proves orthogonality only within one subsystem
+            r = last(idx.ending[node])+1:last(idx.below[node])
+            isempty(r) || _same_subsystem(factors[d+1], _factor_below(idx, kets, r, d)) || push!(segments, (w, r, d))
+            return segments
+        end
+        node = child
         d += 1
     end
 end
@@ -306,14 +332,16 @@ function _inner_pair!!(acc, xfactors, bra, ket, d, buffer)
     effect = true
     p = 0
     while p < min(nb, length(kf))
+        agree = true
         if p >= d
             kk = contraction_key(kf[p+1])
             isnothing(kk) && break
             kx = contraction_key(xfactors[p+1])
             isnothing(kx) && break
-            isequal(kx, kk) || return acc
+            agree = isequal(kx, kk)
         end
         e = _mul_effect(buffer, bf[nb-p], kf[p+1])
+        agree || return e isa Number ? acc : _full_pair!!(acc, bra, ket, buffer)
         e isa Number || throw(_contraction_key_error(bf[nb-p], kf[p+1]))
         effect *= e
         iszero(effect) && return acc
@@ -322,6 +350,12 @@ function _inner_pair!!(acc, xfactors, bra, ket, d, buffer)
     p == 0 && return _mul_term_pair!!(acc, bra, ket, buffer)
     append!(empty!(buffer), Iterators.take(bf, nb - p), Iterators.drop(kf, p))
     return sort_into!!(acc, prefactor(bra) * prefactor(ket) * effect, buffer)
+end
+# A pair whose keys disagree across subsystems: the full product, which must reduce to a scalar
+function _full_pair!!(acc, bra, ket, buffer)
+    z = _mul_term_pair!!(zero(acc), bra, ket, buffer)
+    _reduces_to_scalar(z) || throw(_inner_error())
+    return add!!(acc, z)
 end
 function _contraction_key_error(a, b)
     return ArgumentError(string("mul_effect(", a, ", ", b, ") must be a Number, since contraction_key(", a,

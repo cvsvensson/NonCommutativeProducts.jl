@@ -102,9 +102,9 @@ end
             @test [(x, y) for ((x, rx), (y, ry), _) in sums
                    if as_ref(with_autosort(() -> x * y)) != ref_sort(ref_mul(rx, ry))] == []
             @test [x for ((x, rx), _, _) in sums if as_ref(with_autosort(() -> x')) != ref_sort(ref_adjoint(rx))] == []
-            # mul!! mutates its first argument, so it gets a fresh copy
+            # mul!! mutates its first argument, so it gets a fresh copy, which must be sorted
             @test [(z, x, y) for ((x, rx), (y, ry), (z, rz)) in sums
-                   if as_ref(with_autosort(() -> mul!!(z + 0, x, y))) != ref_sort(ref_add(rz, ref_mul(rx, ry)))] == []
+                   if as_ref(with_autosort(() -> mul!!(sort(z) + 0, x, y))) != ref_sort(ref_add(rz, ref_mul(rx, ry)))] == []
         end
     end
 end
