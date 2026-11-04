@@ -321,6 +321,7 @@ function _sorted(x::NCAdd)
     all(k -> _is_sorted(k.factors), keys(x.dict)) && return x
     return bubble_sort(x)
 end
+_sorted(x::NCMul) = _is_sorted(x.factors) ? x : bubble_sort(x)
 _is_sorted(factors) = all(i -> isnothing(_mul_effect(factors, factors[i], factors[i+1])), 1:length(factors)-1)
 
 """

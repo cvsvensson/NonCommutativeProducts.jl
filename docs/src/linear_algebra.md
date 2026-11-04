@@ -1,6 +1,6 @@
 # Linear algebra
 
-Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left (apart from pairs of terms skipped by keys, see [Fast inner products](@ref)), so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts the pairs it doesn't skip, also inside `with_autosort(false)`.
+Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left (apart from pairs of terms whose keys differ, see [Fast inner products](@ref)), so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts the pairs it doesn't skip, also inside `with_autosort(false)`. It sorts `x` and `y` too unless autosort is on and they can have keys, so `mul_effect` must be defined for their neighbouring factors.
 
 With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. These features live in a package extension, which `using KrylovKit` loads.
 
@@ -41,7 +41,13 @@ true
 
 `inner(x, y)` forms `a' * b` for every pair of a term `a` of `x` and a term `b` of `y`, so its cost is proportional to the product of the numbers of terms. With [`contraction_key`](@ref NonCommutativeProducts.contraction_key) defined, `inner` skips the pairs whose keys show that they are orthogonal, which takes time proportional to the number of terms when each term matches few others.
 
-Keys define orthogonality: `inner` skips pairs whose keys disagree, whatever `mul_effect` gives and without sorting them first, so terms must list subsystems in the same order. Here `⟨n|m⟩` is zero unless `n == m`, so kets are keyed by their label:
+Terms that first differ at kets of one subsystem are orthogonal; otherwise `inner` computes the full product, so any order is correct and one order is fastest. Mixing orders can be tens of times slower.
+
+`mul_effect(k', l)` decides whether kets are in one subsystem. See [`contraction_key`](@ref NonCommutativeProducts.contraction_key) for what it must return.
+
+Sort a sum formed inside `with_autosort(false)` before calling `inner` with autosort on: equal products left in separate terms cancel only up to roundoff, so a zero vector gets a norm around `1e-8`.
+
+Here `⟨n|m⟩` is zero unless `n == m`, so kets are keyed by their label:
 ```jldoctest kets
 julia> NC.contraction_key(k::Ket) = k.bra ? nothing : k.n
 

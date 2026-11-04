@@ -191,9 +191,7 @@ SUITE["vector"]["norm_small_shared_chain"] = @benchmarkable norm($small_shared_c
 const abstract_keys_chain = sum(randn() * prod(AbstractKeyKet(site, rand(1:2)) for site in 1:N_sites) for _ in 1:2000)
 SUITE["vector"]["norm_abstract_keys_chain"] = @benchmarkable norm($abstract_keys_chain)
 
-# States of group 3 alone are orthogonal to those of groups 1 and 2 only by their keys
-const group_keys_sum = sum(randn() * GroupKet(1, rand(1:300)) * GroupKet(2, rand(1:300)) for _ in 1:1000) +
-    sum(randn() * GroupKet(3, n) for n in 1:100)
+const group_keys_sum = sum(randn() * GroupKet(1, rand(1:300)) * GroupKet(2, rand(1:300)) for _ in 1:1000)
 SUITE["vector"]["norm_group_keys"] = @benchmarkable norm($group_keys_sum)
 
 # Terms of a keyed ket times an unkeyed one, with few distinct keys, so that each term contracts with many others
