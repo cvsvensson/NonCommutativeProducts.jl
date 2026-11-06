@@ -2,7 +2,7 @@
 
 Expressions implement [VectorInterface.jl](https://github.com/Jutho/VectorInterface.jl), with the inner product `inner(x, y) = scalar(x' * y)`. This requires `adjoint` to be defined for your types, and `x' * y` must sort to an expression with no factors left (apart from pairs of terms whose keys differ, see [Fast inner products](@ref)), so that [`scalar`](@ref NonCommutativeProducts.scalar) can extract its value. `inner` sorts the pairs it doesn't skip, also inside `with_autosort(false)`. It sorts `x` and `y` too unless autosort is on and they can have keys, so `mul_effect` must be defined for their neighbouring factors.
 
-With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. These features live in a package extension, which `using KrylovKit` loads.
+With [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl) loaded, expressions can also be used as linear operators acting by left multiplication. These features live in a package extension, which `using KrylovKit` loads. Operators given as plain functions should return sorted results, because unmerged terms can make solvers report wrong eigenvalues as converged; `x -> sort(H * x)` does this when autosort is off.
 
 Example: Let's define kets and bras and exponentiate a Hamiltonian:
 ```jldoctest kets
