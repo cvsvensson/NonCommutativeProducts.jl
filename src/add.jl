@@ -118,7 +118,8 @@ _negate(r) = -r
 _negate(r::Union{Signed,Rational}) = -big(r)
 
 function _show_terms(io::IO, x::NCAdd, parts, compact::Bool, ellipsis::Bool)
-    print_one = !iszero(additive_coeff(x)) || length(x.dict) == 0
+    isempty(x.dict) && iszero(additive_coeff(x)) && return print(io, "0")
+    print_one = !iszero(additive_coeff(x))
     print_sign(s) = compact ? print(io, s) : print(io, " ", s, " ")
     print_one && print_coeff(io, additive_coeff(x))
     for (n, (neg, text)) in enumerate(parts)

@@ -60,7 +60,7 @@ julia> function NC.mul_grade(g::Bicyclic, h::Bicyclic)
 julia> NC.adjoint_grade(g::Bicyclic) = Bicyclic(g.n, g.m)
 
 julia> z = k0 * k1' * k0 # an annihilated ket
-0I
+0
 
 julia> z == 0
 true
