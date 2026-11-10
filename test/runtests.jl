@@ -1527,7 +1527,7 @@ end
     using Symbolics: Symbolics
     test_explicit_imports(NonCommutativeProducts;
         # Base internals without a public equivalent, KrylovKit operator hooks, and package internals used by the extensions
-        all_qualified_accesses_are_public=(; ignore=(:_growat!, :inferencebarrier, :literal_pow, :power_by_squaring, :promote_op,
+        all_qualified_accesses_are_public=(; ignore=(:_growat!, :ht_keyindex2_shorthash!, :_setindex!, :_delete!, :inferencebarrier, :literal_pow, :power_by_squaring, :promote_op,
             :apply, :apply_normal, :apply_adjoint, :MulAdd, :map_coefficients, :_unwrap_symbolic, :_coefficient_bound,
             :SizeUnknown, :EltypeUnknown, :Experimental, :register_error_hint)),
         # qualified names in macro-generated code
