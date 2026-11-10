@@ -69,7 +69,7 @@ julia> Fermion(1)*Fermion(1)'
 1I - c†[1]*c[1]
 ```
 
-When products of a term with a sum have structure that `mul_effect` cannot use, define a method of [`mul_terms!!`](@ref NonCommutativeProducts.mul_terms!!) for your types. `mul!!` calls `mul_terms!!(c, x, b)` for each term `x` of the left factor, and so does `*` when either factor is a sum. Autosort is disabled during the call, so the method must add terms that are already sorted.
+When products of a term with a sum have structure that `mul_effect` cannot use, define a method of [`mul_terms!!`](@ref NonCommutativeProducts.mul_terms!!) for your types. `mul!!` calls `mul_terms!!(c, a, b)` with the left factor `a`, and so does `*` when either factor is a sum. For a sum `a`, the default calls `mul_terms!!(c, x, b)` for each term `x` of `a`, so a method can handle single terms `x`, or a sum `a` to compute the whole product at once. Autosort is disabled during the call, so the method must add terms that are already sorted.
 
 For example, `|n⟩⟨m|` applied to a sum of kets is the coefficient of `|m⟩` times `|n⟩`. A method can find it in one pass over the terms of the sum with [`termpairs`](@ref NonCommutativeProducts.termpairs), and add it to `c` with [`add!!`](@ref NonCommutativeProducts.add!!). Other products go through the default method:
 ```jldoctest multerms

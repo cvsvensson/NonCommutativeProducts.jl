@@ -297,7 +297,7 @@ function mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
     cgrades = _zero_grades(c)
     return _with_zero_grades(_mul!!(c, a, b), () -> _union_grades(cgrades, _mul_grades(_grades(a), _grades(b))))
 end
-# c + a * b. With autosort, each term x of a is multiplied into c by mul_terms!!. Otherwise the
+# c + a * b. With autosort, a is multiplied into c by mul_terms!!. Otherwise the
 # catenated products are added unsorted. c is first converted to the promoted type of c, a and b, so the coefficient
 # type of the result doesn't depend on which products vanish.
 function _mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
@@ -315,7 +315,7 @@ function _mul!!(c::NCAdd, a::MulAdd, b::MulAdd)
 end
 function _mul_sorted!!(c::NCAdd, a::MulAdd, b::MulAdd)
     c = convert(promote_type(typeof(c), _sum_type(a, b)), c)
-    return fold_terms!!((acc, x) -> mul_terms!!(acc, x, b), c, a)
+    return iszero(a) ? c : mul_terms!!(c, a, b)
 end
 # `x` with its terms sorted, which is `x` itself if they already are
 function _sorted(x::NCAdd)
@@ -326,16 +326,17 @@ _sorted(x::NCMul) = _is_sorted(x.factors) ? x : bubble_sort(x)
 _is_sorted(factors) = all(i -> isnothing(_mul_effect(factors, factors[i], factors[i+1])), 1:length(factors)-1)
 
 """
-    mul_terms!!(c, x::NCMul, b)
+    mul_terms!!(c, x, b)
 
-Return the sum `c` plus the sorted product of the term `x` and the product or sum `b`, reusing the storage of `c` when
-possible. `mul!!` calls it for each term `x` of the left factor, and so does `*` when either factor is a sum, except
-inside `with_autosort(false)`.
+Return the sum `c` plus the sorted product of the term or sum `x` and the product or sum `b`, reusing the storage of
+`c` when possible. `mul!!` calls it with the whole left factor, and so does `*` when either factor is a sum, except
+inside `with_autosort(false)`. For a sum `x`, the default calls `mul_terms!!(c, t, b)` for each term `t` of `x`.
 
 Define methods for your own atom types to compute these products directly, e.g. to apply an operator to every ket in a
-sum with one precomputation. Autosort is disabled during the call, so a method must add terms that are already sorted,
-with [`add!!`](@ref). 
+sum with one precomputation, or, with a sum `x`, to compute the whole product at once. Autosort is disabled during the
+call, so a method must add terms that are already sorted, with [`add!!`](@ref).
 """
+mul_terms!!(c, x::NCAdd, b::MulAdd) = fold_terms!!((acc, t) -> mul_terms!!(acc, t, b), c, x)
 function mul_terms!!(c, x::NCMul, b::MulAdd)
     buffer = _factor_eltype(typeof(c), typeof(x), typeof(b))[]
     return fold_terms!!((c, y) -> _mul_term_pair!!(c, x, y, buffer), c, b)

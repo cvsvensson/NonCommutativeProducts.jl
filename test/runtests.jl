@@ -1336,6 +1336,31 @@ end
     @test calls[] == 0
 end
 
+@testitem "mul_terms!! hook with a sum on the left" begin
+    import NonCommutativeProducts: @nc, mul_effect, with_autosort, add!!, terms, mul!!, NCMul, NCAdd
+
+    struct SKet
+        n::Int
+        bra::Bool
+    end
+    Base.adjoint(k::SKet) = SKet(k.n, !k.bra)
+    @nc SKet
+    mul_effect(a::SKet, b::SKet) = a.bra && !b.bra ? Int(a.n == b.n) : nothing
+
+    H = sum(SKet(n, false) * SKet(n + 1, true) for n in 1:5)
+    ψ = sum(n * SKet(n, false) for n in 1:6)
+    ref = H * ψ
+
+    const calls = Ref(0)
+    function NonCommutativeProducts.mul_terms!!(c, x::NCAdd{<:Any,<:NCMul{<:Any,SKet}}, b::NCAdd)
+        calls[] += 1
+        return add!!(c, with_autosort(() -> sum(t * y for t in terms(x) for y in terms(b))))
+    end
+    @test H * ψ == ref
+    @test mul!!(1 + 0 * ref, H, ψ) == 1 + ref
+    @test calls[] == 2
+end
+
 @testitem "VectorInterface: the type of inner doesn't depend on autosort" setup = [Fermions] begin
     using VectorInterface: inner
     f = Fermion(1)
