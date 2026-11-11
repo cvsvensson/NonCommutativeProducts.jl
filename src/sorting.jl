@@ -100,15 +100,22 @@ end
 # Adds `coeff` to the term with key `key` in `dict`, and deletes the term if it becomes zero. `key` is stored as given.
 # Mutates `dict` if the result fits, and otherwise returns a widened copy (e.g. true + true isa Int). A result that
 # fits is converted before the zero check, since the conversion can round it to zero (e.g. Rational to Float16).
+# Hashing long keys dominates the cost of adding sums, so the Dict internals are used to hash the key only once.
 function add_key!!(dict::Dict{K,V}, key, coeff) where {K,V}
-    old = get(dict, key, nothing)
-    newval = _fit_value(V, isnothing(old) ? coeff : old + coeff)
+    key = convert(K, key)::K
+    index, sh = Base.ht_keyindex2_shorthash!(dict, key)
+    newval = _fit_value(V, index > 0 ? dict.vals[index] + coeff : coeff)
     if iszero(newval)
-        isnothing(old) || delete!(dict, key)
+        index > 0 && Base._delete!(dict, index)
         return dict
     end
     if newval isa V
-        dict[key] = newval
+        if index > 0
+            dict.age += 1
+            dict.vals[index] = newval
+        else
+            Base._setindex!(dict, newval, key, -index, sh)
+        end
         return dict
     end
     widened = Dict{K,promote_type(V, typeof(newval))}(dict)
